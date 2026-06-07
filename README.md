@@ -2,18 +2,18 @@ WOODFUL STOCK INVENTORY MANAGEMENT SYSTEM
 
 Quick Start Guide
 
-Welcome to Woodful Stock Inventory, an AI-powered stock inventory management system built with Next.js, Python FastAPI, LangChain, and PostgreSQL.
+Welcome to Woodful Stock Inventory, an AI-powered stock inventory management system built with Next.js, Python FastAPI, LangChain, and PostgreSQL. Works on Windows, macOS, iOS, and Android.
 
 WHAT IS THIS SYSTEM?
 
-Woodful Stock Inventory is a complete solution for managing your warehouse stock with real-time tracking, intelligent forecasting, and AI-powered automation. The system helps you:
+Woodful Stock Inventory is a complete solution for managing warehouse stock with real-time tracking, intelligent forecasting, and AI-powered automation. The system helps you:
 
 - Track inventory levels in real-time
 - Get alerts when stock runs low
 - Forecast demand using AI
 - Automate reordering processes
 - Export data to Excel for analysis
-- Access inventory from mobile devices
+- Access inventory from any device (computer, phone, tablet)
 - Chat with AI to manage inventory using natural language
 
 SYSTEM ARCHITECTURE
@@ -23,8 +23,8 @@ The system consists of three main parts:
 Frontend (Next.js)
 - Web interface for managing inventory
 - Real-time charts and dashboards
-- Mobile-responsive design
-- Progressive Web App support
+- Mobile-responsive design works on all devices
+- Progressive Web App - works offline
 
 Backend (Python FastAPI)
 - REST API for all operations
@@ -37,157 +37,247 @@ Database (SQLite/PostgreSQL)
 - User accounts and permissions
 - Activity logs and audit trails
 
+SUPPORTED PLATFORMS
+
+Desktop:
+- Windows 10, 11, and later
+- macOS 10.13 and later
+- Linux (Ubuntu, CentOS, etc.)
+
+Mobile:
+- iPhone (iOS 13+) - Safari browser
+- iPad (iOS 13+) - Safari browser
+- Android phones (Android 8+) - Chrome/Firefox browser
+- Android tablets (Android 8+) - Chrome/Firefox browser
+
 REQUIREMENTS
 
-Before installation, you need:
+For Desktop Setup:
 - Python 3.9 or higher
 - Node.js 16 or higher
 - npm (comes with Node.js)
 - Git for version control
-- Gmail account (for email alerts)
-- OpenAI API key (for AI features, optional but recommended)
+- 2GB free disk space
+- Internet connection
+
+For Mobile Access:
+- iOS 13+ or Android 8+
+- Chrome, Safari, Firefox, or Edge browser
+- WiFi connection to computer running the app
 
 QUICK START (5 MINUTES)
 
-1. Clone Repository
+Step 1: Install Required Software
+
+Windows:
+1. Download Python from https://www.python.org/downloads/
+2. During installation, check "Add Python to PATH"
+3. Download Node.js from https://nodejs.org/
+4. Run both installers using default settings
+5. Restart your computer
+
+macOS:
+1. Download Python from https://www.python.org/downloads/
+2. Download Node.js from https://nodejs.org/
+3. Run both installers
+4. Or use Homebrew: brew install python@3.10 node
+
+Step 2: Clone Repository
+
+Windows (Command Prompt):
 git clone https://github.com/garima-s16/Woodful-stock-inventory.git
 cd Woodful-stock-inventory
 
-2. Run Setup Script
+macOS (Terminal):
+git clone https://github.com/garima-s16/Woodful-stock-inventory.git
+cd Woodful-stock-inventory
+
+Step 3: Run Setup Script
+
+Windows or macOS:
 bash scripts/setup.sh
 
-3. Configure Environment
-cd backend
-nano .env
+Wait 5-10 minutes for setup to complete.
+
+Step 4: Configure Environment
+
+Edit backend/.env file:
+
+Windows: notepad backend\.env
+macOS: nano backend/.env
 
 Update these values:
-EMAIL_USER=your-gmail@gmail.com
+EMAIL_USER=your-email@gmail.com
 EMAIL_PASSWORD=your-16-char-app-password
 OPENAI_API_KEY=sk-your-api-key
 BUSINESS_OWNER_EMAIL=owner@example.com
-SECRET_KEY=your-secure-key
 
-4. Start Backend
+Step 5: Start Backend
+
+Windows:
+cd backend
+venv\Scripts\activate
+uvicorn app.main:app --reload
+
+macOS:
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload
 
-5. Start Frontend (in another terminal)
+Step 6: Start Frontend (new terminal)
+
+Windows:
 cd frontend
 npm run dev
 
-6. Open Browser
-Frontend: http://localhost:3000
-API Docs: http://localhost:8000/docs
+macOS:
+cd frontend
+npm run dev
 
-GETTING STARTED (10 MINUTES)
+Step 7: Open in Browser
 
-Create Account
-- Click "Create Account"
-- Enter email, username, and password
-- Password must have 12+ characters, uppercase, number, and special character
-- Click "Sign Up"
+Desktop: http://localhost:3000
 
-Complete Profile
-- Click profile icon
-- Select "Settings"
-- Add business name, location, and warehouse details
-- Click "Save"
+From Phone (same WiFi):
+1. Find your computer IP address:
+   Windows: Command Prompt, type ipconfig
+   macOS: Terminal, type ifconfig
+2. On phone browser: http://YOUR-IP:3000
 
-Add Inventory Item
-- Click "Inventory"
-- Click "Add Item"
-- Fill details and click "Create"
+GETTING STARTED
 
-View Dashboard
-- Click "Dashboard"
-- See inventory overview and charts
+Create Account:
+1. Click "Create Account"
+2. Enter email, username, password
+3. Password: 12+ chars, uppercase, number, special character
+4. Click "Sign Up"
 
-Test Chat
-- Click "Chat"
-- Try: "Show all items" or "Add 50 units of Oak Wood"
+Complete Profile:
+1. Click profile icon
+2. Select "Settings"
+3. Add business details
+4. Click "Save"
 
-MAIN FEATURES
+Add Inventory:
+1. Click "Inventory"
+2. Click "Add Item"
+3. Fill details
+4. Click "Create"
+
+View Dashboard:
+1. Click "Dashboard"
+2. See real-time overview
+
+Test Chat:
+1. Click "Chat"
+2. Try: "Show all items" or "Add 50 units"
+
+FEATURES
 
 Dashboard
-Real-time overview with visual charts and key metrics. See stock levels at a glance.
+Real-time stock overview with visual charts and key metrics. See stock levels at a glance from any device.
 
 Inventory Management
-Complete control with add, edit, delete, search, filter, and bulk operations support.
+Complete control with add, edit, delete, search, filter. Bulk operations and barcode scanning supported.
 
 AI Chat Interface
-Talk to your system using natural language. System understands inventory commands.
+Talk to your system using natural language. Commands like "Show low stock items" are understood and executed.
 
 Reports
-Custom reports with Excel and PDF export. Schedule automatic reports with email delivery.
+Generate custom reports with Excel and PDF export. Schedule automatic reports and receive via email.
 
 Notifications
-Receive alerts for low stock. Email notifications for critical events.
+Receive alerts when stock falls below minimum. Email notifications for critical events.
 
 Audit Logs
-Complete record of all system activity for compliance and troubleshooting.
+Complete record of all system activity. Track who did what and when for compliance.
 
-CONFIGURATION SETUP
+Mobile Access
+Access from iPhone, iPad, Android phones and tablets. Same features as desktop. Works offline.
 
-Email Setup (Gmail)
+CONFIGURATION
+
+Email Setup (Gmail):
 
 1. Go to https://myaccount.google.com/apppasswords
-2. Select "Mail" and "Windows Computer"
+2. Select "Mail" and your device type
 3. Copy the 16-character password
 4. Add to backend/.env:
    EMAIL_USER=your-email@gmail.com
-   EMAIL_PASSWORD=the-16-char-password
+   EMAIL_PASSWORD=16-char-password
 
-OpenAI API Setup
+OpenAI API Setup:
 
-1. Go to https://platform.openai.com
-2. Generate API key
+1. Go to https://platform.openai.com/account/api-keys
+2. Create new secret key
 3. Add to backend/.env:
    OPENAI_API_KEY=sk-your-key
 
-Business Owner Email
+Business Owner Email:
 BUSINESS_OWNER_EMAIL=owner@example.com
 
-Secret Key
+Secret Key (Windows):
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+Secret Key (macOS):
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
-Copy output and add to backend/.env:
+Copy output and add:
 SECRET_KEY=generated-key
 
-DETAILED DOCUMENTATION
+MOBILE ACCESS
 
-For step-by-step setup instructions, see SETUP_GUIDE.md
+iPhone / iPad:
 
-For feature details and requirements, see docs/REQUIREMENTS.md
+1. Find your computer IP:
+   Windows: Command Prompt, ipconfig
+   macOS: Terminal, ifconfig
 
-For deployment instructions, see docs/DEPLOYMENT.md
+2. On Safari, go to: http://YOUR-IP:3000
+   Example: http://192.168.1.100:3000
+
+3. Bookmark for quick access
+
+4. Install as app (optional):
+   Tap Share > Add to Home Screen > Add
+
+Android:
+
+1. Find your computer IP (same steps as above)
+
+2. On Chrome, go to: http://YOUR-IP:3000
+
+3. Bookmark for quick access
+
+4. Install as app (optional):
+   Tap Menu > Install app > Install
 
 DEVELOPMENT
 
-Local Development
+Local Setup:
 
-Terminal 1 - Backend:
+Terminal 1 (Backend):
 cd backend
-source venv/bin/activate
+source venv/bin/activate (macOS)
+venv\Scripts\activate (Windows)
 uvicorn app.main:app --reload
 
-Terminal 2 - Frontend:
+Terminal 2 (Frontend):
 cd frontend
 npm run dev
 
-Access at http://localhost:3000
+Access: http://localhost:3000
 
-Production Deployment
+Production Deployment:
 
-Frontend - Deploy to Vercel
+Frontend - Vercel:
 1. Push to GitHub
 2. Go to vercel.com
 3. Import repository
-4. Set frontend as root directory
-5. Add environment variables
-6. Deploy
+4. Set frontend as root
+5. Deploy
 
-Backend - Deploy to AWS
+Backend - AWS:
 pip install awsebcli
 cd backend
 eb init -p python-3.10
@@ -196,45 +286,71 @@ eb deploy
 
 TROUBLESHOOTING
 
-Port Already in Use
-lsof -ti:3000 | xargs kill -9
-Or use different port: npm run dev -- -p 3001
+Port Already in Use:
 
-Database Error
+Windows:
+npm run dev -- -p 3001
+Then access: http://localhost:3001
+
+macOS:
+npm run dev -- -p 3001
+Then access: http://localhost:3001
+
+Python Not Found:
+
+Windows: Reinstall Python and restart computer
+macOS: Use python3 instead of python
+
+Backend Won't Start:
+
+Windows: Check port 8000 not in use
+macOS: Check port 8000 not in use
+
+Email Not Sending:
+
+- Verify EMAIL_USER correct
+- Check EMAIL_PASSWORD is 16-char app password
+- Verify BUSINESS_OWNER_EMAIL set
+- Wait 30 seconds
+
+Cannot Connect Backend:
+
+- Check backend running: http://localhost:8000/health
+- Verify NEXT_PUBLIC_API_URL in .env.local
+- Check firewall not blocking port 8000
+
+Mobile Can't Connect:
+
+- Both devices on same WiFi
+- Use computer IP:3000 on phone
+- Check backend running
+- Check firewall
+
+Database Error:
+
+Windows:
+cd backend
+del stock_inventory.db
+
+macOS:
 cd backend
 rm stock_inventory.db
-python3 -c "from app.database import init_db; init_db()"
 
-Module Not Found
-pip install -r requirements.txt
-npm install
+SECURITY
 
-Email Not Sending
-- Verify EMAIL_USER and EMAIL_PASSWORD in .env
-- Check app password is 16 characters
-- Allow 30 seconds for delivery
+Use Strong Passwords:
+- 12+ characters
+- Uppercase, numbers, special characters
+- Change regularly
 
-Cannot Connect to Backend
-- Check http://localhost:8000/health
-- Verify NEXT_PUBLIC_API_URL in .env.local
-- Check port 8000 is not blocked
+Keep Secrets Safe:
+- Never commit .env files
+- Keep API keys secure
+- Don't share login credentials
 
-SECURITY TIPS
-
-Use Strong Passwords
-Minimum 12 characters with uppercase, numbers, and special characters.
-
-Keep Secrets Safe
-Never commit .env files. Keep API keys secure.
-
-Enable Email Verification
-Verify new accounts via email.
-
-Regular Backups
-Backup database regularly. Test recovery procedures.
-
-Update Dependencies
-Keep packages and modules updated for security.
+Regular Backups:
+- Backup database regularly
+- Test restore procedures
 
 FILE STRUCTURE
 
@@ -258,14 +374,15 @@ Woodful-stock-inventory/
 VERSION INFORMATION
 
 Woodful Stock Inventory v1.0.0
-Built with Next.js 15, FastAPI, LangChain, and PostgreSQL
+Built with Next.js 15, FastAPI, LangChain, PostgreSQL
+Supports: Windows, macOS, iOS, Android
 Last Updated: June 2026
 
 SUPPORT
 
-Documentation: See SETUP_GUIDE.md for detailed setup help
-API Docs: http://localhost:8000/docs (when running locally)
-GitHub Issues: Create issue in repository
+Documentation: See SETUP_GUIDE.md for detailed setup
+API Docs: http://localhost:8000/docs (when running)
+GitHub Issues: Create issue for bugs or features
 Email Support: Contact project maintainers
 
-Ready to get started? Follow the SETUP_GUIDE.md for step-by-step instructions.
+Ready to get started? Follow SETUP_GUIDE.md for step-by-step instructions.
