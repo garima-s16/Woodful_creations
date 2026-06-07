@@ -11,6 +11,29 @@ echo "Woodful Stock Inventory Setup Script"
 echo "======================================"
 echo ""
 
+# Detect operating system
+OS_TYPE=$(uname -s)
+case "$OS_TYPE" in
+    Darwin*)
+        OS_NAME="macOS"
+        VENV_ACTIVATE="source venv/bin/activate"
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        OS_NAME="Windows"
+        VENV_ACTIVATE="venv\Scripts\activate"
+        ;;
+    Linux*)
+        OS_NAME="Linux"
+        VENV_ACTIVATE="source venv/bin/activate"
+        ;;
+    *)
+        OS_NAME="Unknown"
+        ;;
+esac
+
+echo "Detected OS: $OS_NAME"
+echo ""
+
 # Check Python installation
 echo -e "${GREEN}[1/7] Checking Python installation...${NC}"
 if command -v python3 &> /dev/null; then
@@ -26,6 +49,7 @@ if command -v python3 &> /dev/null; then
     fi
 else
     echo -e "${RED}✗ Python 3 is not installed. Please install Python 3.9 or higher.${NC}"
+    echo "Visit: https://www.python.org/downloads/"
     exit 1
 fi
 
@@ -36,6 +60,7 @@ if command -v node &> /dev/null; then
     echo -e "${GREEN}✓ Node.js $NODE_VERSION found${NC}"
 else
     echo -e "${RED}✗ Node.js is not installed. Please install Node.js 16 or higher.${NC}"
+    echo "Visit: https://nodejs.org/en/download/"
     exit 1
 fi
 
@@ -56,7 +81,13 @@ if [ -d "backend/venv" ]; then
 else
     cd backend
     python3 -m venv venv
-    source venv/bin/activate
+    
+    if [ "$OS_NAME" = "Windows" ]; then
+        call venv\Scripts\activate.bat
+    else
+        source venv/bin/activate
+    fi
+    
     echo -e "${GREEN}✓ Virtual environment created${NC}"
     
     # Install Python dependencies
@@ -84,12 +115,10 @@ if [ ! -f "backend/.env" ]; then
 # ==========================================
 
 # Database Configuration
-# Options: sqlite, postgresql
 DATABASE_URL=sqlite:///./stock_inventory.db
-# For PostgreSQL: postgresql://user:password@localhost:5432/woodful_inventory
 
 # Security Configuration
-SECRET_KEY=your-secret-key-change-this-in-production-use-32-chars-minimum
+SECRET_KEY=your-secure-random-key-change-this-in-production
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
@@ -97,10 +126,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 DEBUG=False
 ENVIRONMENT=development
 
-# AI/LLM Configuration
-OPENAI_API_KEY=sk-your-openai-api-key-here
-LANGCHAIN_API_KEY=your-langchain-api-key-here
-LANGCHAIN_PROJECT=woodful-inventory
+# Email Configuration (Gmail Setup for Alerts)
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+
+# OpenAI API (for AI chat features)
+OPENAI_API_KEY=sk-your-api-key
+
+# Business Owner Email (receives alerts)
+BUSINESS_OWNER_EMAIL=owner@example.com
 
 # Server Configuration
 HOST=0.0.0.0
@@ -109,13 +143,6 @@ RELOAD=true
 
 # CORS Configuration
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
-
-# Email Configuration (Optional)
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SENDER_EMAIL=noreply@woodful.com
 
 # Logging
 LOG_LEVEL=INFO
@@ -139,7 +166,6 @@ if [ ! -f "backend/.env.example" ]; then
 # ==========================================
 
 # Database Configuration
-# Options: sqlite, postgresql
 DATABASE_URL=sqlite:///./stock_inventory.db
 
 # Security Configuration
@@ -230,26 +256,41 @@ echo "  • .env.local (frontend configuration)"
 echo "  • .env.example (frontend reference template)"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
-echo "  1. Edit backend/.env with your actual configuration:"
-echo "     nano backend/.env"
 echo ""
-echo "  2. Update these values:"
-echo "     • SECRET_KEY (generate a secure key)"
-echo "     • OPENAI_API_KEY (if using OpenAI)"
-echo "     • LANGCHAIN_API_KEY (if using LangChain)"
-echo "     • DATABASE_URL (if using PostgreSQL)"
+echo "1. Edit backend/.env with your actual configuration:"
+if [ "$OS_NAME" = "Windows" ]; then
+    echo "   notepad backend\.env"
+elif [ "$OS_NAME" = "macOS" ]; then
+    echo "   nano backend/.env"
+else
+    echo "   nano backend/.env"
+fi
 echo ""
-echo "  3. Start the backend:"
-echo "     cd backend"
-echo "     source venv/bin/activate"
-echo "     uvicorn app.main:app --reload"
+echo "2. Update these values:"
+echo "   • SECRET_KEY (generate a secure key)"
+echo "   • EMAIL_USER (your Gmail address)"
+echo "   • EMAIL_PASSWORD (16-character app password)"
+echo "   • OPENAI_API_KEY (if using OpenAI)"
+echo "   • BUSINESS_OWNER_EMAIL (owner email)"
 echo ""
-echo "  4. Start the frontend (in another terminal):"
-echo "     npm run dev"
+echo "3. Start the backend:"
+if [ "$OS_NAME" = "Windows" ]; then
+    echo "   cd backend"
+    echo "   venv\Scripts\activate"
+    echo "   uvicorn app.main:app --reload"
+else
+    echo "   cd backend"
+    echo "   source venv/bin/activate"
+    echo "   uvicorn app.main:app --reload"
+fi
 echo ""
-echo "  5. Access the application:"
-echo "     Frontend: http://localhost:3000"
-echo "     Backend API: http://localhost:8000"
-echo "     API Docs: http://localhost:8000/docs"
+echo "4. Start the frontend (in another terminal):"
+echo "   cd frontend"
+echo "   npm run dev"
 echo ""
-echo -e "${GREEN}For more information, see README.md${NC}"
+echo "5. Access the application:"
+echo "   Frontend: http://localhost:3000"
+echo "   Backend API: http://localhost:8000"
+echo "   API Docs: http://localhost:8000/docs"
+echo ""
+echo -e "${GREEN}For more information, see README.md and SETUP_GUIDE.md${NC}"
