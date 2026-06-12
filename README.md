@@ -85,12 +85,12 @@ macOS:
 Step 2: Clone Repository
 
 Windows (Command Prompt):
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 
 macOS (Terminal):
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 
 Step 3: Run Setup Script
 
@@ -354,7 +354,7 @@ Regular Backups:
 
 FILE STRUCTURE
 
-Woodful-stock-inventory/
+Woodful_creations/
 ├── backend/              (Python FastAPI)
 │   ├── app/
 │   ├── venv/

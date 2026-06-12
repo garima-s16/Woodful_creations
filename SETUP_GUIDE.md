@@ -67,12 +67,12 @@ macOS Users:
 STEP 2: CLONE REPOSITORY
 
 Windows (Command Prompt or PowerShell):
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 
 macOS (Terminal):
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 
 STEP 3: RUN AUTOMATED SETUP
 
@@ -83,11 +83,11 @@ The setup script will automatically:
 - Create configuration files
 
 Windows:
-cd /c/Automation_Files/Woodful-stock-inventory
+cd /c/Automation_Files/Woodful_creations
 bash scripts/setup.sh
 
 Git bash:
-cd /c/Automation_Files/Woodful-stock-inventory
+cd /c/Automation_Files/Woodful_creations
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 
@@ -107,7 +107,7 @@ Edit backend/.env file with your settings:
 
 Windows:
 - Option 1: notepad backend\.env
-- Option 2: Use VS Code: Open folder Woodful-stock-inventory in VS Code, then edit backend\.env
+- Option 2: Use VS Code: Open folder Woodful_creations in VS Code, then edit backend\.env
 
 macOS:
 - Option 1: nano backend/.env
@@ -194,7 +194,7 @@ Press Ctrl+C to stop
 Windows - Terminal 2 (Frontend):
 
 Open new Command Prompt window
-cd Woodful-stock-inventory
+cd Woodful_creations
 cd frontend
 npm run dev
 
@@ -216,7 +216,7 @@ Press Ctrl+C to stop
 macOS - Terminal 2 (Frontend):
 
 Open new Terminal window
-cd Woodful-stock-inventory
+cd Woodful_creations
 cd frontend
 npm run dev
 

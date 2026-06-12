@@ -34,8 +34,8 @@ INITIAL SETUP (First Time Only)
 
  Step 1: Clone Repository
 ```bash
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 ```
 
  Step 2: Run Automated Setup
@@ -437,8 +437,8 @@ QUICK START COMMAND
 Copy and run this command:
 
 ```bash
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git && \
-cd Woodful-stock-inventory && \
+git clone https://github.com/garima-s16/Woodful_creations.git && \
+cd Woodful_creations && \
 bash scripts/setup.sh && \
 echo " Setup complete!" && \
 echo "Backend: cd backend && source venv/bin/activate && uvicorn app.main:app --reload" && \

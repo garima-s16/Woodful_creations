@@ -27,8 +27,8 @@ QUICK START
 
 ```bash
  1. Clone
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git
-cd Woodful-stock-inventory
+git clone https://github.com/garima-s16/Woodful_creations.git
+cd Woodful_creations
 
  2. Setup (automatic)
 bash scripts/setup.sh
@@ -291,8 +291,8 @@ One-Command Setup
 Copy this entire command and run it:
 
 ```bash
-git clone https://github.com/garima-s16/Woodful-stock-inventory.git && \
-cd Woodful-stock-inventory && \
+git clone https://github.com/garima-s16/Woodful_creations.git && \
+cd Woodful_creations && \
 bash scripts/setup.sh && \
 echo " Setup complete! Edit .env files then run:" && \
 echo "Backend: cd backend && source venv/bin/activate && uvicorn app.main:app --reload" && \
