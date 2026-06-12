@@ -83,7 +83,13 @@ The setup script will automatically:
 - Create configuration files
 
 Windows:
+cd /c/Automation_Files/Woodful-stock-inventory
 bash scripts/setup.sh
+
+Git bash:
+cd /c/Automation_Files/Woodful-stock-inventory
+chmod +x scripts/setup.sh
+./scripts/setup.sh
 
 Or if bash is not available:
 python scripts/setup.sh
@@ -164,7 +170,20 @@ You need two terminal windows running simultaneously.
 Windows - Terminal 1 (Backend):
 
 cd backend
-venv\Scripts\activate
+
+create virtual environment:
+python -m venv venv
+
+Then verify: 
+dir venv
+
+You should see:
+Include
+Lib
+Scripts
+pyvenv.cfg
+
+.\venv\Scripts\Activate.ps1
 pip install uvicorn fastapi
 uvicorn app.main:app --reload
 

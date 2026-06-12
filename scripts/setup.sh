@@ -37,7 +37,7 @@ echo ""
 # Check Python installation
 echo -e "${GREEN}[1/7] Checking Python installation...${NC}"
 if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+    PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
     PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
     PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
     
@@ -48,7 +48,7 @@ if command -v python3 &> /dev/null; then
         exit 1
     fi
 else
-    echo -e "${RED}✗ Python 3 is not installed. Please install Python 3.9 or higher.${NC}"
+    echo -e "${RED}✗ Python is not installed. Please install Python 3.9 or higher.${NC}"
     echo "Visit: https://www.python.org/downloads/"
     exit 1
 fi
