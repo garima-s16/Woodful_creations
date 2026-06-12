@@ -1,0 +1,399 @@
+.analytics-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.analytics-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.analytics-header p {
+  color: #999;
+  font-size: 14px;
+}
+
+.analytics-controls {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.date-range-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.date-range-selector label {
+  font-weight: 600;
+  color: #333;
+}
+
+.date-select {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  min-width: 150px;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-export {
+  background-color: #8b4513;
+  color: white;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.btn-export:hover {
+  background-color: #a0522d;
+}
+
+.analytics-tabs {
+  background-color: white;
+  padding: 0 20px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 20px;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  gap: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.tab-button {
+  padding: 15px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.tab-button:hover {
+  color: #8b4513;
+}
+
+.tab-button.active {
+  color: #8b4513;
+  border-bottom-color: #8b4513;
+}
+
+.analytics-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stock-analytics,
+.client-analytics,
+.payment-analytics,
+.employee-analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.analytics-section {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.analytics-section h3 {
+  margin: 0 0 20px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.chart-container {
+  background-color: #f9f9f9;
+  padding: 40px 20px;
+  border-radius: 4px;
+  text-align: center;
+  color: #999;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.metric-card {
+  background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 100%);
+  padding: 20px;
+  border-radius: 6px;
+  border-left: 4px solid #8b4513;
+}
+
+.metric-label {
+  color: #999;
+  font-size: 12px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 100%);
+  padding: 20px;
+  border-radius: 6px;
+  border-left: 4px solid #8b4513;
+}
+
+.summary-card.received {
+  border-left-color: #28a745;
+}
+
+.summary-card.pending {
+  border-left-color: #ffc107;
+}
+
+.summary-card.delayed {
+  border-left-color: #dc3545;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.analytics-table thead {
+  background-color: #f9f9f9;
+}
+
+.analytics-table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #eee;
+}
+
+.analytics-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.analytics-table tbody tr:hover {
+  background-color: #f9f9f9;
+}
+
+.no-data {
+  text-align: center;
+  padding: 30px;
+  color: #999;
+}
+
+.score-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #eee;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-right: 8px;
+}
+
+.score-fill {
+  height: 100%;
+  background-color: #28a745;
+}
+
+.performance-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #eee;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.performance-fill {
+  height: 100%;
+  background-color: #0066cc;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.status-badge.high,
+.status-badge.good {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-badge.medium,
+.status-badge.average {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.low,
+.status-badge.poor {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.positive {
+  color: #28a745;
+}
+
+.negative {
+  color: #dc3545;
+}
+
+.client-card {
+  background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 100%);
+  padding: 20px;
+  border-radius: 6px;
+  border-left: 4px solid #8b4513;
+  position: relative;
+}
+
+.client-rank {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #8b4513;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.client-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.client-revenue {
+  font-size: 20px;
+  color: #8b4513;
+  font-weight: bold;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+@media (max-width: 1024px) {
+  .analytics-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .export-buttons {
+    width: 100%;
+  }
+
+  .btn-export {
+    flex: 1;
+  }
+
+  .metrics-grid,
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .analytics-page {
+    padding: 15px;
+  }
+
+  .analytics-header h1 {
+    font-size: 24px;
+  }
+
+  .analytics-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .analytics-tabs {
+    overflow-x: auto;
+  }
+
+  .tab-button {
+    padding: 12px 15px;
+    font-size: 13px;
+  }
+
+  .metrics-grid,
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-table {
+    font-size: 12px;
+  }
+
+  .analytics-table th,
+  .analytics-table td {
+    padding: 8px;
+  }
+}
