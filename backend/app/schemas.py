@@ -1,243 +1,188 @@
-"""Pydantic schemas for request/response validation"""
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+"""
+Pydantic Schemas for Request/Response Validation
+"""
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Optional, List, Any
 from datetime import datetime
-from app.models.user import UserRole
-from app.models.inventory import MovementType, AlertType
 
-# ============================================
-# USER SCHEMAS
-# ============================================
+# ===================== AUTHENTICATION SCHEMAS =====================
 
-class UserRegisterRequest(BaseModel):
-    """User registration request"""
+class UserCreate(BaseModel):
     email: EmailStr
-    username: str = Field(..., min_length=3, max_length=100)
+    username: str = Field(..., min_length=3, max_length=50)
     full_name: str = Field(..., min_length=2, max_length=255)
-    password: str = Field(..., min_length=12)  # 12+ characters required
-    phone: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+    password: str = Field(..., min_length=12)
 
-class UserLoginRequest(BaseModel):
-    """User login request"""
+class UserLogin(BaseModel):
     email: EmailStr
     password: str
-    
-    class Config:
-        from_attributes = True
 
-class TokenResponse(BaseModel):
-    """Token response"""
+class Token(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
-    expires_in: int
-    
-    class Config:
-        from_attributes = True
 
 class UserResponse(BaseModel):
-    """User response"""
     id: int
     email: str
     username: str
     full_name: str
-    role: UserRole
+    role: str
     is_active: bool
-    is_master: bool
-    phone: Optional[str]
-    profile_image_url: Optional[str]
-    created_at: datetime
-    last_login: Optional[datetime]
-    
-    class Config:
-        from_attributes = True
-
-# ============================================
-# INVENTORY SCHEMAS
-# ============================================
-
-class InventoryCategoryCreate(BaseModel):
-    """Create inventory category"""
-    name: str = Field(..., max_length=100)
-    description: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-class InventoryCategoryResponse(BaseModel):
-    """Inventory category response"""
-    id: int
-    name: str
-    description: Optional[str]
     created_at: datetime
     
     class Config:
         from_attributes = True
+
+# ===================== INVENTORY SCHEMAS =====================
 
 class InventoryItemCreate(BaseModel):
-    """Create inventory item"""
-    sku: str = Field(..., max_length=50)
-    product_name: str = Field(..., max_length=255)
-    category_id: Optional[int] = None
+    sku: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
+    category: str = Field(..., min_length=1, max_length=100)
     quantity: int = Field(default=0, ge=0)
-    minimum_stock: int = Field(default=10, ge=0)
+    min_stock: int = Field(default=10, ge=0)
+    max_stock: int = Field(default=500, ge=0)
     reorder_quantity: int = Field(default=50, ge=0)
-    unit_cost: Optional[float] = None
-    selling_price: Optional[float] = None
-    supplier_id: Optional[int] = None
+    unit_cost: float = Field(..., gt=0)
+    selling_price: float = Field(..., gt=0)
     warehouse_location: Optional[str] = None
-    image_url: Optional[str] = None
-    barcode: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+    supplier_id: Optional[str] = None
 
 class InventoryItemUpdate(BaseModel):
-    """Update inventory item"""
-    product_name: Optional[str] = None
-    category_id: Optional[int] = None
+    name: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     quantity: Optional[int] = None
-    minimum_stock: Optional[int] = None
+    min_stock: Optional[int] = None
+    max_stock: Optional[int] = None
     reorder_quantity: Optional[int] = None
     unit_cost: Optional[float] = None
     selling_price: Optional[float] = None
-    supplier_id: Optional[int] = None
-    warehouse_location: Optional[str] = None
-    image_url: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
 
 class InventoryItemResponse(BaseModel):
-    """Inventory item response"""
     id: int
     sku: str
-    product_name: str
-    category_id: Optional[int]
+    name: str
     description: Optional[str]
+    category: str
     quantity: int
-    minimum_stock: int
+    min_stock: int
+    max_stock: int
     reorder_quantity: int
-    unit_cost: Optional[float]
-    selling_price: Optional[float]
-    supplier_id: Optional[int]
+    unit_cost: float
+    selling_price: float
     warehouse_location: Optional[str]
-    image_url: Optional[str]
-    barcode: Optional[str]
+    status: str
     created_at: datetime
-    updated_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-class StockMovementCreate(BaseModel):
-    """Create stock movement"""
-    item_id: int
-    movement_type: MovementType
-    quantity: int = Field(..., gt=0)
-    reason: Optional[str] = None
-    reference_id: Optional[int] = None
     
     class Config:
         from_attributes = True
 
 class StockMovementResponse(BaseModel):
-    """Stock movement response"""
     id: int
     item_id: int
-    movement_type: MovementType
-    quantity: int
+    movement_type: str
+    quantity_change: int
+    previous_quantity: int
+    new_quantity: int
     reason: Optional[str]
-    reference_id: Optional[int]
     created_at: datetime
     
     class Config:
         from_attributes = True
 
-class StockAlertResponse(BaseModel):
-    """Stock alert response"""
-    id: int
-    item_id: int
-    alert_type: AlertType
-    quantity: Optional[int]
-    alert_triggered_at: datetime
-    acknowledged_at: Optional[datetime]
-    
-    class Config:
-        from_attributes = True
+# ===================== CLIENT SCHEMAS =====================
 
-class SupplierCreate(BaseModel):
-    """Create supplier"""
-    company_name: str = Field(..., max_length=255)
-    contact_person: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
+class ClientCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    email: EmailStr
+    phone_number: str
+    company_name: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    country: Optional[str] = None
-    postal_code: Optional[str] = None
+    pincode: Optional[str] = None
     payment_terms: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+    credit_limit: float = Field(default=0, ge=0)
 
-class SupplierResponse(BaseModel):
-    """Supplier response"""
+class ClientResponse(BaseModel):
     id: int
-    company_name: str
-    contact_person: Optional[str]
-    email: Optional[str]
-    phone: Optional[str]
+    name: str
+    email: str
+    phone_number: str
+    company_name: Optional[str]
     address: Optional[str]
     city: Optional[str]
     state: Optional[str]
-    country: Optional[str]
-    postal_code: Optional[str]
-    payment_terms: Optional[str]
+    pincode: Optional[str]
+    client_type: str
+    credit_limit: float
+    is_active: bool
     created_at: datetime
     
     class Config:
         from_attributes = True
 
-# ============================================
-# GENERIC RESPONSE SCHEMAS
-# ============================================
-
-class SuccessResponse(BaseModel):
-    """Generic success response"""
-    success: bool = True
-    message: str
-    data: Optional[dict] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+class ClientProductResponse(BaseModel):
+    id: int
+    client_id: int
+    quantity: int
+    specifications: Optional[str]
+    priority: str
+    design_status: str
+    execution_status: str
+    delivery_status: str
+    estimated_delivery: Optional[datetime]
+    quoted_cost: Optional[float]
+    actual_cost: Optional[float]
+    created_at: datetime
     
     class Config:
         from_attributes = True
 
-class ErrorResponse(BaseModel):
-    """Generic error response"""
-    success: bool = False
-    error: str
-    status_code: int
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+# ===================== CHAT SCHEMAS =====================
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    conversation_id: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    user_message: str
+    assistant_response: str
+    action_type: Optional[str] = None
+    action_result: Optional[Any] = None
+    tokens_used: dict
+
+class ChatHistoryResponse(BaseModel):
+    id: int
+    message_type: str
+    content: str
+    created_at: datetime
     
     class Config:
         from_attributes = True
 
-class PaginatedResponse(BaseModel):
-    """Paginated response"""
-    success: bool = True
-    data: List[dict]
-    total: int
-    page: int
-    limit: int
-    total_pages: int
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+# ===================== PAYMENT SCHEMAS =====================
+
+class ClientPaymentCreate(BaseModel):
+    client_id: int
+    product_id: Optional[int] = None
+    amount: float = Field(..., gt=0)
+    payment_mode: str
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
+
+class ClientPaymentResponse(BaseModel):
+    id: int
+    client_id: int
+    product_id: Optional[int]
+    amount: float
+    payment_mode: str
+    payment_date: datetime
+    status: str
+    created_at: datetime
     
     class Config:
         from_attributes = True
