@@ -1,296 +1,208 @@
 #!/bin/bash
 
-# Colors for output
-GREEN='\033[0;32m'
+# Woodful Creations - Setup Script
+# This script sets up the entire project environment
+
+set -e
+
+echo "============================================"
+echo "Woodful Creations - Project Setup"
+echo "============================================"
+echo ""
+
+# Color codes for output
 RED='\033[0;31m'
+GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "======================================"
-echo "Woodful Stock Inventory Setup Script"
-echo "======================================"
+# Function to print success messages
+success() {
+    echo -e "${GREEN}[SUCCESS] $1${NC}"
+}
+
+# Function to print error messages
+error() {
+    echo -e "${RED}[ERROR] $1${NC}"
+    exit 1
+}
+
+# Function to print info messages
+info() {
+    echo -e "${YELLOW}[INFO] $1${NC}"
+}
+
+# Check if Python is installed
+info "Checking Python installation..."
+if ! command -v python3 &> /dev/null; then
+    error "Python 3 is not installed. Please install Python 3.8 or higher."
+fi
+success "Python 3 is installed: $(python3 --version)"
 echo ""
 
-# Detect operating system
-OS_TYPE=$(uname -s)
-case "$OS_TYPE" in
-    Darwin*)
-        OS_NAME="macOS"
-        VENV_ACTIVATE="source venv/bin/activate"
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        OS_NAME="Windows"
-        VENV_ACTIVATE="venv\Scripts\activate"
-        ;;
-    Linux*)
-        OS_NAME="Linux"
-        VENV_ACTIVATE="source venv/bin/activate"
-        ;;
-    *)
-        OS_NAME="Unknown"
-        ;;
-esac
-
-echo "Detected OS: $OS_NAME"
+# Check if Node.js is installed
+info "Checking Node.js installation..."
+if ! command -v node &> /dev/null; then
+    error "Node.js is not installed. Please install Node.js 16 or higher."
+fi
+success "Node.js is installed: $(node --version)"
 echo ""
 
-# Check Python installation
-echo -e "${GREEN}[1/7] Checking Python installation...${NC}"
-if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-    PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-    PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-    
-    if (( PYTHON_MAJOR > 3 )) || (( PYTHON_MAJOR == 3 && PYTHON_MINOR >= 9 )); then
-        echo -e "${GREEN}✓ Python $PYTHON_VERSION found (required: 3.9+)${NC}"
-    else
-        echo -e "${RED}✗ Python version $PYTHON_VERSION is too old. Please install Python 3.9 or higher.${NC}"
-        exit 1
-    fi
-else
-    echo -e "${RED}✗ Python 3 is not installed. Please install Python 3.9 or higher.${NC}"
-    echo "Visit: https://www.python.org/downloads/"
-    exit 1
+# Check if npm is installed
+info "Checking npm installation..."
+if ! command -v npm &> /dev/null; then
+    error "npm is not installed. Please install npm."
 fi
+success "npm is installed: $(npm --version)"
+echo ""
 
-# Check Node.js installation
-echo -e "\n${GREEN}[2/7] Checking Node.js installation...${NC}"
-if command -v node &> /dev/null; then
-    NODE_VERSION=$(node --version)
-    echo -e "${GREEN}✓ Node.js $NODE_VERSION found${NC}"
-else
-    echo -e "${RED}✗ Node.js is not installed. Please install Node.js 16 or higher.${NC}"
-    echo "Visit: https://nodejs.org/en/download/"
-    exit 1
-fi
-
-# Check npm installation
-echo -e "\n${GREEN}[3/7] Checking npm installation...${NC}"
-if command -v npm &> /dev/null; then
-    NPM_VERSION=$(npm --version)
-    echo -e "${GREEN}✓ npm $NPM_VERSION found${NC}"
-else
-    echo -e "${RED}✗ npm is not installed. Please install npm.${NC}"
-    exit 1
-fi
-
-# Create Python virtual environment
-echo -e "\n${GREEN}[4/7] Creating Python virtual environment...${NC}"
+# Create virtual environment for backend
+info "Setting up Python virtual environment..."
 if [ -d "backend/venv" ]; then
-    echo -e "${YELLOW}⚠ Virtual environment already exists. Skipping...${NC}"
+    info "Virtual environment already exists."
 else
-    cd backend
-    python3 -m venv venv
-    
-    if [ "$OS_NAME" = "Windows" ]; then
-        call venv\Scripts\activate.bat
-    else
-        source venv/bin/activate
-    fi
-    
-    echo -e "${GREEN}✓ Virtual environment created${NC}"
-    
-    # Install Python dependencies
-    echo -e "\n${GREEN}Installing Python dependencies...${NC}"
-    pip install --upgrade pip setuptools wheel > /dev/null 2>&1
-    
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt
-        echo -e "${GREEN}✓ Python dependencies installed${NC}"
-    else
-        echo -e "${YELLOW}⚠ requirements.txt not found. Skipping pip install...${NC}"
-    fi
-    
-    cd ..
+    python3 -m venv backend/venv
+    success "Virtual environment created"
 fi
+echo ""
 
-# Create backend configuration files
-echo -e "\n${GREEN}[5/7] Creating backend configuration files...${NC}"
+# Activate virtual environment
+info "Activating virtual environment..."
+source backend/venv/bin/activate
+success "Virtual environment activated"
+echo ""
 
-# Create .env file if it doesn't exist
+# Install backend dependencies
+info "Installing backend dependencies..."
+pip install --upgrade pip
+pip install -r backend/requirements.txt
+success "Backend dependencies installed"
+echo ""
+
+# Install frontend dependencies
+info "Installing frontend dependencies..."
+cd frontend || error "Frontend directory not found"
+npm install
+success "Frontend dependencies installed"
+cd ..
+echo ""
+
+# Create environment files
+info "Creating environment configuration files..."
+
+# Create backend .env file
 if [ ! -f "backend/.env" ]; then
-    cat > backend/.env << 'EOF'
-# ==========================================
-# Woodful Stock Inventory - Backend Configuration
-# ==========================================
+    cat > backend/.env << EOF
+# Backend Configuration
+DEBUG=True
+SECRET_KEY=your-secret-key-change-in-production
+DATABASE_URL=postgresql://user:password@localhost:5432/woodful_db
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:8000"]
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION=3600
 
-# Database Configuration
-DATABASE_URL=sqlite:///./stock_inventory.db
-
-# Security Configuration
-SECRET_KEY=your-secure-random-key-change-this-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Environment
-DEBUG=False
-ENVIRONMENT=development
-
-# Email Configuration (Gmail Setup for Alerts)
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
-
-# OpenAI API (for AI chat features)
-OPENAI_API_KEY=sk-your-api-key
-
-# Business Owner Email (receives alerts)
-BUSINESS_OWNER_EMAIL=owner@example.com
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-RELOAD=true
-
-# CORS Configuration
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
-
-# Logging
-LOG_LEVEL=INFO
-
-# Stock Inventory Settings
-MAX_REORDER_LEVEL=1000
-MIN_STOCK_ALERT_THRESHOLD=10
-FORECAST_DAYS=30
-EOF
-    echo -e "${GREEN}✓ backend/.env created${NC}"
-else
-    echo -e "${YELLOW}⚠ backend/.env already exists. Skipping...${NC}"
-fi
-
-# Create .env.example for reference
-if [ ! -f "backend/.env.example" ]; then
-    cat > backend/.env.example << 'EOF'
-# ==========================================
-# Woodful Stock Inventory - Backend Configuration
-# Copy this file to .env and update the values
-# ==========================================
-
-# Database Configuration
-DATABASE_URL=sqlite:///./stock_inventory.db
-
-# Security Configuration
-SECRET_KEY=your-secret-key-change-this-in-production-use-32-chars-minimum
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Environment
-DEBUG=False
-ENVIRONMENT=development
-
-# AI/LLM Configuration
-OPENAI_API_KEY=sk-your-openai-api-key-here
-LANGCHAIN_API_KEY=your-langchain-api-key-here
-LANGCHAIN_PROJECT=woodful-inventory
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-RELOAD=true
-
-# CORS Configuration
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
-
-# Email Configuration (Optional)
+# Email Configuration
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
-SENDER_EMAIL=noreply@woodful.com
 
-# Logging
-LOG_LEVEL=INFO
-
-# Stock Inventory Settings
-MAX_REORDER_LEVEL=1000
-MIN_STOCK_ALERT_THRESHOLD=10
-FORECAST_DAYS=30
+# AI Configuration (Optional)
+OPENAI_API_KEY=your-openai-api-key
 EOF
-    echo -e "${GREEN}✓ backend/.env.example created${NC}"
+    success "Backend .env file created"
 else
-    echo -e "${YELLOW}⚠ backend/.env.example already exists. Skipping...${NC}"
+    info ".env file already exists"
 fi
+echo ""
 
-# Create frontend configuration
-echo -e "\n${GREEN}[6/7] Creating frontend configuration files...${NC}"
-
-if [ ! -f ".env.local" ]; then
-    cat > .env.local << 'EOF'
-# Frontend Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME=Woodful Stock Inventory
+# Create frontend .env file
+if [ ! -f "frontend/.env" ]; then
+    cat > frontend/.env << EOF
+REACT_APP_API_URL=http://localhost:8000/api
+REACT_APP_ENVIRONMENT=development
 EOF
-    echo -e "${GREEN}✓ .env.local created${NC}"
+    success "Frontend .env file created"
 else
-    echo -e "${YELLOW}⚠ .env.local already exists. Skipping...${NC}"
+    info "Frontend .env file already exists"
 fi
+echo ""
 
-if [ ! -f ".env.example" ]; then
-    cat > .env.example << 'EOF'
-# Frontend Configuration - Copy to .env.local and update values
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME=Woodful Stock Inventory
+# Create necessary directories
+info "Creating project directories..."
+mkdir -p backend/app/routes
+mkdir -p backend/app/models
+mkdir -p backend/app/schemas
+mkdir -p backend/app/services
+mkdir -p backend/app/utils
+mkdir -p backend/app/database
+mkdir -p backend/migrations
+mkdir -p frontend/src/components
+mkdir -p frontend/src/screens
+mkdir -p frontend/src/redux
+mkdir -p frontend/src/services
+mkdir -p frontend/src/utils
+mkdir -p frontend/src/assets/images
+mkdir -p frontend/src/assets/fonts
+mkdir -p desktop/src
+mkdir -p logs
+success "Project directories created"
+echo ""
+
+# Initialize git hooks (optional)
+info "Setting up git hooks..."
+if [ -d ".git" ]; then
+    # Create pre-commit hook
+    mkdir -p .git/hooks
+    cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/bash
+echo "Running linters..."
+npm run lint --prefix frontend
 EOF
-    echo -e "${GREEN}✓ .env.example created${NC}"
+    chmod +x .git/hooks/pre-commit
+    success "Git hooks configured"
 else
-    echo -e "${YELLOW}⚠ .env.example already exists. Skipping...${NC}"
+    info "Git repository not initialized"
 fi
+echo ""
 
-# Install Node.js dependencies
-echo -e "\n${GREEN}[7/7] Installing Node.js dependencies...${NC}"
-if [ -f "package.json" ]; then
-    npm install
-    echo -e "${GREEN}✓ Node.js dependencies installed${NC}"
-else
-    echo -e "${YELLOW}⚠ package.json not found. Skipping npm install...${NC}"
-fi
+# Database setup instructions
+echo ""
+info "=========================================="
+info "PostgreSQL Setup Instructions"
+info "=========================================="
+info "Please ensure PostgreSQL is installed and running."
+info "Create the database:"
+echo "  psql -U postgres -c \"CREATE DATABASE woodful_db;\""
+info ""
+info "Then run migrations:"
+echo "  cd backend && alembic upgrade head"
+echo ""
 
-# Summary
-echo -e "\n${GREEN}======================================"
-echo "✓ Setup Complete!"
-echo "======================================${NC}"
+# Final summary
 echo ""
-echo -e "${YELLOW}Configuration Files Created:${NC}"
-echo "  • backend/.env (main configuration)"
-echo "  • backend/.env.example (reference template)"
-echo "  • .env.local (frontend configuration)"
-echo "  • .env.example (frontend reference template)"
+echo -e "${GREEN}=========================================="
+echo "Setup completed successfully"
+echo "==========================================${NC}"
 echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
+echo "Next steps:"
 echo ""
-echo "1. Edit backend/.env with your actual configuration:"
-if [ "$OS_NAME" = "Windows" ]; then
-    echo "   notepad backend\.env"
-elif [ "$OS_NAME" = "macOS" ]; then
-    echo "   nano backend/.env"
-else
-    echo "   nano backend/.env"
-fi
+echo "1. Backend:"
+echo "   - Update backend/.env with your configuration"
+echo "   - Activate virtual environment: source backend/venv/bin/activate"
+echo "   - Run migrations: cd backend && alembic upgrade head"
+echo "   - Start server: python -m uvicorn app.main:app --reload"
 echo ""
-echo "2. Update these values:"
-echo "   • SECRET_KEY (generate a secure key)"
-echo "   • EMAIL_USER (your Gmail address)"
-echo "   • EMAIL_PASSWORD (16-character app password)"
-echo "   • OPENAI_API_KEY (if using OpenAI)"
-echo "   • BUSINESS_OWNER_EMAIL (owner email)"
+echo "2. Frontend:"
+echo "   - Update frontend/.env with your API URL"
+echo "   - Start dev server: cd frontend && npm start"
 echo ""
-echo "3. Start the backend:"
-if [ "$OS_NAME" = "Windows" ]; then
-    echo "   cd backend"
-    echo "   venv\Scripts\activate"
-    echo "   uvicorn app.main:app --reload"
-else
-    echo "   cd backend"
-    echo "   source venv/bin/activate"
-    echo "   uvicorn app.main:app --reload"
-fi
+echo "3. Desktop (PyQt5):"
+echo "   - Install desktop dependencies: pip install -r desktop/requirements.txt"
+echo "   - Run desktop app: python desktop/main.py"
 echo ""
-echo "4. Start the frontend (in another terminal):"
-echo "   cd frontend"
-echo "   npm run dev"
+echo "Application will be available at:"
+echo "  - Frontend (Web): http://localhost:3000"
+echo "  - Backend API: http://localhost:8000"
+echo "  - API Docs: http://localhost:8000/docs"
 echo ""
-echo "5. Access the application:"
-echo "   Frontend: http://localhost:3000"
-echo "   Backend API: http://localhost:8000"
-echo "   API Docs: http://localhost:8000/docs"
-echo ""
-echo -e "${GREEN}For more information, see README.md and SETUP_GUIDE.md${NC}"
