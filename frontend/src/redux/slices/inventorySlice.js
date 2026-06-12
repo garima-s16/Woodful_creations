@@ -1,59 +1,54 @@
 import { createSlice } from '@reduxjs/toolkit';
 
-const initialState = {
-  products: [],
-  loading: false,
-  error: null,
-  filters: {
-    category: '',
-    searchTerm: ''
-  }
-};
-
 const inventorySlice = createSlice({
   name: 'inventory',
-  initialState,
+  initialState: {
+    products: [],
+    loading: false,
+    error: null,
+    filter: {
+      search: '',
+      category: 'all',
+    },
+  },
   reducers: {
-    setProducts: (state, action) => {
+    fetchStart: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    fetchSuccess: (state, action) => {
+      state.loading = false;
       state.products = action.payload;
       state.error = null;
+    },
+    fetchFailure: (state, action) => {
+      state.loading = false;
+      state.error = action.payload;
     },
     addProduct: (state, action) => {
       state.products.push(action.payload);
     },
     updateProduct: (state, action) => {
-      const index = state.products.findIndex(p => p.id === action.payload.id);
-      if (index !== -1) {
+      const index = state.products.findIndex(
+        (p) => p.id === action.payload.id
+      );
+      if (index >= 0) {
         state.products[index] = action.payload;
       }
     },
-    deleteProduct: (state, action) => {
-      state.products = state.products.filter(p => p.id !== action.payload);
+    setFilter: (state, action) => {
+      state.filter = { ...state.filter, ...action.payload };
     },
-    setFilters: (state, action) => {
-      state.filters = action.payload;
-    },
-    setLoading: (state, action) => {
-      state.loading = action.payload;
-    },
-    setError: (state, action) => {
-      state.error = action.payload;
-    },
-    clearError: (state) => {
-      state.error = null;
-    }
-  }
+  },
 });
 
-export const { 
-  setProducts, 
-  addProduct, 
-  updateProduct, 
-  deleteProduct, 
-  setFilters, 
-  setLoading, 
-  setError, 
-  clearError 
+export const {
+  fetchStart,
+  fetchSuccess,
+  fetchFailure,
+  addProduct,
+  updateProduct,
+  setFilter,
 } = inventorySlice.actions;
 
 export default inventorySlice.reducer;

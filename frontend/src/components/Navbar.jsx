@@ -1,36 +1,55 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import './Navbar.css';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import '../styles/Navbar.css';
 
 function Navbar({ user, onLogout, toggleSidebar }) {
   const navigate = useNavigate();
-  
+  const [showProfile, setShowProfile] = useState(false);
+
   const handleLogout = () => {
     onLogout();
-    navigate('/login');
+    navigate('/');
   };
-  
+
   return (
     <nav className="navbar">
-      <div className="navbar-left">
-        <button className="hamburger" onClick={toggleSidebar}>
-          MENU
-        </button>
-        <div className="logo">
-          <span className="logo-text">WOODFUL</span>
+      <div className="navbar-container">
+        <div className="navbar-left">
+          <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <Link to="/dashboard" className="navbar-brand">
+            <span className="brand-icon">W</span>
+            <span className="brand-text">Woodful Creations</span>
+          </Link>
         </div>
-      </div>
-      
-      <div className="navbar-right">
-        <div className="user-info">
-          <span className="user-name">{user?.full_name || 'User'}</span>
-          <span className={`user-role ${user?.is_master ? 'master' : 'regular'}`}>
-            {user?.is_master ? 'Master' : 'User'}
-          </span>
+
+        <div className="navbar-right">
+          <div className="user-menu">
+            <button
+              className="profile-button"
+              onClick={() => setShowProfile(!showProfile)}
+            >
+              <div className="profile-avatar">{user?.name?.[0]?.toUpperCase()}</div>
+              <span className="profile-name">{user?.name}</span>
+            </button>
+
+            {showProfile && (
+              <div className="profile-dropdown">
+                <div className="profile-header">
+                  <p className="user-email">{user?.email}</p>
+                  <p className="user-role">{user?.role === 'master' ? 'Master Admin' : 'User'}</p>
+                </div>
+                <hr />
+                <button onClick={handleLogout} className="logout-button">
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        <button className="logout-btn" onClick={handleLogout}>
-          Logout
-        </button>
       </div>
     </nav>
   );
