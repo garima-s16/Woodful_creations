@@ -1,9 +1,9 @@
 """
-Stock module database models
-Defines the structure for product inventory management
+Stock module database models - Enhanced with material types and variants
+Defines the structure for product inventory management with specific materials
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 import enum
@@ -20,6 +20,47 @@ class StockStatus(str, enum.Enum):
     UNDER_REVIEW = "under_review"
 
 
+class MaterialType(str, enum.Enum):
+    """Enum for material types"""
+    PLYWOOD_COMMERCIAL = "plywood_commercial"
+    BWP_PLYWOOD = "bwp_plywood"
+    MARINE_PLYWOOD = "marine_plywood"
+    MDF = "mdf"
+    PRELAMINATED_MDF = "prelaminated_mdf"
+    HDHMR = "hdhmr"
+    HDF = "hdf"
+    PARTICLE_BOARD = "particle_board"
+    PRELAMINATED_PARTICLE = "prelaminated_particle"
+    BLOCK_BOARD = "block_board"
+    FLUSH_DOOR_BOARD = "flush_door_board"
+    WPC_BOARD = "wpc_board"
+    PVC_BOARD = "pvc_board"
+    ACRYLIC_SHEET = "acrylic_sheet"
+    VENEER_MDF_PLYWOOD = "veneer_mdf_plywood"
+    FLEXI_PLYWOOD = "flexi_plywood"
+
+
+# Material type to thicknesses mapping
+MATERIAL_THICKNESSES = {
+    MaterialType.PLYWOOD_COMMERCIAL: [6, 12, 18],
+    MaterialType.BWP_PLYWOOD: [6, 12, 18],
+    MaterialType.MARINE_PLYWOOD: [6, 12, 18],
+    MaterialType.MDF: [3, 6, 12, 18],
+    MaterialType.PRELAMINATED_MDF: [6, 12, 18],
+    MaterialType.HDHMR: [6, 12, 18],
+    MaterialType.HDF: [2.5, 3, 4],
+    MaterialType.PARTICLE_BOARD: [12, 18],
+    MaterialType.PRELAMINATED_PARTICLE: [18],
+    MaterialType.BLOCK_BOARD: [19, 25],
+    MaterialType.FLUSH_DOOR_BOARD: [30, 35],
+    MaterialType.WPC_BOARD: [6, 12, 18],
+    MaterialType.PVC_BOARD: [6, 12, 18],
+    MaterialType.ACRYLIC_SHEET: [3, 5, 8],
+    MaterialType.VENEER_MDF_PLYWOOD: [6, 12, 18],
+    MaterialType.FLEXI_PLYWOOD: [6, 8],
+}
+
+
 class StockCategory(Base):
     """Stock category model"""
     __tablename__ = "stock_categories"
@@ -32,14 +73,38 @@ class StockCategory(Base):
 
 
 class Product(Base):
-    """Product model"""
+    """Product model for materials"""
     __tablename__ = "products"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, index=True, nullable=False)
-    sku = Column(String(100), unique=True, index=True, nullable=False)
+    name = Column(String(255), unique=True, index=True, nullable=False)  # e.g., "Plywood (Commercial/MR)"
+    sku_prefix = Column(String(50), unique=True, index=True, nullable=False)  # e.g., "PLY-COM"
     description = Column(Text, nullable=True)
     category_id = Column(Integer, index=True, nullable=False)
+    
+    # Material classification
+    material_type = Column(Enum(MaterialType), index=True, nullable=False)
+    is_active = Column(Boolean, default=True, index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProductVariant(Base):
+    """Product variant model for different thicknesses/sizes"""
+    __tablename__ = "product_variants"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), index=True, nullable=False)
+    
+    # Variant specifications
+    thickness = Column(Float, nullable=False)  # in mm
+    unit = Column(String(50), default="sheet")  # sheet, pcs, etc.
+    
+    # SKU for this variant
+    sku = Column(String(100), unique=True, index=True, nullable=False)  # e.g., "PLY-COM-006" for 6mm
+    barcode = Column(String(100), unique=True, nullable=True)
     
     # Stock information
     quantity_in_stock = Column(Integer, default=0)
@@ -47,14 +112,25 @@ class Product(Base):
     reorder_quantity = Column(Integer, default=50)
     status = Column(Enum(StockStatus), default=StockStatus.IN_STOCK, index=True)
     
+    # Standard dimensions (optional)
+    standard_width = Column(Float, nullable=True)  # Default sheet width in inches/cm
+    standard_length = Column(Float, nullable=True)  # Default sheet length
+    standard_area = Column(Float, nullable=True)   # Calculated area per unit
+    
     # Pricing
-    cost_price = Column(Float, nullable=False)
+    cost_price = Column(Float, nullable=False)  # Per sheet/unit
     selling_price = Column(Float, nullable=False)
     
-    # Details
+    # Supplier information
     supplier_id = Column(Integer, nullable=True)
-    location = Column(String(255), nullable=True)
-    barcode = Column(String(100), unique=True, nullable=True)
+    supplier_name = Column(String(255), nullable=True)
+    
+    # Grade/Quality
+    grade = Column(String(100), nullable=True)  # For materials like "Grade A", "Commercial"
+    finish = Column(String(100), nullable=True)  # For laminates like "Glossy", "Matte"
+    
+    # Storage
+    location = Column(String(255), nullable=True)  # Storage location/shelf
     is_active = Column(Boolean, default=True, index=True)
     
     # Timestamps
@@ -68,12 +144,13 @@ class StockMovement(Base):
     __tablename__ = "stock_movements"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, index=True, nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), index=True, nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), index=True, nullable=False)
     
     # Movement details
-    movement_type = Column(String(50), index=True, nullable=False)  # in, out, adjustment
+    movement_type = Column(String(50), index=True, nullable=False)  # in, out, adjustment, return
     quantity = Column(Integer, nullable=False)
-    reason = Column(String(255), nullable=True)  # Restock, Sale, Damage, etc.
+    reason = Column(String(255), nullable=True)  # Restock, Sale, Damage, Return, Wastage, etc.
     reference_number = Column(String(100), nullable=True)  # PO, Invoice, etc.
     
     # User information
@@ -89,7 +166,8 @@ class StockAlert(Base):
     __tablename__ = "stock_alerts"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, index=True, nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), index=True, nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), index=True, nullable=False)
     
     # Alert details
     alert_type = Column(String(50), nullable=False)  # low_stock, out_of_stock, overstock
@@ -112,7 +190,8 @@ class InventoryAudit(Base):
     __tablename__ = "inventory_audits"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, index=True, nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), index=True, nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), index=True, nullable=False)
     
     # Audit details
     system_quantity = Column(Integer, nullable=False)
