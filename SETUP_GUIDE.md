@@ -1,490 +1,380 @@
-SETUP GUIDE - Woodful Stock Inventory Management System
+# Woodful Creations - Setup Guide
 
-This guide walks you through setting up the Woodful Stock Inventory system on Windows, macOS, Android, or iPhone.
+## Project Overview
 
-SYSTEM REQUIREMENTS
+Woodful Creations is a comprehensive business management application designed for woodcraft and furniture design businesses. It provides features for inventory management, cost estimation, employee tracking, client management, and advanced analytics.
 
-Minimum Requirements for Desktop:
-- Python 3.9 or higher
-- Node.js 16 or higher
-- Git for version control
-- 2GB free disk space
-- Internet connection
+### Technology Stack
+- **Frontend**: React Native (Mobile & Desktop support)
+- **Backend**: FastAPI (Python)
+- **Desktop UI**: PyQt5
+- **Database**: PostgreSQL
+- **Additional**: AI chat features, file generation (PDF, Excel, Word), email notifications
 
-For Mobile Access:
-- iOS 13+ or Android 8+
-- Chrome, Safari, Firefox, or Edge browser
+### Key Features
+1. Stock Inventory Management with AI alerts
+2. Cost Estimation and PDF generation
+3. Employee Attendance and Salary Management
+4. Interview Tracking
+5. Client Management with project tracking
+6. Payment Management
+7. Advanced Analytics
+8. Multi-level Access Control (Master users: Nikhil & Garima)
 
-STEP 1: DOWNLOAD AND SETUP
+---
 
-Windows Users:
+## System Requirements
 
-1. Install Python
-   - Visit https://www.python.org/downloads/
-   - Download Python 3.10 or higher
-   - During installation, check "Add Python to PATH"
-   - Click Install Now
+### Before You Start
+Ensure your laptop has the following:
+- **Operating System**: Windows 10/11, macOS, or Linux
+- **Python**: Version 3.9 or higher
+- **Node.js**: Version 14 or higher
+- **PostgreSQL**: Version 12 or higher
+- **RAM**: Minimum 8GB (16GB recommended)
+- **Storage**: Minimum 5GB free space
+- **Internet Connection**: Required for initial setup and email features
 
-2. Install Node.js
-   - Visit https://nodejs.org/en/download/
-   - Download LTS version
-   - Run the installer and follow defaults
-   - Restart your computer after installation
+---
 
-3. Install Git
-   - Visit https://git-scm.com/download/win
-   - Download and run installer
-   - Use default settings
+## Installation Steps
 
-4. Open Command Prompt or PowerShell
-   - Press Windows + R
-   - Type cmd or powershell
-   - Press Enter
+### Step 1: Clone the Repository
 
-macOS Users:
+Open your terminal/command prompt and run:
 
-1. Install Python
-   - Visit https://www.python.org/downloads/
-   - Download Python 3.10 or higher
-   - Run the installer
-   - Follow the installation steps
-
-2. Install Node.js
-   - Visit https://nodejs.org/en/download/
-   - Download macOS Installer
-   - Run and follow installation steps
-
-3. Install Git
-   - Visit https://git-scm.com/download/mac
-   - Download and run installer
-   - Or use Homebrew: brew install git
-
-4. Open Terminal
-   - Press Command + Space
-   - Type Terminal
-   - Press Enter
-
-STEP 2: CLONE REPOSITORY
-
-Windows (Command Prompt or PowerShell):
-git clone https://github.com/garima-s16/Woodful_creations.git
+```bash
+git clone https://github.com/garima-s1611/Woodful_creations.git
 cd Woodful_creations
 
-macOS (Terminal):
-git clone https://github.com/garima-s16/Woodful_creations.git
-cd Woodful_creations
+Step 2: Set Up PostgreSQL Database
+Windows/macOS/Linux:
+Download and Install PostgreSQL from https://www.postgresql.org/download/
 
-STEP 3: RUN AUTOMATED SETUP
+Create a new database:
 
-The setup script will automatically:
-- Check Python and Node.js installation
-- Create Python virtual environment
-- Install all dependencies
-- Create configuration files
+psql -U postgres
+CREATE DATABASE woodful_creations;
+CREATE USER woodful_user WITH PASSWORD 'your_secure_password';
+ALTER ROLE woodful_user SET client_encoding TO 'utf8';
+ALTER ROLE woodful_user SET default_transaction_isolation TO 'read committed';
+ALTER ROLE woodful_user SET default_transaction_deferrable TO on;
+ALTER ROLE woodful_user SET default_transaction_read_committed TO off;
+GRANT ALL PRIVILEGES ON DATABASE woodful_creations TO woodful_user;
+\q
 
-Windows:
-cd /c/Automation_Files/Woodful_creations
-bash scripts/setup.sh
+Note down your credentials - you'll need them for configuration
 
-Git bash:
-cd /c/Automation_Files/Woodful_creations
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-Or if bash is not available:
-python scripts/setup.sh
-
-macOS:
-bash scripts/setup.sh
-
-Wait for completion. This takes 5-10 minutes depending on internet speed.
-
-STEP 4: CONFIGURE ENVIRONMENT
-
-Backend Configuration
-
-Edit backend/.env file with your settings:
-
-Windows:
-- Option 1: notepad backend\.env
-- Option 2: Use VS Code: Open folder Woodful_creations in VS Code, then edit backend\.env
-
-macOS:
-- Option 1: nano backend/.env
-- Option 2: Use VS Code: Open folder in VS Code, then edit backend/.env
-
-Required Configuration:
-
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-16-char-app-password
-OPENAI_API_KEY=sk-your-api-key-here
-BUSINESS_OWNER_EMAIL=owner@example.com
-SECRET_KEY=your-secure-key
-
-Setup Gmail for Alerts:
-
-1. Go to https://myaccount.google.com/apppasswords
-2. Sign in with your Gmail account
-3. Select App: Mail
-4. Select Device: Windows Computer (or your device)
-5. Google generates a 16-character password
-6. Copy the password
-7. Paste into backend/.env:
-   EMAIL_PASSWORD=your-16-char-password
-
-Setup OpenAI API:
-
-1. Visit https://platform.openai.com/account/api-keys
-2. Click Create new secret key
-3. Copy your API key
-4. Paste into backend/.env:
-   OPENAI_API_KEY=sk-your-api-key
-
-Generate Secret Key:
-
-Windows Command Prompt:
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-
-macOS Terminal:
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-
-Copy the output and update SECRET_KEY in backend/.env
-
-Frontend Configuration:
-
-Windows (notepad):
-notepad .env.local
-
-macOS (nano):
-nano .env.local
-
-Add this line:
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-Save and exit.
-
-STEP 5: START THE APPLICATION
-
-You need two terminal windows running simultaneously.
-
-Windows - Terminal 1 (Backend):
-
+Step 3: Set Up Backend (FastAPI)
+3.1 Create Python Virtual Environment
+bash
+# Navigate to backend directory (if it exists)
 cd backend
+# or create it if needed
 
-create virtual environment:
+# Create virtual environment
 python -m venv venv
 
-Then verify: 
-dir venv
-
-You should see:
-Include
-Lib
-Scripts
-pyvenv.cfg
-
-.\venv\Scripts\Activate.ps1
-pip install uvicorn fastapi
-uvicorn app.main:app --reload
-
-Expected output:
-INFO:     Uvicorn running on http://127.0.0.1:8000
-Press Ctrl+C to stop
-
-Windows - Terminal 2 (Frontend):
-
-Open new Command Prompt window
-cd Woodful_creations
-cd frontend
-npm run dev
-
-Expected output:
-Local:        http://localhost:3000
-Press Ctrl+C to stop
-
-macOS - Terminal 1 (Backend):
-
-cd backend
-source venv/bin/activate
-pip install uvicorn fastapi
-uvicorn app.main:app --reload
-
-Expected output:
-INFO:     Uvicorn running on http://127.0.0.1:8000
-Press Ctrl+C to stop
-
-macOS - Terminal 2 (Frontend):
-
-Open new Terminal window
-cd Woodful_creations
-cd frontend
-npm run dev
-
-Expected output:
-Local:        http://localhost:3000
-Press Ctrl+C to stop
-
-STEP 6: OPEN IN BROWSER
-
-On your computer:
-- Frontend: http://localhost:3000
-- API Documentation: http://localhost:8000/docs
-
-STEP 7: CREATE ACCOUNT
-
-1. Open http://localhost:3000
-2. Click Create Account
-3. Fill in:
-   Email: your-email@gmail.com
-   Username: yourname
-   Full Name: Your Full Name
-   Password: MySecurePassword123! (12+ chars, uppercase, number, special character)
-4. Click Sign Up
-5. Verify your email when prompted
-
-STEP 8: COMPLETE PROFILE
-
-1. Click your profile icon (top right)
-2. Click Settings
-3. Enter:
-   - Business name
-   - Location
-   - Warehouse details
-4. Click Save
-
-STEP 9: ADD FIRST INVENTORY ITEM
-
-1. Click Inventory
-2. Click Add Item
-3. Fill in:
-   SKU: WD-001
-   Item Name: Oak Wood Board
-   Category: Wood
-   Quantity: 100
-   Min Stock: 10
-   Unit Price: 25.99
-4. Click Create
-
-STEP 10: ACCESS FROM MOBILE
-
-iPhone / iPad:
-
-1. On your computer, find your local IP address:
-   Windows: Open Command Prompt, type: ipconfig
-   Look for IPv4 Address (usually 192.168.x.x or 10.x.x.x)
-   
-   macOS: Open Terminal, type: ifconfig
-   Look for inet address (usually 192.168.x.x)
-
-2. On your iPhone/iPad Safari:
-   http://YOUR-IP-ADDRESS:3000
-   Example: http://192.168.1.100:3000
-
-3. Bookmark the page for quick access
-
-4. Optional - Install as app:
-   - Tap Share
-   - Tap Add to Home Screen
-   - Tap Add
-   - App appears on home screen
-
-Android Phone / Tablet:
-
-1. On your computer, find your local IP address:
-   Windows: Open Command Prompt, type: ipconfig
-   macOS: Open Terminal, type: ifconfig
-
-2. On Android Chrome browser:
-   http://YOUR-IP-ADDRESS:3000
-   Example: http://192.168.1.100:3000
-
-3. Bookmark the page for quick access
-
-4. Optional - Install as app:
-   - Tap Menu (three dots)
-   - Tap Install app
-   - Tap Install
-   - App appears on home screen
-
-MOBILE APP FEATURES:
-
-Works on both iPhone and Android:
-- Full inventory management
-- Real-time charts
-- Chat interface
-- Export data
-- Works offline with cached data
-- Responsive design fits any screen
-
-TROUBLESHOOTING
-
-Port Already in Use
-
-Windows:
-- Change port in Terminal 2:
-  npm run dev -- -p 3001
-- Then access: http://localhost:3001
-
-macOS:
-- Change port in Terminal 2:
-  npm run dev -- -p 3001
-- Then access: http://localhost:3001
-
-Python Not Found
-
-Windows:
-- Make sure Python is installed and added to PATH
-- Restart Command Prompt after installing Python
-- Try: python --version
-
-macOS:
-- Try: python3 --version
-- If not working, install Python from https://www.python.org
-
-Backend Won't Start
-
-Windows:
-- Check if another app is using port 8000
-- Try: netstat -ano | findstr :8000
-- Kill the process: taskkill /PID <PID> /F
-- Then start backend again
-
-macOS:
-- Check if another app is using port 8000
-- Try: lsof -ti:8000
-- Kill process: kill -9 <PID>
-- Then start backend again
-
-Email Not Sending
-
-- Verify EMAIL_USER and EMAIL_PASSWORD are correct
-- Make sure EMAIL_PASSWORD is 16-character app password (not Gmail password)
-- Check BUSINESS_OWNER_EMAIL is valid
-- Wait 30 seconds for email delivery
-- Check spam folder
-
-Cannot Access From Phone
-
-- Both devices must be on same WiFi network
-- Get your computer IP: Windows (ipconfig) or macOS (ifconfig)
-- Use IP:3000 on phone browser
-- Make sure backend is running on computer
-- Check firewall isn't blocking port 3000
-
-Database Error
-
-Windows:
-cd backend
-del stock_inventory.db
-python -c "from app.database import init_db; init_db()"
-
-macOS:
-cd backend
-rm stock_inventory.db
-python3 -c "from app.database import init_db; init_db()"
-
-FEATURES
-
-Dashboard
-- Real-time stock overview
-- Visual charts and graphs
-- Key metrics cards
-- Activity log
-
-Inventory Management
-- Add, edit, delete items
-- Search and filter
-- Bulk operations
-- Barcode scanning
-
-AI Chat
-- Natural language commands
-- Instant responses
-- Chat history
-- Smart suggestions
-
-Reports
-- Custom reports
-- Export to Excel/PDF
-- Scheduled delivery
-- Email sharing
-
-Notifications
-- Low stock alerts
-- Email notifications
-- Push alerts
-- Alert center
-
-SECURITY
-
-Password Tips:
-- Use 12+ characters
-- Mix uppercase, numbers, special characters
-- Change regularly
-- Don't share credentials
-
-Data Protection:
-- Backup database regularly
-- Keep API keys secret
-- Never commit .env files
-- Enable email verification
-
-STOP THE APPLICATION
-
-Windows:
-- In backend terminal: Press Ctrl+C
-- In frontend terminal: Press Ctrl+C
-
-macOS:
-- In backend terminal: Press Ctrl+C
-- In frontend terminal: Press Ctrl+C
-
-RESTART THE APPLICATION
-
-Windows - Terminal 1:
-cd backend
+# Activate virtual environment
+# On Windows:
 venv\Scripts\activate
-uvicorn app.main:app --reload
-
-Windows - Terminal 2:
-cd frontend
-npm run dev
-
-macOS - Terminal 1:
-cd backend
+# On macOS/Linux:
 source venv/bin/activate
-uvicorn app.main:app --reload
 
-macOS - Terminal 2:
+3.2 Install Python Dependencies
+bash
+pip install --upgrade pip
+pip install fastapi uvicorn python-multipart
+pip install psycopg2-binary sqlalchemy
+pip install pydantic python-dotenv
+pip install pydantic-settings
+pip install pillow  # For image processing
+pip install reportlab  # For PDF generation
+pip install openpyxl  # For Excel generation
+pip install python-docx  # For Word generation
+pip install aiofiles
+pip install python-jose[cryptography]  # For authentication
+pip install passlib[bcrypt]  # For password hashing
+pip install email-validator
+pip install requests  # For API calls
+
+Or install from requirements file if available:
+pip install -r requirements.txt
+
+3.3 Create Environment Configuration
+Create a .env file in the backend directory:
+
+env
+# Database Configuration
+DATABASE_URL=postgresql://woodful_user:your_secure_password@localhost:5432/woodful_creations
+
+# Server Configuration
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+DEBUG=True
+
+# Secret Key (generate a secure random string)
+SECRET_KEY=your_very_secure_random_key_here
+
+# Email Configuration (for notifications and client emails)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SENDER_EMAIL=your_email@gmail.com
+SENDER_PASSWORD=your_app_password
+SENDER_NAME=Woodful Creations
+
+# JWT Configuration
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Application Settings
+APP_NAME=Woodful Creations
+APP_VERSION=1.0.0
+
+
+Step 4: Set Up Frontend (React Native)
+
+4.1 Install Node.js Dependencies
+bash
+# Navigate to frontend directory
+cd ../frontend
+# or appropriate path
+
+# Install dependencies
+npm install
+# or
+yarn install
+
+4.2 Environment Configuration for Frontend
+Create a .env file in the frontend directory:
+
+env
+REACT_APP_API_URL=http://localhost:8000
+REACT_APP_API_TIMEOUT=30000
+Step 5: Set Up PyQt5 Desktop Application (Optional)
+
+5.1 Install PyQt5 Dependencies
+In your Python virtual environment:
+
+bash
+pip install PyQt5
+pip install PyQt5-sip
+
+Running the Application
+Option A: Development Mode
+Terminal 1 - Start PostgreSQL (if not already running)
+bash
+# On Windows (if installed via installer, it usually runs as service)
+# On macOS:
+brew services start postgresql
+# On Linux:
+sudo systemctl start PostgreSQL
+
+Terminal 2 - Start FastAPI Backend
+bash
+cd backend
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+Expected output:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete
+
+Terminal 3 - Start React Native Frontend
+bash
 cd frontend
-npm run dev
+npm start
+# or
+yarn start
 
-PRODUCTION DEPLOYMENT
+For web version:
+bash
+npm run web
+# or
+yarn web
 
-Deploy Frontend to Vercel:
+Terminal 4 - Start PyQt5 Desktop (if needed)
+bash
+cd desktop
+python main.py
 
-1. Push code to GitHub
-2. Go to https://vercel.com
-3. Import repository
-4. Set frontend as root directory
-5. Add .env variables
-6. Click Deploy
+---
+Option B: Production Mode
+Refer to deployment documentation (to be created)
 
-Deploy Backend to AWS:
+---
 
-1. Install AWS EB CLI
-2. Configure AWS credentials
-3. Run: eb init
-4. Run: eb create production
-5. Run: eb deploy
+Accessing the Application
+Web Interface
+URL: http://localhost:3000
+Default Master Users: Nikhil, Garima (configure during initial setup)
 
-NEED HELP?
+FastAPI Documentation
+Swagger UI: http://localhost:8000/docs
+ReDoc: http://localhost:8000/redoc
 
-Common Issues: See section above
-Feature Questions: GitHub Issues
-API Documentation: http://localhost:8000/docs
-Email Support: Contact maintainers
+Desktop Application
+Launch PyQt5 application directly from Terminal 4
 
-Version: 1.0.0
-Supports: Windows, macOS, iOS, Android
-Last Updated: June 2026
+-----
+Initial Setup Steps
+1. Create Database Tables
+Run migration scripts (to be created):
+
+bash
+python scripts/init_db.py
+
+2. Create Master User Account
+bash
+python scripts/create_master_user.py \
+  --name "Nikhil" \
+  --email "nikhil@woodfulcreations.com" \
+  --password "secure_password"
+3. Configure Email Settings
+Update SMTP credentials in .env for:
+
+Low stock alerts to Nikhil/Garima
+ETA reminders
+Cost estimate PDFs to clients
+Salary slip emails
+
+4. Upload Logo
+Place the Woodful Creations logo in:
+
+frontend/public/assets/logo/woodful_logo.png
+desktop/assets/logo/woodful_logo.png
+
+
+Project Structure
+
+Woodful_creations/
+├── backend/
+│   ├── venv/
+│   ├── app/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   └── database.py
+│   ├── main.py
+│   ├── requirements.txt
+│   └── .env
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   └── App.jsx
+│   ├── package.json
+│   └── .env
+├── desktop/
+│   ├── main.py
+│   ├── ui/
+│   └── requirements.txt
+├── scripts/
+│   ├── init_db.py
+│   └── create_master_user.py
+└── SETUP_GUIDE.md
+
+-----
+
+Troubleshooting
+Issue: PostgreSQL Connection Error
+Solution:
+
+bash
+# Check if PostgreSQL is running
+# Windows: Check Services
+# macOS: brew services list
+# Linux: sudo systemctl status postgresql
+
+# Verify credentials in .env file
+# Make sure database user has correct permissions
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE woodful_creations TO woodful_user;"
+
+Issue: FastAPI Port Already in Use
+Solution:
+
+bash
+# Change port in command
+uvicorn main:app --reload --host 0.0.0.0 --port 8001
+
+# Or kill existing process on port 8000
+# Windows:
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+
+Issue: Node.js Dependencies Error
+Solution:
+
+bash
+# Clear cache and reinstall
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+
+Issue: PyQt5 Import Error
+Solution:
+
+bash
+# Reinstall PyQt5
+pip uninstall PyQt5 -y
+pip install PyQt5 --force-reinstall
+
+-----
+Testing the Application
+Test Backend API
+bash
+curl http://localhost:8000/docs
+
+Test Frontend Connection
+Open browser console and check:
+
+Network tab for API calls
+No CORS errors
+
+Test Database Connection
+bash
+python -c "import psycopg2; conn = psycopg2.connect('dbname=woodful_creations user=woodful_user password=<password>'); print('Connection successful')"
+
+-----
+Security Checklist
+Before production deployment:
+
+ Change all default passwords
+ Generate secure SECRET_KEY
+ Enable HTTPS
+ Configure CORS properly
+ Set up firewall rules
+ Enable database backups
+ Configure email authentication (App Password for Gmail)
+ Set environment variables on server
+ Enable user authentication tokens
+ Set up role-based access control (Nikhil & Garima as master users)
+
+-----
+Next Steps
+Create Master User Accounts for Nikhil and Garima
+Configure Email Settings for alerts and notifications
+Set Up Stock Inventory Module (Priority 1)
+Design Database Schema for all modules
+Implement Authentication System
+Create API Endpoints for each module
+Build UI Components in React Native
+Set Up Testing Suite
+Deploy to Staging Environment
+User Acceptance Testing
+
+-----
+Support & Documentation
+For additional help:
+
+Check individual module documentation
+Review FastAPI docs at http://localhost:8000/docs
+Contact development team
+
+
+Version History
+v1.0.0 - Initial Setup Guide
+Release Date - June 2026
