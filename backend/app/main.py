@@ -1,86 +1,77 @@
 """
-Woodful Creations - Backend Application
-Main entry point for FastAPI application
+Woodful Creations - Main FastAPI Application
+AI-powered business management system with stock inventory, estimates, and more
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-import logging
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+import logging
+from pathlib import Path
+
+# Import routes
+from app.routes import auth, inventory, chat, clients, estimates
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import routers (to be created)
-# from app.routes import stock, clients, estimates, attendance, interviews, payments, auth, chat
-
+# Lifespan context
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup and shutdown events"""
-    logger.info("Starting Woodful Creations Backend...")
+    # Startup
+    logger.info("🌳 Woodful Creations Starting...")
+    from app.database import init_db
+    await init_db()
+    logger.info("✅ Database initialized")
     yield
-    logger.info("Shutting down Woodful Creations Backend...")
+    # Shutdown
+    logger.info("🛑 Woodful Creations Shutting Down...")
 
-# Initialize FastAPI application
+# Create FastAPI app
 app = FastAPI(
     title="Woodful Creations API",
-    description="Complete business management system for Woodful Creations",
+    description="AI-powered business management system",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Configure CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure based on environment
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure trusted hosts
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1"]
-)
-
 # Include routers
-# app.include_router(stock.router, prefix="/api/stock", tags=["Stock"])
-# app.include_router(clients.router, prefix="/api/clients", tags=["Clients"])
-# app.include_router(estimates.router, prefix="/api/estimates", tags=["Estimates"])
-# app.include_router(attendance.router, prefix="/api/attendance", tags=["Attendance"])
-# app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
-# app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
-# app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-# app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(inventory.router, prefix="/api/inventory", tags=["Inventory"])
+app.include_router(chat.router, prefix="/api/chat", tags=["AI Chat"])
+app.include_router(clients.router, prefix="/api/clients", tags=["Clients"])
+app.include_router(estimates.router, prefix="/api/estimates", tags=["Estimates"])
 
+# Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint"""
     return {
-        "message": "Woodful Creations API",
+        "message": "🌳 Welcome to Woodful Creations",
         "version": "1.0.0",
-        "status": "running"
+        "docs": "/docs",
+        "modules": {
+            "inventory": "/api/inventory",
+            "chat": "/api/chat",
+            "clients": "/api/clients",
+            "estimates": "/api/estimates"
+        }
     }
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "Woodful Creations Backend"
-    }
+    return {"status": "healthy", "service": "Woodful Creations API"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8000)
