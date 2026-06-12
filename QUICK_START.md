@@ -1,243 +1,166 @@
-# Quick Start - Woodful Creations v2.0.0
+# Woodful Creations - Quick Start Guide
 
-Complete Application Stack Created
+## Prerequisites
 
-### Backend (FastAPI - Python)
-✓ User authentication (JWT tokens)
-✓ Secure password hashing (bcrypt)
-✓ Inventory management API
-✓ Low stock alerts
-✓ Email notifications
-✓ Database models (PostgreSQL/SQLite)
-✓ Audit logging
-✓ Error handling
+Before running the application, ensure you have the following installed:
 
-### Frontend (Next.js - React/TypeScript)
-✓ Home page with feature overview
-✓ User registration with password validation
-✓ User login with authentication
-✓ Dashboard with inventory management
-✓ Real-time item tracking
-✓ Responsive design (Tailwind CSS)
-✓ Client-side form validation
+1. **Python 3.10 or higher**
+   - Download from: https://www.python.org/downloads/
+   - On Windows: Check "Add Python to PATH" during installation
 
-### Database
-✓ User management
-✓ Inventory items & categories
-✓ Stock movements & alerts
-✓ Supplier management
-✓ Audit logs
-✓ Soft delete support
+2. **Node.js 16 or higher** (for frontend)
+   - Download from: https://nodejs.org/
 
----
+3. **PostgreSQL 13 or higher** (optional, SQLite works for development)
+   - Download from: https://www.postgresql.org/download/
 
-## How to Run
+## Quick Start (5 minutes)
 
-### Prerequisites
-- Python 3.10+
-- Node.js 16+
-- PostgreSQL (or use SQLite for development)
+### Option 1: Using Setup Scripts (Recommended)
 
-### Setup Backend
+#### On Linux/Mac:
+```bash
+chmod +x setup.sh start_all.sh start_backend.sh start_frontend.sh
+./setup.sh        # Run once to set up environment
+./start_all.sh    # Start both backend and frontend
+```
 
+#### On Windows:
+```cmd
+setup.bat         # Run once to set up environment
+start_all.bat     # Start both backend and frontend
+```
+
+### Option 2: Manual Setup
+
+#### Step 1: Backend Setup
 ```bash
 cd backend
+
 python -m venv venv
 
-# Activate (Windows)
-venv\Scripts\activate
+source venv/bin/activate    # On Linux/Mac
+REM or
+venv\Scripts\activate.bat    # On Windows
 
-# Activate (Mac/Linux)
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
 cp .env.example .env
-# Edit .env with your settings
 
-# Run server
-uvicorn app.main:app --reload
+python main.py
 ```
 
-API runs at: http://localhost:8000
-API Docs: http://localhost:8000/docs
+Backend available at: http://localhost:8000
 
-### Setup Frontend
-
+#### Step 2: Frontend Setup (another terminal)
 ```bash
 cd frontend
+
 npm install
-npm run dev
+
+npm start
 ```
 
-App runs at: http://localhost:3000
+Frontend available at: http://localhost:3000
 
----
+## Application Access
 
-## Test the Application
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/api/docs
+- Health Check: http://localhost:8000/health
 
-### 1. Create Account
-- Visit http://localhost:3000
-- Click "Get Started" or go to /register
-- Create account with:
-  - Email: user@example.com
-  - Username: testuser
-  - Password: SecurePass123! (must have uppercase, number, special char)
+## Database Setup (Optional)
 
-### 2. Login
-- Go to /login
-- Enter your credentials
-- You'll be redirected to dashboard
+### PostgreSQL
+```bash
+creatdb woodful_creations
+psql -U username -d woodful_creations < database/schema.sql
+```
 
-### 3. Add Inventory Item
-- Click "+ Add Item"
-- Fill in details:
-  - SKU: WD-001
-  - Product Name: Oak Wood Board
-  - Quantity: 100
-  - Minimum Stock: 20
-  - Unit Cost: 500
-  - Selling Price: 750
-  - Location: Warehouse A
-- Click "Add"
+Update .env:
+```
+DATABASE_URL=postgresql://username:password@localhost:5432/woodful_creations
+```
 
-### 4. View Inventory
-- Items appear in table
-- Color coding: Green (OK), Red (Low stock)
-- All data persists in database
+### SQLite (Default for Development)
+No setup needed - uses local SQLite database
 
----
+## Docker Setup (Alternative)
 
-## Security Features
+```bash
+docker-compose up --build
+```
 
-✓ Password requirements: 12+ chars with uppercase, number, special char
-✓ JWT token authentication
-✓ Bcrypt password hashing
-✓ SQL injection prevention (ORM)
-✓ CORS protection
-✓ Role-based access control ready
-✓ Audit logging for all changes
-✓ Soft delete for data recovery
+Access:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000
 
----
+## Troubleshooting
 
-## API Endpoints
+### Backend Issues
+- Check port 8000: `lsof -i :8000` (Mac/Linux)
+- Check Python: `python --version` (need 3.10+)
+- Reinstall deps: `pip install -r requirements.txt`
 
-### Authentication
-- POST /api/auth/register - Create account
-- POST /api/auth/login - Login
-- GET /api/auth/me - Get profile
+### Frontend Issues
+- Check port 3000: `lsof -i :3000` (Mac/Linux)
+- Check Node: `node --version` (need 16+)
+- Clear cache: `npm cache clean --force`
 
-### Inventory
-- GET /api/inventory/items - List items
-- POST /api/inventory/items - Create item
-- GET /api/inventory/items/{id} - Get item
-- PUT /api/inventory/items/{id} - Update item
-- DELETE /api/inventory/items/{id} - Delete item
-- GET /api/inventory/low-stock - Get low stock alerts
-- GET /api/inventory/categories - List categories
-- POST /api/inventory/categories - Create category
-
----
+### Database Issues
+- Verify PostgreSQL running
+- Check .env credentials
+- Test: `psql -U username -h localhost -d woodful_creations`
 
 ## Project Structure
 
 ```
 Woodful_creations/
-├── backend/
-│   ├── app/
-│   │   ├── main.py (FastAPI app)
-│   │   ├── config.py (Configuration)
-│   │   ├── database.py (Database setup)
-│   │   ├── models/ (SQLAlchemy models)
-│   │   ├── routes/ (API endpoints)
-│   │   ├── schemas.py (Request/response validation)
-│   │   └── utils/ (Security, email, audit)
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── pages/
-│   │   ├── index.tsx (Home)
-│   │   ├── login.tsx (Login)
-│   │   ├── register.tsx (Register)
-│   │   └── dashboard.tsx (Inventory dashboard)
-│   ├── package.json
-│   └── .env.local.example
-├── DEPLOYMENT_GUIDE.md
-├── BACKEND_SETUP.md
-└── start-dev.sh
+backend/
+  main.py
+  requirements.txt
+  app/
+    core/
+    api/routes/
+    models/
+    services/
+  logs/
+  uploads/
+
+frontend/
+  package.json
+  src/
+  public/
+
+database/
+  schema.sql
+
+setup.sh/setup.bat
+start_all.sh/start_all.bat
+start_backend.sh/start_backend.bat
+start_frontend.sh/start_frontend.bat
+docker-compose.yml
 ```
 
----
+## Environment Variables
+
+Key .env variables:
+```
+DATABASE_URL=postgresql://user:password@localhost:5432/woodful_creations
+SECRET_KEY=your-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+EMAIL_USER=your-email@gmail.com
+OPENAI_API_KEY=your-api-key
+ENVIRONMENT=development
+DEBUG=True
+```
 
 ## Next Steps
 
-1. **Configure Environment**
-   - Set up Gmail for email alerts
-   - Configure OpenAI API (for future AI features)
-   - Set up PostgreSQL database
+1. Set up database
+2. Configure .env
+3. Create master users (Nikhil & Garima)
+4. Start developing!
 
-2. **Add More Features**
-   - Client management
-   - Employee management
-   - Reports generation
-   - AI chat interface
-
-3. **Deploy Application**
-   - See DEPLOYMENT_GUIDE.md for Vercel, AWS, Heroku options
-
-4. **Customize**
-   - Update branding/colors
-   - Add your business logic
-   - Integrate with existing systems
-
----
-
-## Troubleshooting
-
-### Backend won't start
-```bash
-# Check if Python is installed
-python --version
-
-# Reinstall dependencies
-pip install -r requirements.txt --force-reinstall
-```
-
-### Frontend won't load
-```bash
-# Clear Node cache
-rm -rf node_modules package-lock.json
-npm install
-npm run dev
-```
-
-### Database connection error
-```bash
-# Check PostgreSQL is running
-# Update DATABASE_URL in .env
-# Run database initialization
-```
-
-### Login fails
-- Check backend is running (http://localhost:8000/health)
-- Check .env configuration
-- Check NEXT_PUBLIC_API_URL in frontend .env.local
-
----
-
-## Support
-
-For issues or questions:
-1. Check API docs: http://localhost:8000/docs
-2. Review error messages
-3. Check logs in terminal
-4. Verify environment variables
-
----
-
-**Version:** 2.0.0
-**Last Updated:** June 12, 2026
-**Status:** Ready
+Enjoy Woodful Creations!
