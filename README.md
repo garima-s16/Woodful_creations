@@ -19,4 +19,4 @@ Woodful Creations is a comprehensive business management application designed fo
 5. Client Management with project tracking
 6. Payment Management
 7. Advanced Analytics
-8. Multi-level Access Control (Master users: Nikhil & Garima
+8. Multi-level Access Control (Master users: Nikhil & Garima)
