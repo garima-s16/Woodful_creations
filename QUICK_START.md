@@ -1,6 +1,6 @@
 # Quick Start - Woodful Creations v2.0.0
 
-## ✅ Complete Application Stack Created
+Complete Application Stack Created
 
 ### Backend (FastAPI - Python)
 ✓ User authentication (JWT tokens)
@@ -31,7 +31,7 @@
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### Prerequisites
 - Python 3.10+
@@ -76,7 +76,7 @@ App runs at: http://localhost:3000
 
 ---
 
-## 📝 Test the Application
+## Test the Application
 
 ### 1. Create Account
 - Visit http://localhost:3000
@@ -110,7 +110,7 @@ App runs at: http://localhost:3000
 
 ---
 
-## 🔐 Security Features
+## Security Features
 
 ✓ Password requirements: 12+ chars with uppercase, number, special char
 ✓ JWT token authentication
@@ -123,7 +123,7 @@ App runs at: http://localhost:3000
 
 ---
 
-## 📚 API Endpoints
+## API Endpoints
 
 ### Authentication
 - POST /api/auth/register - Create account
@@ -142,7 +142,7 @@ App runs at: http://localhost:3000
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 Woodful_creations/
@@ -172,7 +172,7 @@ Woodful_creations/
 
 ---
 
-## 📦 Next Steps
+## Next Steps
 
 1. **Configure Environment**
    - Set up Gmail for email alerts
@@ -195,7 +195,7 @@ Woodful_creations/
 
 ---
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Backend won't start
 ```bash
@@ -228,7 +228,7 @@ npm run dev
 
 ---
 
-## 📞 Support
+## Support
 
 For issues or questions:
 1. Check API docs: http://localhost:8000/docs
@@ -240,4 +240,4 @@ For issues or questions:
 
 **Version:** 2.0.0
 **Last Updated:** June 12, 2026
-**Status:** ✅ Production Ready
+**Status:** Ready

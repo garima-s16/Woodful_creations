@@ -4,10 +4,11 @@
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "======================================"
-echo "Woodful Creations Setup Script"
+echo "WOODFUL CREATIONS - Complete Setup"
 echo "======================================"
 echo ""
 
@@ -34,50 +35,69 @@ esac
 echo "Detected OS: $OS_NAME"
 echo ""
 
+# VALIDATION CHECKS
+
 # Check Python installation
-echo -e "${GREEN}[1/7] Checking Python installation...${NC}"
+echo "[1/11] Checking Python installation..."
 if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
+    PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
     PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
     PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
     
     if (( PYTHON_MAJOR > 3 )) || (( PYTHON_MAJOR == 3 && PYTHON_MINOR >= 9 )); then
-        echo -e "${GREEN}✓ Python $PYTHON_VERSION found (required: 3.9+)${NC}"
+        echo "Python $PYTHON_VERSION found (required: 3.9+)"
     else
-        echo -e "${RED}✗ Python version $PYTHON_VERSION is too old. Please install Python 3.9 or higher.${NC}"
+        echo "Python version $PYTHON_VERSION is too old. Please install Python 3.9 or higher."
         exit 1
     fi
 else
-    echo -e "${RED}✗ Python is not installed. Please install Python 3.9 or higher.${NC}"
+    echo "Python is not installed. Please install Python 3.9 or higher."
     echo "Visit: https://www.python.org/downloads/"
     exit 1
 fi
 
 # Check Node.js installation
-echo -e "\n${GREEN}[2/7] Checking Node.js installation...${NC}"
+echo ""
+echo "[2/11] Checking Node.js installation..."
 if command -v node &> /dev/null; then
     NODE_VERSION=$(node --version)
-    echo -e "${GREEN}✓ Node.js $NODE_VERSION found${NC}"
+    echo "Node.js $NODE_VERSION found"
 else
-    echo -e "${RED}✗ Node.js is not installed. Please install Node.js 16 or higher.${NC}"
+    echo "Node.js is not installed. Please install Node.js 16 or higher."
     echo "Visit: https://nodejs.org/en/download/"
     exit 1
 fi
 
 # Check npm installation
-echo -e "\n${GREEN}[3/7] Checking npm installation...${NC}"
+echo ""
+echo "[3/11] Checking npm installation..."
 if command -v npm &> /dev/null; then
     NPM_VERSION=$(npm --version)
-    echo -e "${GREEN}✓ npm $NPM_VERSION found${NC}"
+    echo "npm $NPM_VERSION found"
 else
-    echo -e "${RED}✗ npm is not installed. Please install npm.${NC}"
+    echo "npm is not installed. Please install npm."
     exit 1
 fi
 
-# Create Python virtual environment
-echo -e "\n${GREEN}[4/7] Creating Python virtual environment...${NC}"
+# Check PostgreSQL installation
+echo ""
+echo "[4/11] Checking PostgreSQL installation..."
+if command -v psql &> /dev/null; then
+    POSTGRES_VERSION=$(psql --version)
+    echo "$POSTGRES_VERSION found"
+else
+    echo "PostgreSQL is not installed or not in PATH."
+    echo "Visit: https://www.postgresql.org/download/"
+    echo "Note: You can continue and configure PostgreSQL later."
+fi
+
+# BACKEND SETUP
+
+# Create Python virtual environment for FastAPI
+echo ""
+echo "[5/11] Creating Python virtual environment for FastAPI..."
 if [ -d "backend/venv" ]; then
-    echo -e "${YELLOW}⚠ Virtual environment already exists. Skipping...${NC}"
+    echo "Virtual environment already exists. Skipping..."
 else
     cd backend
     python3 -m venv venv
@@ -88,209 +108,416 @@ else
         source venv/bin/activate
     fi
     
-    echo -e "${GREEN}✓ Virtual environment created${NC}"
+    echo "Virtual environment created"
     
     # Install Python dependencies
-    echo -e "\n${GREEN}Installing Python dependencies...${NC}"
+    echo ""
+    echo "Installing FastAPI and dependencies..."
     pip install --upgrade pip setuptools wheel > /dev/null 2>&1
     
     if [ -f "requirements.txt" ]; then
         pip install -r requirements.txt
-        echo -e "${GREEN}✓ Python dependencies installed${NC}"
+        echo "Python dependencies installed"
     else
-        echo -e "${YELLOW}⚠ requirements.txt not found. Skipping pip install...${NC}"
+        echo "requirements.txt not found. Creating template..."
+        cat > requirements.txt << 'EOF'
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.4.2
+pydantic-settings==2.0.3
+
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+PyJWT==2.8.1
+
+python-dotenv==1.0.0
+aiosmtplib==3.0.1
+email-validator==2.1.0
+
+openai==1.3.5
+langchain==0.1.0
+langchain-community==0.0.8
+
+reportlab==4.0.7
+openpyxl==3.1.2
+python-docx==0.8.11
+PyPDF2==3.0.1
+
+pandas==2.1.2
+numpy==1.26.2
+
+requests==2.31.0
+httpx==0.25.2
+Pillow==10.1.0
+
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0
+
+structlog==23.2.0
+EOF
+        pip install -r requirements.txt
+        echo "Python dependencies installed"
     fi
     
     cd ..
 fi
 
-# Create backend configuration files
-echo -e "\n${GREEN}[5/7] Creating backend configuration files...${NC}"
+# BACKEND CONFIGURATION
+
+echo ""
+echo "[6/11] Creating backend configuration files..."
 
 # Create .env file if it doesn't exist
 if [ ! -f "backend/.env" ]; then
     cat > backend/.env << 'EOF'
-# ==========================================
-# Woodful Stock Inventory - Backend Configuration
-# ==========================================
+DATABASE_URL=postgresql://woodful_user:your-secure-password@localhost:5432/woodful_creations
+DATABASE_ECHO=false
 
-# Database Configuration
-DATABASE_URL=sqlite:///./stock_inventory.db
-
-# Security Configuration
-SECRET_KEY=your-secure-random-key-change-this-in-production
+SECRET_KEY=your-super-secret-key-change-this-in-production-min-32-chars
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# Environment
 DEBUG=False
 ENVIRONMENT=development
 
-# Email Configuration (Gmail Setup for Alerts)
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
-
-# OpenAI API (for AI chat features)
-OPENAI_API_KEY=sk-your-api-key
-
-# Business Owner Email (receives alerts)
-BUSINESS_OWNER_EMAIL=owner@example.com
-
-# Server Configuration
 HOST=0.0.0.0
 PORT=8000
 RELOAD=true
+WORKERS=4
 
-# CORS Configuration
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
 
-# Logging
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-16-char-app-password
+SENDER_EMAIL=noreply@woodful-creations.com
+
+MASTER_USER_1_EMAIL=nikhil@woodful.com
+MASTER_USER_1_NAME=Nikhil
+MASTER_USER_2_EMAIL=garima@woodful.com
+MASTER_USER_2_NAME=Garima
+
+OPENAI_API_KEY=sk-your-openai-api-key-here
+LANGCHAIN_API_KEY=your-langchain-api-key-here
+LANGCHAIN_PROJECT=woodful-creations
+
+ALERT_LOW_STOCK_THRESHOLD=10
+ALERT_ETA_DAYS_BEFORE=7
+ENABLE_EMAIL_ALERTS=true
+ENABLE_DASHBOARD_ALERTS=true
+
+MAX_FILE_SIZE_MB=50
+ALLOWED_FILE_TYPES=pdf,png,jpg,jpeg,xlsx,docx,csv
+
 LOG_LEVEL=INFO
+LOG_FILE=woodful.log
 
-# Stock Inventory Settings
 MAX_REORDER_LEVEL=1000
 MIN_STOCK_ALERT_THRESHOLD=10
 FORECAST_DAYS=30
+
+PDF_LOGO_PATH=assets/woodful_logo.png
+PDF_HEADER_COLOR=#2E7D32
+
+TIMEZONE=Asia/Kolkata
+
+CURRENCY=INR
+CURRENCY_SYMBOL=₹
 EOF
-    echo -e "${GREEN}✓ backend/.env created${NC}"
+    echo "backend/.env created"
 else
-    echo -e "${YELLOW}⚠ backend/.env already exists. Skipping...${NC}"
+    echo "backend/.env already exists. Skipping..."
 fi
 
 # Create .env.example for reference
 if [ ! -f "backend/.env.example" ]; then
     cat > backend/.env.example << 'EOF'
-# ==========================================
-# Woodful Stock Inventory - Backend Configuration
-# Copy this file to .env and update the values
-# ==========================================
+DATABASE_URL=postgresql://woodful_user:password@localhost:5432/woodful_creations
+DATABASE_ECHO=false
 
-# Database Configuration
-DATABASE_URL=sqlite:///./stock_inventory.db
-
-# Security Configuration
-SECRET_KEY=your-secret-key-change-this-in-production-use-32-chars-minimum
+SECRET_KEY=your-super-secret-key-change-this-in-production-min-32-chars
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# Environment
 DEBUG=False
 ENVIRONMENT=development
 
-# AI/LLM Configuration
-OPENAI_API_KEY=sk-your-openai-api-key-here
-LANGCHAIN_API_KEY=your-langchain-api-key-here
-LANGCHAIN_PROJECT=woodful-inventory
-
-# Server Configuration
 HOST=0.0.0.0
 PORT=8000
 RELOAD=true
+WORKERS=4
 
-# CORS Configuration
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:8000
 
-# Email Configuration (Optional)
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SENDER_EMAIL=noreply@woodful.com
+SMTP_PASSWORD=your-16-char-app-password
+SENDER_EMAIL=noreply@woodful-creations.com
 
-# Logging
+MASTER_USER_1_EMAIL=nikhil@woodful.com
+MASTER_USER_1_NAME=Nikhil
+MASTER_USER_2_EMAIL=garima@woodful.com
+MASTER_USER_2_NAME=Garima
+
+OPENAI_API_KEY=sk-your-api-key
+LANGCHAIN_API_KEY=your-api-key
+LANGCHAIN_PROJECT=woodful-creations
+
+ALERT_LOW_STOCK_THRESHOLD=10
+ALERT_ETA_DAYS_BEFORE=7
+ENABLE_EMAIL_ALERTS=true
+ENABLE_DASHBOARD_ALERTS=true
+
+MAX_FILE_SIZE_MB=50
+ALLOWED_FILE_TYPES=pdf,png,jpg,jpeg,xlsx,docx,csv
+
 LOG_LEVEL=INFO
+LOG_FILE=woodful.log
 
-# Stock Inventory Settings
 MAX_REORDER_LEVEL=1000
 MIN_STOCK_ALERT_THRESHOLD=10
 FORECAST_DAYS=30
+
+PDF_LOGO_PATH=assets/woodful_logo.png
+PDF_HEADER_COLOR=#2E7D32
+
+TIMEZONE=Asia/Kolkata
+CURRENCY=INR
+CURRENCY_SYMBOL=₹
 EOF
-    echo -e "${GREEN}✓ backend/.env.example created${NC}"
+    echo "backend/.env.example created"
 else
-    echo -e "${YELLOW}⚠ backend/.env.example already exists. Skipping...${NC}"
+    echo "backend/.env.example already exists. Skipping..."
 fi
 
-# Create frontend configuration
-echo -e "\n${GREEN}[6/7] Creating frontend configuration files...${NC}"
+# FRONTEND SETUP
 
+echo ""
+echo "[7/11] Creating React/React Native frontend configuration..."
+
+# Create frontend .env.local
 if [ ! -f ".env.local" ]; then
     cat > .env.local << 'EOF'
-# Frontend Configuration
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME=Woodful Stock Inventory
+NEXT_PUBLIC_APP_NAME=Woodful Creations
+NEXT_PUBLIC_LOGO_PATH=/assets/woodful_logo.png
+NEXT_PUBLIC_ENABLE_ANALYTICS=true
+NEXT_PUBLIC_ENABLE_CHAT=true
+NEXT_PUBLIC_ENABLE_EMAIL=true
 EOF
-    echo -e "${GREEN}✓ .env.local created${NC}"
+    echo ".env.local created"
 else
-    echo -e "${YELLOW}⚠ .env.local already exists. Skipping...${NC}"
+    echo ".env.local already exists. Skipping..."
 fi
 
 if [ ! -f ".env.example" ]; then
     cat > .env.example << 'EOF'
-# Frontend Configuration - Copy to .env.local and update values
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME=Woodful Stock Inventory
+NEXT_PUBLIC_APP_NAME=Woodful Creations
+NEXT_PUBLIC_LOGO_PATH=/assets/woodful_logo.png
+NEXT_PUBLIC_ENABLE_ANALYTICS=true
+NEXT_PUBLIC_ENABLE_CHAT=true
+NEXT_PUBLIC_ENABLE_EMAIL=true
 EOF
-    echo -e "${GREEN}✓ .env.example created${NC}"
+    echo ".env.example created"
 else
-    echo -e "${YELLOW}⚠ .env.example already exists. Skipping...${NC}"
+    echo ".env.example already exists. Skipping..."
 fi
 
-# Install Node.js dependencies
-echo -e "\n${GREEN}[7/7] Installing Node.js dependencies...${NC}"
+# NODE DEPENDENCIES
+
+echo ""
+echo "[8/11] Installing Node.js dependencies..."
 if [ -f "package.json" ]; then
     npm install
-    echo -e "${GREEN}✓ Node.js dependencies installed${NC}"
+    echo "Node.js dependencies installed"
 else
-    echo -e "${YELLOW}⚠ package.json not found. Skipping npm install...${NC}"
+    echo "package.json not found. Skipping npm install..."
 fi
 
-# Summary
-echo -e "\n${GREEN}======================================"
-echo "✓ Setup Complete!"
-echo "======================================${NC}"
+# PYQT5 SETUP
+
 echo ""
-echo -e "${YELLOW}Configuration Files Created:${NC}"
-echo "  • backend/.env (main configuration)"
-echo "  • backend/.env.example (reference template)"
-echo "  • .env.local (frontend configuration)"
-echo "  • .env.example (frontend reference template)"
+echo "[9/11] Setting up PyQt5 for Desktop Application..."
+if [ -d "desktop/venv" ]; then
+    echo "Desktop virtual environment already exists. Skipping..."
+else
+    if [ -d "desktop" ]; then
+        cd desktop
+        python3 -m venv venv
+        
+        if [ "$OS_NAME" = "Windows" ]; then
+            call venv\Scripts\activate.bat
+        else
+            source venv/bin/activate
+        fi
+        
+        pip install --upgrade pip setuptools wheel > /dev/null 2>&1
+        
+        if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+        else
+            cat > requirements.txt << 'EOF'
+PyQt5==5.15.9
+PyQt5-sip==12.13.0
+
+requests==2.31.0
+
+pandas==2.1.2
+
+python-dotenv==1.0.0
+EOF
+            pip install -r requirements.txt
+        fi
+        
+        echo "PyQt5 environment configured"
+        cd ..
+    else
+        echo "desktop directory not found. Skipping PyQt5 setup..."
+    fi
+fi
+
+# DIRECTORY STRUCTURE
+
 echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
+echo "[10/11] Creating project directory structure..."
+
+# Create necessary directories
+mkdir -p backend/app/{api,models,schemas,services,utils,core,migrations}
+mkdir -p frontend/{components,pages,public/assets,styles,utils,context}
+mkdir -p desktop/ui
+mkdir -p shared/constants
+mkdir -p logs
+mkdir -p uploads/{products,estimates,documents,avatars}
+
+# Create assets directory for logo
+mkdir -p public/assets
+
+echo "Directory structure created"
+
+# DATABASE SETUP
+
 echo ""
-echo "1. Edit backend/.env with your actual configuration:"
+echo "[11/11] Database Setup Instructions..."
+
+echo ""
+echo "PostgreSQL Setup:"
+echo "1. Install PostgreSQL if not already installed"
+echo "2. Create database and user:"
+echo ""
+echo "   psql -U postgres"
+echo "   CREATE USER woodful_user WITH PASSWORD 'your-secure-password';"
+echo "   CREATE DATABASE woodful_creations OWNER woodful_user;"
+echo "   ALTER ROLE woodful_user CREATEDB;"
+echo ""
+echo "3. Update DATABASE_URL in backend/.env with your credentials"
+echo "4. Run migrations (once backend is set up):"
+echo "   cd backend"
+echo "   alembic upgrade head"
+echo ""
+
+# SETUP SUMMARY
+
+echo ""
+echo "======================================"
+echo "WOODFUL CREATIONS SETUP COMPLETE"
+echo "======================================"
+echo ""
+
+echo "PROJECT MODULES:"
+echo "  Stock Inventory Management"
+echo "  Cost Estimates and PDF Generation"
+echo "  Employee Attendance and Salary Management"
+echo "  Interview Tracking"
+echo "  Client Management Portal"
+echo "  Payment Management (Admin Only)"
+echo "  AI Chat Features"
+echo "  Advanced Analytics"
+echo "  Alert System"
+echo ""
+
+echo "CONFIGURATION FILES CREATED:"
+echo "  backend/.env (FastAPI configuration)"
+echo "  backend/.env.example (reference template)"
+echo "  .env.local (frontend configuration)"
+echo "  .env.example (frontend reference)"
+echo ""
+
+echo "MASTER USERS (ADMIN ACCESS):"
+echo "  Email: nikhil@woodful.com (Nikhil)"
+echo "  Email: garima@woodful.com (Garima)"
+echo ""
+
+echo "NEXT STEPS:"
+echo ""
+echo "1. Configure Backend:"
+echo "   Edit backend/.env with your actual values"
+echo "   Set up PostgreSQL database (see instructions above)"
+echo "   Configure SMTP for email alerts"
+echo "   Add OpenAI API key for AI features"
 if [ "$OS_NAME" = "Windows" ]; then
     echo "   notepad backend\.env"
-elif [ "$OS_NAME" = "macOS" ]; then
-    echo "   nano backend/.env"
 else
     echo "   nano backend/.env"
 fi
 echo ""
-echo "2. Update these values:"
-echo "   • SECRET_KEY (generate a secure key)"
-echo "   • EMAIL_USER (your Gmail address)"
-echo "   • EMAIL_PASSWORD (16-character app password)"
-echo "   • OPENAI_API_KEY (if using OpenAI)"
-echo "   • BUSINESS_OWNER_EMAIL (owner email)"
+echo "2. Add Assets:"
+echo "   Place Woodful logo in public/assets/woodful_logo.png"
+echo "   Update PDF_LOGO_PATH in backend/.env if needed"
 echo ""
-echo "3. Start the backend:"
+echo "3. Start Backend (FastAPI):"
+echo "   cd backend"
 if [ "$OS_NAME" = "Windows" ]; then
-    echo "   cd backend"
     echo "   venv\Scripts\activate"
-    echo "   uvicorn app.main:app --reload"
 else
-    echo "   cd backend"
     echo "   source venv/bin/activate"
-    echo "   uvicorn app.main:app --reload"
 fi
+echo "   uvicorn app.main:app --reload"
 echo ""
-echo "4. Start the frontend (in another terminal):"
-echo "   cd frontend"
+echo "4. Start Frontend (React):"
 echo "   npm run dev"
 echo ""
-echo "5. Access the application:"
-echo "   Frontend: http://localhost:3000"
-echo "   Backend API: http://localhost:8000"
-echo "   API Docs: http://localhost:8000/docs"
+echo "5. (Optional) Start Desktop App (PyQt5):"
+echo "   cd desktop"
+if [ "$OS_NAME" = "Windows" ]; then
+    echo "   venv\Scripts\activate"
+else
+    echo "   source venv/bin/activate"
+fi
+echo "   python main.py"
 echo ""
-echo -e "${GREEN}For more information, see README.md and SETUP_GUIDE.md${NC}"
+echo "6. Access the Application:"
+echo "   Web Frontend: http://localhost:3000"
+echo "   FastAPI Backend: http://localhost:8000"
+echo "   API Documentation: http://localhost:8000/docs"
+echo "   API ReDoc: http://localhost:8000/redoc"
+echo ""
+
+echo "DOCUMENTATION:"
+echo "  See README.md for project overview"
+echo "  See SETUP_GUIDE.md for detailed setup instructions"
+echo "  See API_DOCUMENTATION.md for API endpoints"
+echo "  See MODULES.md for feature details"
+echo ""
+
+echo "SECURITY REMINDERS:"
+echo "  Change SECRET_KEY in backend/.env"
+echo "  Use strong database passwords"
+echo "  Never commit .env files to version control"
+echo "  Enable HTTPS in production"
+echo "  Keep API keys secure"
+echo ""
+
+echo "Happy coding!"
+echo ""
