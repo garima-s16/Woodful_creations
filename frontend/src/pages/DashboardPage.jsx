@@ -1,53 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import '../styles/pages/DashboardPage.css';
-import StockCard from '../components/dashboard/StockCard';
-import QuickStats from '../components/dashboard/QuickStats';
-import RecentActivity from '../components/dashboard/RecentActivity';
+import React, { useEffect, useState } from 'react';
+import '../styles/Dashboard.css';
 
 function DashboardPage({ user }) {
-  const [dashboardData, setDashboardData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await axios.get(`${API_BASE_URL}/api/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setDashboardData(response.data);
-    } catch (err) {
-      setError('Failed to load dashboard data');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="dashboard-loading">Loading dashboard...</div>;
-  }
-
   return (
     <div className="dashboard-page">
       <div className="dashboard-header">
-        <h1>Dashboard</h1>
-        <p className="welcome-text">Welcome back, {user?.name || 'User'}</p>
+        <h1>Welcome, {user?.full_name}</h1>
+        <p>Woodful Creations Business Management System</p>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
-
       <div className="dashboard-grid">
-        <QuickStats data={dashboardData?.stats} />
-        <StockCard data={dashboardData?.lowStockItems} />
-        <RecentActivity data={dashboardData?.recentActivities} />
+        <div className="dashboard-card">
+          <div className="card-header">
+            <h3>Quick Stats</h3>
+          </div>
+          <div className="card-body">
+            <div className="stat-item">
+              <span className="stat-label">Total Products</span>
+              <span className="stat-value">-</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Low Stock Items</span>
+              <span className="stat-value">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <div className="card-header">
+            <h3>System Status</h3>
+          </div>
+          <div className="card-body">
+            <p className="status-message">All systems operational</p>
+            <p className="status-time">Last updated: {new Date().toLocaleString()}</p>
+          </div>
+        </div>
+
+        {user?.is_master && (
+          <div className="dashboard-card">
+            <div className="card-header">
+              <h3>Master Access</h3>
+            </div>
+            <div className="card-body">
+              <p>Full system access enabled</p>
+              <p>View all data and manage settings</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

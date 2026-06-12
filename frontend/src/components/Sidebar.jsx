@@ -1,44 +1,39 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import '../styles/components/Sidebar.css';
+import './Sidebar.css';
 
 function Sidebar({ isOpen, user }) {
   const location = useLocation();
-
+  
   const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: 'grid' },
-    { path: '/stock-inventory', label: 'Stock Inventory', icon: 'box' },
-    { path: '/ai-chat', label: 'AI Chat', icon: 'message' },
-    { path: '/clients', label: 'Clients', icon: 'users' },
-    { path: '/estimates', label: 'Estimates', icon: 'file' },
-    { path: '/attendance', label: 'Attendance', icon: 'calendar' },
-    { path: '/interviews', label: 'Interviews', icon: 'briefcase' },
+    { label: 'Dashboard', path: '/dashboard', icon: 'D' },
+    { label: 'Stock Inventory', path: '/stock-inventory', icon: 'I' },
+    { label: 'AI Chat', path: '/ai-chat', icon: 'A' },
+    { label: 'Clients', path: '/clients', icon: 'C' },
+    { label: 'Estimates', path: '/estimates', icon: 'E' },
+    { label: 'Attendance', path: '/attendance', icon: 'T' },
+    { label: 'Interviews', path: '/interviews', icon: 'R' },
+    { label: 'Analytics', path: '/analytics', icon: 'N' },
   ];
-
-  const masterOnlyItems = [
-    { path: '/payments', label: 'Payments', icon: 'credit-card' },
-    { path: '/analytics', label: 'Analytics', icon: 'chart' },
-  ];
-
-  const allItems = user?.role === 'master' ? [...menuItems, ...masterOnlyItems] : menuItems;
-
+  
+  if (user?.is_master) {
+    menuItems.push({ label: 'Payments', path: '/payments', icon: 'P' });
+  }
+  
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
-      <div className="sidebar-content">
-        <ul className="sidebar-menu">
-          {allItems.map(item => (
-            <li key={item.path}>
-              <Link 
-                to={item.path}
-                className={`sidebar-link ${location.pathname === item.path ? 'active' : ''}`}
-              >
-                <span className="sidebar-icon">{item.icon}</span>
-                <span className="sidebar-label">{item.label}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <nav className="sidebar-nav">
+        {menuItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+          >
+            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-label">{item.label}</span>
+          </Link>
+        ))}
+      </nav>
     </aside>
   );
 }
