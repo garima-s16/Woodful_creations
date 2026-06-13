@@ -1,21 +1,21 @@
+FROM node:18-alpine as build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+RUN npm install -g serve
 
-# Install dependencies
-RUN npm ci
+COPY --from=build /app/build ./build
 
-# Copy application code
-COPY . .
-
-# Build Next.js (optional for dev, remove for dev-only)
-# RUN npm run build
-
-# Expose port
 EXPOSE 3000
 
-# Run development server
-CMD ["npm", "run", "dev"]
+CMD ["serve", "-s", "build", "-l", "3000"]

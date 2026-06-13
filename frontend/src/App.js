@@ -1,77 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Navigation from './components/Navigation';
-import Dashboard from './pages/Dashboard';
-import StockInventory from './pages/StockInventory';
-import Estimates from './pages/Estimates';
-import Attendance from './pages/Attendance';
-import Interviews from './pages/Interviews';
-import Clients from './pages/Clients';
-import Payments from './pages/Payments';
-import Analytics from './pages/Analytics';
-import Login from './pages/Login';
-import ChatBox from './components/ChatBox';
-import './styles/App.css';
+import React, { useEffect, useState } from 'react';
+import './App.css';
+import axios from 'axios';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState(null);
-  const [showChat, setShowChat] = useState(false);
+  const [apiStatus, setApiStatus] = useState('checking');
+  const [appInfo, setAppInfo] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      setIsAuthenticated(true);
-      const role = localStorage.getItem('userRole');
-      setUserRole(role);
-    }
+    checkBackendConnection();
   }, []);
 
-  const handleLogin = (token, role) => {
-    localStorage.setItem('authToken', token);
-    localStorage.setItem('userRole', role);
-    setIsAuthenticated(true);
-    setUserRole(role);
+  const checkBackendConnection = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/health`, {
+        timeout: 5000
+      });
+      setApiStatus('connected');
+      setAppInfo(response.data);
+    } catch (error) {
+      console.error('Backend connection error:', error);
+      setApiStatus('disconnected');
+    }
   };
-
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userRole');
-    setIsAuthenticated(false);
-    setUserRole(null);
-  };
-
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
 
   return (
-    <Router>
-      <div className="app">
-        <Navigation onLogout={handleLogout} userRole={userRole} />
-        <div className="main-content">
-          <Routes>
-            <Route path="/" element={<Dashboard userRole={userRole} />} />
-            <Route path="/inventory" element={<StockInventory userRole={userRole} />} />
-            <Route path="/estimates" element={<Estimates userRole={userRole} />} />
-            <Route path="/attendance" element={<Attendance userRole={userRole} />} />
-            <Route path="/interviews" element={<Interviews userRole={userRole} />} />
-            <Route path="/clients" element={<Clients userRole={userRole} />} />
-            <Route path="/payments" element={<Payments userRole={userRole} />} />
-            <Route path="/analytics" element={<Analytics userRole={userRole} />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+    <div className="App">
+      <header className="App-header">
+        <h1>Woodful Creations</h1>
+        <p>AI-Powered Management System</p>
+        <div className="status-container">
+          <div className={`status-badge ${apiStatus}`}>
+            API Status: {apiStatus.toUpperCase()}
+          </div>
         </div>
-        <button 
-          className="chat-toggle"
-          onClick={() => setShowChat(!showChat)}
-          title="Open AI Chat"
-        >
-          Chat
-        </button>
-        {showChat && <ChatBox onClose={() => setShowChat(false)} />}
-      </div>
-    </Router>
+        {appInfo && (
+          <div className="app-info">
+            <p>Service: {appInfo.service}</p>
+          </div>
+        )}
+        {apiStatus === 'disconnected' && (
+          <div className="error-message">
+            Unable to connect to backend. Please ensure the backend server is running on {process.env.REACT_APP_API_URL}
+          </div>
+        )}
+      </header>
+      <main className="App-main">
+        <section className="feature-section">
+          <h2>Welcome to Woodful Creations</h2>
+          <p>Your comprehensive AI-powered business management system</p>
+          <div className="features-grid">
+            <div className="feature-card">
+              <h3>Stock Inventory</h3>
+              <p>Manage inventory with AI-powered alerts</p>
+            </div>
+            <div className="feature-card">
+              <h3>Cost Estimates</h3>
+              <p>Generate beautiful PDF estimates</p>
+            </div>
+            <div className="feature-card">
+              <h3>Client Management</h3>
+              <p>Track clients and their projects</p>
+            </div>
+            <div className="feature-card">
+              <h3>Employee Management</h3>
+              <p>Attendance and salary management</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }
 
