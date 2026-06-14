@@ -8,7 +8,7 @@ Ensure your system has the following:
 | Requirement | Version | Notes |
 |-------------|---------|-------|
 | Operating System | Windows 10/11, macOS, or Linux | Tested on all platforms |
-| Python | 3.9, 3.10, 3.11, 3.12, 3.13, or **3.14** | Recommended: 3.10+ |
+| Python | 3.9, 3.10, 3.11, 3.12, 3.13, or **3.14** | Recommended: 3.14 |
 | Node.js | 14 or higher (LTS versions preferred) | For frontend development |
 | PostgreSQL | 12 or higher | For database |
 | RAM | Minimum 8GB | 16GB recommended |
@@ -106,46 +106,11 @@ With the virtual environment activated:
 # Upgrade pip to latest version (important for Python 3.14)
 pip install --upgrade pip setuptools wheel
 
-# Install core dependencies
-pip install fastapi==0.104.1
-pip install uvicorn[standard]==0.24.0
-pip install sqlalchemy==2.0.23
-pip install psycopg2-binary==2.9.9
-pip install pydantic==2.5.0
-pip install pydantic-settings==2.1.0
-pip install python-multipart==0.0.6
-pip install python-dotenv==1.0.0
-
-# Install file generation dependencies
-pip install reportlab==4.0.7
-pip install openpyxl==3.11.0
-pip install python-docx==0.8.11
-
-# Install image processing
-pip install pillow==10.1.0
-
-# Install authentication & security
-pip install python-jose[cryptography]==3.3.0
-pip install passlib[bcrypt]==1.7.4
-pip install cryptography==41.0.7
-pip install email-validator==2.1.0
-
-# Install API client
-pip install requests==2.31.0
-
-# Install async file support
-pip install aiofiles==23.2.1
-
-# Install OpenAI for AI features
-pip install openai==1.3.0
-pip install langchain==0.1.0
-```
-
-**Alternative**: Install from requirements.txt if available:
-
-```bash
+# Install from requirements.txt
 pip install -r requirements.txt
 ```
+
+**Python 3.14 Compatibility**: All dependencies in requirements.txt are tested and compatible with Python 3.14.
 
 #### 3.4 Create Backend Environment Configuration
 
@@ -237,13 +202,77 @@ REACT_APP_VERSION=2.0.0
 
 ---
 
-### Step 5: Set Up PyQt5 Desktop Application (Optional)
+### Step 5: Initialize Database Schema
 
-If you plan to use the desktop application:
+#### 5.1 Apply Database Schema
 
-#### 5.1 Install PyQt5 Dependencies
+Run the schema initialization script:
 
-With the Python virtual environment activated in the backend:
+```bash
+# Navigate to scripts directory
+cd ../scripts
+
+# Initialize database
+python init_db.py
+```
+
+This creates all necessary tables for:
+- User management
+- Stock inventory
+- Client management
+- Cost estimation
+- Employee management
+- Interview tracking
+- Payment tracking
+- Communication history
+
+#### 5.2 Verify Database Tables
+
+Check that tables were created:
+
+```bash
+psql -U woodful_user -d woodful_creations -c "\dt"
+```
+
+---
+
+### Step 6: Create Master Users
+
+Create the master administrator accounts and regular users:
+
+```bash
+# Create Master User 1 - Garima
+python create_master_user.py \
+  --username garimas \
+  --name "Garima" \
+  --email "garima@woodfulcreations.com" \
+  --password "Gullak*16" \
+  --phone "+919229083242" \
+  --role admin
+
+# Create Master User 2 - Nikhil
+python create_master_user.py \
+  --username nikhils \
+  --name "Nikhil" \
+  --email "nikhil@woodfulcreations.com" \
+  --password "Nikhil*27" \
+  --phone "9339555554" \
+  --role admin
+
+# Create Regular User - Shweta
+python create_master_user.py \
+  --username shwetav \
+  --name "Shweta" \
+  --email "shweta@woodfulcreations.com" \
+  --password "Shweta*05" \
+  --role user
+```
+
+---
+
+### Step 7: Set Up PyQt5 Desktop Application (Optional)
+
+If you plan to use the desktop application later:
 
 ```bash
 # Ensure you're in the backend directory with venv activated
@@ -253,13 +282,11 @@ pip install PyQt5-sip==12.13.0
 
 ---
 
-## Running the Application
-
-### Option A: Development Mode
+## Running the Application - Development Mode
 
 Use multiple terminal windows to run all services simultaneously:
 
-#### Terminal 1 - Start PostgreSQL
+### Terminal 1: Start PostgreSQL
 
 ```bash
 # On Windows (if installed as service):
@@ -273,7 +300,7 @@ brew services start postgresql
 sudo systemctl start postgresql
 ```
 
-#### Terminal 2 - Start FastAPI Backend
+### Terminal 2: Start FastAPI Backend
 
 ```bash
 # Navigate to backend
@@ -295,7 +322,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 INFO:     Application startup complete
 ```
 
-#### Terminal 3 - Start React Frontend
+### Terminal 3: Start React Frontend
 
 ```bash
 # Navigate to frontend
@@ -309,17 +336,19 @@ yarn start
 
 The browser should automatically open at `http://localhost:3000`.
 
-#### Terminal 4 - Start PyQt5 Desktop (if needed)
+### Terminal 4: Start PyQt5 Desktop (if needed)
 
 ```bash
-# Navigate to desktop directory
+# Navigate to desktop
 cd desktop
 
 # Ensure backend virtual environment is activated
 python main.py
 ```
 
-### Option B: Using Shell/Batch Scripts
+---
+
+## Using Shell/Batch Scripts (Optional)
 
 For convenience, use the provided startup scripts:
 
@@ -332,7 +361,9 @@ For convenience, use the provided startup scripts:
 start_all.bat
 ```
 
-### Option C: Using Docker (Recommended for Production)
+---
+
+## Using Docker (Recommended for Consistent Environment)
 
 If Docker is installed:
 
@@ -345,6 +376,12 @@ docker-compose up
 
 # Run in background
 docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
 ```
 
 ---
@@ -355,16 +392,16 @@ Once all services are running:
 
 ### Web Interface
 - **URL**: http://localhost:3000
-- **Default Master Users**: Nikhil, Garima
-- **Password**: Set during initial setup
+- **Default Master Users**:
+  - Username: `garimas`, Password: `Gullak*16`
+  - Username: `nikhils`, Password: `Nikhil*27`
+- **Regular User**:
+  - Username: `shwetav`, Password: `Shweta*05`
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
-- **API Base URL**: http://localhost:8000
-
-### Desktop Application
-- Launch directly from Terminal 4 output
+- **Health Check**: http://localhost:8000/api/health
 
 ### Database Connection
 - **Host**: localhost
@@ -374,30 +411,14 @@ Once all services are running:
 
 ---
 
-## Initial Database Setup
+## Local Environment Launch Verification
 
-### Create Database Tables
-
-If migration scripts are available:
-
-```bash
-# In the backend directory with venv activated
-python scripts/init_db.py
-```
-
-### Create Master User Account
-
-```bash
-python scripts/create_master_user.py \
-  --name "Nikhil" \
-  --email "nikhil@woodfulcreations.com" \
-  --password "secure_password"
-
-python scripts/create_master_user.py \
-  --name "Garima" \
-  --email "garima@woodfulcreations.com" \
-  --password "secure_password"
-```
+Follow the **LAUNCH_CHECKLIST.md** for comprehensive verification steps to ensure:
+- All services are running correctly
+- Database connection is established
+- Master users are created
+- Login functionality works
+- API endpoints are accessible
 
 ---
 
@@ -490,7 +511,7 @@ which python
 
 # Reinstall dependencies with Python 3.14 compatibility
 pip install --upgrade --force-reinstall pip setuptools wheel
-pip install -r requirements.txt
+pip install -r requirements.txt --force-reinstall
 ```
 
 ### Issue: Node.js Dependencies Error
@@ -505,15 +526,20 @@ npm cache clean --force
 npm install
 ```
 
-### Issue: PyQt5 Import Error
+### Issue: Login Fails
 
-**Error**: `ModuleNotFoundError: No module named 'PyQt5'`
+**Error**: Authentication fails with correct credentials
 
 **Solution**:
 ```bash
-# Reinstall PyQt5
-pip uninstall PyQt5 -y
-pip install PyQt5 --force-reinstall
+# Verify users exist in database
+psql -U woodful_user -d woodful_creations -c "SELECT id, username, email, role FROM users;"
+
+# Check that users were created successfully
+# If not, recreate master users using create_master_user.py
+
+# Clear browser cookies and try again
+# Check backend logs for errors
 ```
 
 ---
@@ -526,16 +552,22 @@ pip install PyQt5 --force-reinstall
 # Check API documentation
 curl http://localhost:8000/docs
 
-# Test a health check endpoint (if available)
+# Test health check endpoint
 curl http://localhost:8000/api/health
+
+# Test login endpoint
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"garimas","password":"Gullak*16"}'
 ```
 
 ### Test Frontend Connection
 
 1. Open http://localhost:3000 in your browser
-2. Open Developer Tools (F12)
+2. Open Developer Tools (F12 or Right-click > Inspect)
 3. Check Network tab for API calls
-4. Look for any CORS errors in the Console
+4. Look for any CORS errors in Console
+5. Try logging in with master user credentials
 
 ### Test Database Connection
 
@@ -550,10 +582,7 @@ python -c "import psycopg2; conn = psycopg2.connect('dbname=woodful_creations us
 ### Compatibility
 - All listed dependencies are fully compatible with Python 3.14
 - If you encounter issues, ensure you're using the latest pip: `pip install --upgrade pip`
-
-### Virtual Environment
 - Virtual environments work seamlessly with Python 3.14
-- If issues arise, delete and recreate: `rm -rf venv` then `python -m venv venv`
 
 ### Performance
 - Python 3.14 may show improved performance compared to earlier versions
@@ -561,7 +590,7 @@ python -c "import psycopg2; conn = psycopg2.connect('dbname=woodful_creations us
 
 ---
 
-## Security Checklist
+## Security Checklist (Before Production)
 
 Before any production deployment:
 
@@ -582,24 +611,20 @@ Before any production deployment:
 
 ## Next Steps
 
-1. **Create Master User Accounts** for Nikhil and Garima
-2. **Configure Email Settings** for alerts and notifications
-3. **Set Up Stock Inventory Module** (Priority 1)
-4. **Implement AI Chat Feature** (Priority 2)
-5. **Build Authentication System** (Priority 3)
-6. **Create API Endpoints** for remaining modules
-7. **Build UI Components** in React
-8. **Set Up Testing Suite**
-9. **Deploy to Staging Environment**
-10. **User Acceptance Testing**
-11. **Production Deployment**
+1. Complete SETUP_GUIDE.md installation
+2. Verify LAUNCH_CHECKLIST.md requirements
+3. Launch website on local environment (http://localhost:3000)
+4. Test login with master user credentials
+5. Verify all API endpoints in Swagger documentation
+6. Begin Phase 1: Stock Inventory Module development
 
 ---
 
 ## Support & Resources
 
 ### Documentation
-- **PROJECT_INFO.md** - Comprehensive project overview
+- **PROJECT_INFO.md** - Comprehensive project overview and roadmap
+- **LAUNCH_CHECKLIST.md** - Step-by-step local launch verification
 - **FastAPI Docs** - http://localhost:8000/docs
 - **React Documentation** - https://react.dev
 - **PostgreSQL Docs** - https://www.postgresql.org/docs/
@@ -608,6 +633,7 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
+- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
 
 ---
 
@@ -620,8 +646,9 @@ Before any production deployment:
 | FastAPI | 0.104.1 | June 2026 |
 | React | 18.2.0 | June 2026 |
 | PostgreSQL | 12+ | June 2026 |
+| Node.js | 14+ | June 2026 |
 
 ---
 
-*Last Updated: June 2026*  
+*Last Updated: June 2026*
 *Maintained by: Woodful Creations Development Team*
