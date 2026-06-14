@@ -1,53 +1,55 @@
+"""
+FastAPI Application Entry Point for Woodful Creations
+"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import logging
-from dotenv import load_dotenv
+from fastapi.staticfiles import StaticFiles
+import os
 
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Woodful Creations Starting")
-    from app.database import init_db
-    await init_db()
-    logger.info("Database initialized")
-    yield
-    logger.info("Woodful Creations Shutting Down")
+from app.core.config import settings
+from app.core.database import Base, engine
+from app.api import routes
 
 app = FastAPI(
-    title="Woodful Creations API",
-    description="AI-powered business management system for woodcraft and furniture business",
-    version="2.0.0",
-    lifespan=lifespan
+    title=settings.APP_NAME,
+    description="AI-powered management system for Woodful Creations",
+    version=settings.APP_VERSION,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
+
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 async def root():
+    """API Root endpoint"""
     return {
-        "message": "Welcome to Woodful Creations API",
-        "version": "2.0.0",
-        "status": "running",
-        "documentation": "/docs"
+        "message": "Woodful Creations API",
+        "version": settings.APP_VERSION,
+        "status": "running"
     }
 
-@app.get("/health")
+@app.get("/api/health", tags=["Health"])
 async def health_check():
+    """Health check endpoint"""
     return {
         "status": "healthy",
-        "service": "Woodful Creations API"
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION
     }
+
+app.include_router(routes.auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(routes.users.router, prefix="/api/users", tags=["Users"])
+app.include_router(routes.inventory.router, prefix="/api/inventory", tags=["Inventory"])
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
