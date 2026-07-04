@@ -1,22 +1,5 @@
 # Woodful Creations - Setup Guide
 
-## System Requirements
-
-### Before You Start
-Ensure your system has the following:
-
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Operating System | Windows 10/11, macOS, or Linux | Tested on all platforms |
-| Python | 3.9, 3.10, 3.11, 3.12, 3.13, or **3.14** | Recommended: 3.14 |
-| Node.js | 14 or higher (LTS versions preferred) | For frontend development |
-| PostgreSQL | 12 or higher | For database |
-| RAM | Minimum 8GB | 16GB recommended |
-| Storage | Minimum 5GB free space | For all dependencies |
-| Internet Connection | Required | For setup and email features |
-
----
-
 ## Installation Steps
 
 ### Step 1: Clone the Repository
