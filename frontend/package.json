@@ -2,7 +2,7 @@
   "name": "woodful-frontend",
   "version": "1.0.0",
   "private": true,
-  "homepage": "./",
+  "homepage": "https://garima-s16.github.io/Woodful_creations",
   "proxy": "http://localhost:8000",
   "scripts": {
     "start": "react-scripts start",
