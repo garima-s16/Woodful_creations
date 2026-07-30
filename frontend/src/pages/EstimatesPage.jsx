@@ -1,5 +1,5 @@
 import React from 'react';
-import '../styles/Pages.css';
+import '../styles/pages/EstimatesPage.css';
 
 function EstimatesPage() {
   return (

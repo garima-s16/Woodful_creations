@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { inventoryAPI } from '../utils/api';
 import { fetchStart, fetchSuccess, fetchFailure, addProduct } from '../redux/slices/inventorySlice';
 import ChatWidget from '../components/ChatWidget';
-import '../styles/StockInventoryPage.css';
+import '../styles/pages/StockInventoryPage.css';
 
 function StockInventoryPage({ user }) {
   const dispatch = useDispatch();

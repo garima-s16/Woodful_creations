@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import '../styles/Sidebar.css';
+import '../styles/components/Sidebar.css';
 
-function Sidebar({ isOpen, user }) {
+function Sidebar({ isOpen, user, onClose }) {
   const location = useLocation();
 
   const menuItems = [
@@ -23,32 +23,31 @@ function Sidebar({ isOpen, user }) {
   const isMaster = user?.role === 'master';
   const isActive = (path) => location.pathname === path;
 
-  return (
-    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
-      <div className="sidebar-content">
-        <div className="sidebar-header">
-          <h2>Menu</h2>
-        </div>
+  useEffect(() => {
+    if (window.innerWidth <= 768 && onClose) {
+      onClose();
+    }
+  }, [location.pathname]);
 
-        <nav className="sidebar-nav">
-          <div className="nav-section">
-            <h3 className="section-title">Main</h3>
-            {menuItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
-              </Link>
-            ))}
+  return (
+    <>
+      {isOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-content">
+          <div className="sidebar-header">
+            <h2>Menu</h2>
           </div>
 
-          {isMaster && (
+          <nav className="sidebar-nav">
             <div className="nav-section">
-              <h3 className="section-title">Master Controls</h3>
-              {masterItems.map((item) => (
+              <h3 className="section-title">Main</h3>
+              {menuItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
@@ -59,10 +58,26 @@ function Sidebar({ isOpen, user }) {
                 </Link>
               ))}
             </div>
-          )}
-        </nav>
-      </div>
-    </aside>
+
+            {isMaster && (
+              <div className="nav-section">
+                <h3 className="section-title">Master Controls</h3>
+                {masterItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    <span className="nav-label">{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </nav>
+        </div>
+      </aside>
+    </>
   );
 }
 

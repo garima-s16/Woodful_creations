@@ -1,5 +1,5 @@
 import React from 'react';
-import '../styles/Pages.css';
+import '../styles/pages/ClientManagementPage.css';
 
 function ClientManagementPage() {
   return (

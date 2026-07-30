@@ -1,6 +1,6 @@
 import React from 'react';
 import ChatWidget from '../components/ChatWidget';
-import '../styles/Pages.css';
+import '../styles/pages/AIChatPage.css';
 
 function AIChatPage() {
   return (

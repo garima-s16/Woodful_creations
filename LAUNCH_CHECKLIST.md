@@ -153,8 +153,8 @@ This document provides a comprehensive verification checklist to ensure your Woo
     --username garimas \
     --name "Garima" \
     --email "garima@woodfulcreations.com" \
-    --password "Gullak*16" \
-    --phone "+919229083242" \
+    --password "<password>" \
+    --phone "<phone>" \
     --role admin
   ```
 
@@ -164,8 +164,8 @@ This document provides a comprehensive verification checklist to ensure your Woo
     --username nikhils \
     --name "Nikhil" \
     --email "nikhil@woodfulcreations.com" \
-    --password "Nikhil*27" \
-    --phone "9339555554" \
+    --password "<password>" \
+    --phone "<phone>" \
     --role admin
   ```
 
@@ -175,7 +175,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
     --username shwetav \
     --name "Shweta" \
     --email "shweta@woodfulcreations.com" \
-    --password "Shweta*05" \
+    --password "<password>" \
     --role user
   ```
 
@@ -312,7 +312,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
 ### Test Master Admin Login (Garima)
 - [ ] Navigate to http://localhost:3000
 - [ ] Enter Username: `garimas`
-- [ ] Enter Password: `Gullak*16`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Redirected to dashboard
 - [ ] Verify: Session token received (check localStorage/cookies)
@@ -326,7 +326,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
   - [ ] Redirected to login page
   - [ ] Session cleared
 - [ ] Enter Username: `nikhils`
-- [ ] Enter Password: `Nikhil*27`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in as Nikhil
 - [ ] Verify: Full admin access confirmed
@@ -334,7 +334,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
 ### Test Regular User Login (Shweta)
 - [ ] Logout from current session
 - [ ] Enter Username: `shwetav`
-- [ ] Enter Password: `Shweta*05`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in
 - [ ] Verify: Dashboard visible with limited access
@@ -376,7 +376,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
   ```bash
   curl -X POST http://localhost:8000/api/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"garimas","password":"Gullak*16"}'
+    -d '{"username":"garimas","password":"<password>"}'
   ```
   Expected: 200 OK with token
 
@@ -564,8 +564,8 @@ When all checks pass, complete the following:
 
 ## Support Contacts
 
-- **Nikhil (Master Admin)**: 9339555554 | nikhil@woodfulcreations.com
-- **Garima (Master Admin)**: +919229083242 | garima@woodfulcreations.com
+- **Nikhil (Master Admin)**: nikhil@woodfulcreations.com
+- **Garima (Master Admin)**: garima@woodfulcreations.com
 
 ---
 

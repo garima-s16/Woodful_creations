@@ -1,74 +1,151 @@
-import React, { useEffect, useState } from 'react';
-import './App.css';
-import axios from 'axios';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import store from './redux/store';
+import './styles/App.css';
+
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import StockInventoryPage from './pages/StockInventoryPage';
+import AIChatPage from './pages/AIChatPage';
+import ClientManagementPage from './pages/ClientManagementPage';
+import AttendancePage from './pages/AttendancePage';
+import EstimatesPage from './pages/EstimatesPage';
+import InterviewsPage from './pages/InterviewsPage';
+import PaymentsPage from './pages/PaymentsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+
+import ProtectedRoute from './components/ProtectedRoute';
+import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
 
 function App() {
-  const [apiStatus, setApiStatus] = useState('checking');
-  const [appInfo, setAppInfo] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    checkBackendConnection();
+    const token = localStorage.getItem('authToken');
+    const userData = localStorage.getItem('userData');
+
+    if (token && userData) {
+      setIsAuthenticated(true);
+      setUser(JSON.parse(userData));
+    }
   }, []);
 
-  const checkBackendConnection = async () => {
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/health`, {
-        timeout: 5000
-      });
-      setApiStatus('connected');
-      setAppInfo(response.data);
-    } catch (error) {
-      console.error('Backend connection error:', error);
-      setApiStatus('disconnected');
-    }
+  const handleLogin = (userData, token) => {
+    setIsAuthenticated(true);
+    setUser(userData);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userData', JSON.stringify(userData));
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUser(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
+  };
+
+  const closeSidebar = () => setSidebarOpen(false);
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Woodful Creations</h1>
-        <p>AI-Powered Management System</p>
-        <div className="status-container">
-          <div className={`status-badge ${apiStatus}`}>
-            API Status: {apiStatus.toUpperCase()}
+    <Provider store={store}>
+      <Router>
+        <div className="app-container">
+          <Navbar
+            user={user}
+            onLogout={handleLogout}
+            toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          />
+          <div className="app-content">
+            <Sidebar isOpen={sidebarOpen} user={user} onClose={closeSidebar} />
+            <main className="main-content">
+              <Routes>
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <DashboardPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/stock-inventory"
+                  element={
+                    <ProtectedRoute>
+                      <StockInventoryPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ai-chat"
+                  element={
+                    <ProtectedRoute>
+                      <AIChatPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/clients"
+                  element={
+                    <ProtectedRoute>
+                      <ClientManagementPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/attendance"
+                  element={
+                    <ProtectedRoute>
+                      <AttendancePage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/estimates"
+                  element={
+                    <ProtectedRoute>
+                      <EstimatesPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/interviews"
+                  element={
+                    <ProtectedRoute>
+                      <InterviewsPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/payments"
+                  element={
+                    <ProtectedRoute>
+                      <PaymentsPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/analytics"
+                  element={
+                    <ProtectedRoute>
+                      <AnalyticsPage user={user} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </main>
           </div>
         </div>
-        {appInfo && (
-          <div className="app-info">
-            <p>Service: {appInfo.service}</p>
-          </div>
-        )}
-        {apiStatus === 'disconnected' && (
-          <div className="error-message">
-            Unable to connect to backend. Please ensure the backend server is running on {process.env.REACT_APP_API_URL}
-          </div>
-        )}
-      </header>
-      <main className="App-main">
-        <section className="feature-section">
-          <h2>Welcome to Woodful Creations</h2>
-          <p>Your comprehensive AI-powered business management system</p>
-          <div className="features-grid">
-            <div className="feature-card">
-              <h3>Stock Inventory</h3>
-              <p>Manage inventory with AI-powered alerts</p>
-            </div>
-            <div className="feature-card">
-              <h3>Cost Estimates</h3>
-              <p>Generate beautiful PDF estimates</p>
-            </div>
-            <div className="feature-card">
-              <h3>Client Management</h3>
-              <p>Track clients and their projects</p>
-            </div>
-            <div className="feature-card">
-              <h3>Employee Management</h3>
-              <p>Attendance and salary management</p>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
+      </Router>
+    </Provider>
   );
 }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import '../styles/Pages.css';
+import '../styles/pages/InterviewsPage.css';
 
 function InterviewsPage() {
   return (

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import '../styles/Navbar.css';
+import '../styles/components/Navbar.css';
 
 function Navbar({ user, onLogout, toggleSidebar }) {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ function Navbar({ user, onLogout, toggleSidebar }) {
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-left">
-          <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
+          <button className="menu-toggle" onClick={toggleSidebar} aria-label="Toggle navigation">
             <span></span>
             <span></span>
             <span></span>

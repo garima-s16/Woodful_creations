@@ -3,12 +3,23 @@ FastAPI Application Entry Point for Woodful Creations
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.api import routes
+
+from app.api.routes import auth
+from app.api.routes import inventory
+from app.api.routes import dashboard
+from app.api.routes import client
+from app.api.routes import client_project
+from app.api.routes import attendance
+from app.api.routes import employee
+from app.api.routes import estimate
+from app.api.routes import interview
+from app.api.routes import payment
+from app.api.routes import candidate
+from app.api.routes import chat
+from app.api.routes import salary_slip
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -22,7 +33,7 @@ Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,9 +57,19 @@ async def health_check():
         "version": settings.APP_VERSION
     }
 
-app.include_router(routes.auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(routes.users.router, prefix="/api/users", tags=["Users"])
-app.include_router(routes.inventory.router, prefix="/api/inventory", tags=["Inventory"])
+app.include_router(auth.router)
+app.include_router(inventory.router)
+app.include_router(dashboard.router)
+app.include_router(client.router)
+app.include_router(client_project.router)
+app.include_router(attendance.router)
+app.include_router(employee.router)
+app.include_router(estimate.router)
+app.include_router(interview.router)
+app.include_router(payment.router)
+app.include_router(candidate.router)
+app.include_router(chat.router)
+app.include_router(salary_slip.router)
 
 if __name__ == "__main__":
     import uvicorn
