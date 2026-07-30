@@ -1,25 +1,29 @@
-from app.models.base import Base, BaseModel
+from app.core.database import Base
+from app.models.base import BaseModel
 from app.models.user import User
-from app.models.inventory import InventoryItem, StockHistory
+from app.models.product import Product
 from app.models.client import Client
-from app.models.estimate import Estimate, EstimateItem
-from app.models.attendance import Attendance
-from app.models.interview import Interview
+from app.models.employee import Employee
 from app.models.payment import Payment
-from app.models.chat import ChatMessage, Alert
+from app.models.attendance import Attendance
+from app.models.client_project import ClientProject
+from app.models.estimate import Estimate
+from app.models.candidate import Candidate
+from app.models.interview import Interview
+from app.models.salary_slip import SalarySlip
 
 __all__ = [
     "Base",
     "BaseModel",
     "User",
-    "InventoryItem",
-    "StockHistory",
+    "Product",
     "Client",
-    "Estimate",
-    "EstimateItem",
-    "Attendance",
-    "Interview",
+    "Employee",
     "Payment",
-    "ChatMessage",
-    "Alert",
+    "Attendance",
+    "ClientProject",
+    "Estimate",
+    "Candidate",
+    "Interview",
+    "SalarySlip",
 ]

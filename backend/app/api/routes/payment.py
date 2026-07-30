@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.payment import PaymentCreate, PaymentUpdate, PaymentResponse
 from app.models.payment import Payment
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -27,7 +27,7 @@ def get_payments(payment_type: str = Query(None), status: str = Query(None), db:
 
 @router.post("/", response_model=PaymentResponse)
 def record_payment(payment: PaymentCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
-    db_payment = Payment(**payment.dict())
+    db_payment = Payment(**payment.model_dump())
     db.add(db_payment)
     db.commit()
     db.refresh(db_payment)
@@ -46,7 +46,7 @@ def update_payment(payment_id: int, payment: PaymentUpdate, db: Session = Depend
     if not db_payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     
-    update_data = payment.dict(exclude_unset=True)
+    update_data = payment.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_payment, key, value)
     

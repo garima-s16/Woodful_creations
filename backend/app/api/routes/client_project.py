@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.client_project import ClientProjectCreate, ClientProjectUpdate, ClientProjectResponse
 from app.models.client_project import ClientProject
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/client-projects", tags=["clients"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -25,7 +25,7 @@ def get_projects(client_id: int = Query(None), db: Session = Depends(get_db), au
 
 @router.post("/", response_model=ClientProjectResponse)
 def create_project(project: ClientProjectCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
-    db_project = ClientProject(**project.dict(), amount_pending=project.cost)
+    db_project = ClientProject(**project.model_dump(), amount_pending=project.cost)
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
@@ -44,7 +44,7 @@ def update_project(project_id: int, project: ClientProjectUpdate, db: Session = 
     if not db_project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    update_data = project.dict(exclude_unset=True)
+    update_data = project.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_project, key, value)
     

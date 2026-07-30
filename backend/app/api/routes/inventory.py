@@ -1,18 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse
 from app.models.product import Product
 from app.core.database import get_db
 from app.core.security import verify_token
-from app.services.chat_service import MATERIAL_TYPES
+from app.core.constants import MATERIAL_TYPES
 from typing import List
 from datetime import datetime
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -44,7 +44,7 @@ def add_product(product: ProductCreate, db: Session = Depends(get_db), auth=Depe
     if product.thickness not in MATERIAL_TYPES[product.material_type]:
         raise HTTPException(status_code=400, detail=f"Invalid thickness for {product.material_type}. Valid: {MATERIAL_TYPES[product.material_type]}")
     
-    db_product = Product(**product.dict(), last_restocked=datetime.now())
+    db_product = Product(**product.model_dump(), last_restocked=datetime.now())
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
@@ -63,7 +63,7 @@ def update_product(product_id: int, product: ProductUpdate, db: Session = Depend
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
     
-    update_data = product.dict(exclude_unset=True)
+    update_data = product.model_dump(exclude_unset=True)
     
     if "material_type" in update_data or "thickness" in update_data:
         material = update_data.get("material_type", db_product.material_type)

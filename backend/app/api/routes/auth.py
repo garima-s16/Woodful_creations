@@ -1,35 +1,94 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from app.schemas.user import LoginResponse, UserLogin
+from passlib.context import CryptContext
+from app.schemas.user import LoginResponse, UserLogin, UserCreate, UserResponse
 from app.core.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, verify_token
+from app.models.user import User
+import logging
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+security = HTTPBearer()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
-in_memory_users = {
-    "nikhils@woodful.com": {"id": "1", "email": "nikhils@woodful.com", "password": "Nikhil*27", "username": "nikhils", "name": "Nikhil", "role": "master"},
-    "garimas@woodful.com": {"id": "2", "email": "garimas@woodful.com", "password": "Gullak*16", "username": "garimas", "name": "Garima", "role": "master"},
-    "shwetav@woodful.com": {"id": "3", "email": "shwetav@woodful.com", "password": "Shweta*05", "username": "shwetav", "name": "Shweta", "role": "user"}
-}
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    payload = verify_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+    return user
+
 
 @router.post("/login", response_model=LoginResponse)
 def login(request: UserLogin, db: Session = Depends(get_db)):
-    user = in_memory_users.get(request.email)
-    
-    if not user or user["password"] != request.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    token = create_access_token({"user_id": user["id"], "email": user["email"], "role": user["role"]})
-    
+    user = db.query(User).filter(User.email == request.email).first()
+
+    if not user or not pwd_context.verify(request.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive"
+        )
+
+    token = create_access_token({"user_id": str(user.id), "email": user.email, "role": user.role})
+    logger.info("User logged in: %s", user.username)
+
     return LoginResponse(
         token=token,
-        user={
-            "id": user["id"],
-            "email": user["email"],
-            "username": user["username"],
-            "full_name": user["name"],
-            "role": user["role"],
-            "is_active": True,
-            "created_at": "2026-01-01T00:00:00"
-        }
+        user=UserResponse.model_validate(user)
     )
+
+
+@router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+def register(request: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(
+        (User.email == request.email) | (User.username == request.username)
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email or username already registered"
+        )
+
+    hashed_password = pwd_context.hash(request.password)
+    new_user = User(
+        email=request.email,
+        username=request.username,
+        full_name=request.full_name,
+        password_hash=hashed_password,
+        role="user",
+        is_active=True,
+        is_deleted=False
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    logger.info("New user registered: %s", new_user.username)
+
+    token = create_access_token({"user_id": str(new_user.id), "email": new_user.email, "role": new_user.role})
+
+    return LoginResponse(
+        token=token,
+        user=UserResponse.model_validate(new_user)
+    )
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse.model_validate(current_user)

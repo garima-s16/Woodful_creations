@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.estimate import EstimateCreate, EstimateUpdate, EstimateResponse
 from app.models.estimate import Estimate
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -26,7 +26,7 @@ def get_estimates(status: str = None, db: Session = Depends(get_db), auth=Depend
 @router.post("/", response_model=EstimateResponse)
 def create_estimate(estimate: EstimateCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
     total_cost = estimate.material_cost + estimate.labor_cost
-    db_estimate = Estimate(**estimate.dict(), total_cost=total_cost)
+    db_estimate = Estimate(**estimate.model_dump(), total_cost=total_cost)
     db.add(db_estimate)
     db.commit()
     db.refresh(db_estimate)
@@ -45,7 +45,7 @@ def update_estimate(estimate_id: int, estimate: EstimateUpdate, db: Session = De
     if not db_estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
     
-    update_data = estimate.dict(exclude_unset=True)
+    update_data = estimate.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_estimate, key, value)
     

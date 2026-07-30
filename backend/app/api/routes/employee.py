@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from app.models.employee import Employee
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -23,7 +23,7 @@ def get_employees(db: Session = Depends(get_db), auth=Depends(verify_auth)):
 
 @router.post("/", response_model=EmployeeResponse)
 def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
-    db_employee = Employee(**employee.dict())
+    db_employee = Employee(**employee.model_dump())
     db.add(db_employee)
     db.commit()
     db.refresh(db_employee)
@@ -42,7 +42,7 @@ def update_employee(employee_id: int, employee: EmployeeUpdate, db: Session = De
     if not db_employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    update_data = employee.dict(exclude_unset=True)
+    update_data = employee.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_employee, key, value)
     

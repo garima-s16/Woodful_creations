@@ -1,7 +1,7 @@
 """Audit log model"""
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
 from datetime import datetime
-from app.database import Base
+from app.core.database import Base
 
 class AuditLog(Base):
     """Audit log model for tracking all changes"""

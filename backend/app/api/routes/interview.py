@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse
 from app.models.interview import Interview
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/interviews", tags=["recruitment"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -25,7 +25,7 @@ def get_interviews(candidate_id: int = Query(None), db: Session = Depends(get_db
 
 @router.post("/", response_model=InterviewResponse)
 def schedule_interview(interview: InterviewCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
-    db_interview = Interview(**interview.dict())
+    db_interview = Interview(**interview.model_dump())
     db.add(db_interview)
     db.commit()
     db.refresh(db_interview)
@@ -44,7 +44,7 @@ def update_interview(interview_id: int, interview: InterviewUpdate, db: Session 
     if not db_interview:
         raise HTTPException(status_code=404, detail="Interview not found")
     
-    update_data = interview.dict(exclude_unset=True)
+    update_data = interview.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_interview, key, value)
     

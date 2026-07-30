@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from app.models.client import Client
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -27,7 +27,7 @@ def create_client(client: ClientCreate, db: Session = Depends(get_db), auth=Depe
     if existing_client:
         raise HTTPException(status_code=400, detail="Client with this email already exists")
     
-    db_client = Client(**client.dict())
+    db_client = Client(**client.model_dump())
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
@@ -46,7 +46,7 @@ def update_client(client_id: int, client: ClientUpdate, db: Session = Depends(ge
     if not db_client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    update_data = client.dict(exclude_unset=True)
+    update_data = client.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_client, key, value)
     

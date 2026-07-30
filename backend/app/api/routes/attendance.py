@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.schemas.attendance import AttendanceCreate, AttendanceUpdate, AttendanceResponse
 from app.models.attendance import Attendance
@@ -11,7 +11,7 @@ from datetime import datetime
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -26,7 +26,7 @@ def get_attendance(employee_id: int = Query(None), db: Session = Depends(get_db)
 
 @router.post("/", response_model=AttendanceResponse)
 def mark_attendance(attendance: AttendanceCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
-    db_attendance = Attendance(**attendance.dict())
+    db_attendance = Attendance(**attendance.model_dump())
     db.add(db_attendance)
     db.commit()
     db.refresh(db_attendance)
@@ -45,7 +45,7 @@ def update_attendance(attendance_id: int, attendance: AttendanceUpdate, db: Sess
     if not db_attendance:
         raise HTTPException(status_code=404, detail="Attendance record not found")
     
-    update_data = attendance.dict(exclude_unset=True)
+    update_data = attendance.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_attendance, key, value)
     
