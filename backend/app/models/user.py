@@ -1,10 +1,12 @@
 from sqlalchemy import Column, String, Boolean, DateTime
-from app.models.base import BaseModel
 from datetime import datetime
+
+from app.models.base import BaseModel
+
 
 class User(BaseModel):
     __tablename__ = "users"
-    
+
     username = Column(String(255), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(500), nullable=False)
