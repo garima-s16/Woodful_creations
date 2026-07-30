@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { inventoryAPI } from '../utils/api';
 import { fetchStart, fetchSuccess, fetchFailure, addProduct } from '../redux/slices/inventorySlice';
 import ChatWidget from '../components/ChatWidget';
-import '../styles/StockInventoryPage.css';
+import '../styles/pages/StockInventoryPage.css';
 
 function StockInventoryPage({ user }) {
   const dispatch = useDispatch();
@@ -20,11 +20,7 @@ function StockInventoryPage({ user }) {
     unit: 'pieces',
   });
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     dispatch(fetchStart());
     try {
       const response = await inventoryAPI.getInventory();
@@ -32,7 +28,11 @@ function StockInventoryPage({ user }) {
     } catch (error) {
       dispatch(fetchFailure(error.message));
     }
-  };
+  }, [dispatch]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleAddProduct = async (e) => {
     e.preventDefault();

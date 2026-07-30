@@ -1,5 +1,4 @@
 import React from 'react';
-import '../styles/Pages.css';
 
 function EstimatesPage() {
   return (

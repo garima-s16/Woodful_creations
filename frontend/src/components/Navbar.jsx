@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import '../styles/Navbar.css';
+import '../styles/components/Navbar.css';
 
-function Navbar({ user, onLogout, toggleSidebar }) {
+function Navbar({ isSidebarOpen, user, onLogout, toggleSidebar }) {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
 
@@ -12,10 +12,18 @@ function Navbar({ user, onLogout, toggleSidebar }) {
   };
 
   return (
-    <nav className="navbar">
+    <nav aria-label="Main navigation" className="navbar">
       <div className="navbar-container">
         <div className="navbar-left">
-          <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
+          <button
+            aria-controls="sidebar-navigation"
+            aria-expanded={isSidebarOpen}
+            aria-label="Toggle navigation menu"
+            className="menu-toggle"
+            onClick={toggleSidebar}
+            title="Toggle menu"
+            type="button"
+          >
             <span></span>
             <span></span>
             <span></span>
@@ -29,8 +37,11 @@ function Navbar({ user, onLogout, toggleSidebar }) {
         <div className="navbar-right">
           <div className="user-menu">
             <button
+              aria-expanded={showProfile}
+              aria-label="User profile menu"
               className="profile-button"
               onClick={() => setShowProfile(!showProfile)}
+              type="button"
             >
               <div className="profile-avatar">{user?.name?.[0]?.toUpperCase()}</div>
               <span className="profile-name">{user?.name}</span>
@@ -43,7 +54,7 @@ function Navbar({ user, onLogout, toggleSidebar }) {
                   <p className="user-role">{user?.role === 'master' ? 'Master Admin' : 'User'}</p>
                 </div>
                 <hr />
-                <button onClick={handleLogout} className="logout-button">
+                <button className="logout-button" onClick={handleLogout} type="button">
                   Logout
                 </button>
               </div>

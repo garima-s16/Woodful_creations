@@ -1,74 +1,153 @@
-import React, { useEffect, useState } from 'react';
-import './App.css';
-import axios from 'axios';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import store from './redux/store';
+import './styles/App.css';
+
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import StockInventoryPage from './pages/StockInventoryPage';
+import AIChatPage from './pages/AIChatPage';
+import ClientManagementPage from './pages/ClientManagementPage';
+import AttendancePage from './pages/AttendancePage';
+import EstimatesPage from './pages/EstimatesPage';
+import InterviewsPage from './pages/InterviewsPage';
+import PaymentsPage from './pages/PaymentsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+
+import ProtectedRoute from './components/ProtectedRoute';
+import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+
+const getInitialSidebarState = () =>
+  typeof window === 'undefined' ? true : window.innerWidth > 768;
+
+function AppShell({ user, isSidebarOpen, onLogout, onSidebarClose, onSidebarToggle }) {
+  return (
+    <div className="app-container">
+      <Navbar
+        isSidebarOpen={isSidebarOpen}
+        onLogout={onLogout}
+        toggleSidebar={onSidebarToggle}
+        user={user}
+      />
+      <div className="app-content">
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={onSidebarClose}
+          user={user}
+        />
+        <main className="main-content">
+          <Routes>
+            <Route path="/dashboard" element={<DashboardPage user={user} />} />
+            <Route
+              path="/stock-inventory"
+              element={<StockInventoryPage user={user} />}
+            />
+            <Route path="/ai-chat" element={<AIChatPage user={user} />} />
+            <Route path="/clients" element={<ClientManagementPage user={user} />} />
+            <Route path="/attendance" element={<AttendancePage user={user} />} />
+            <Route path="/estimates" element={<EstimatesPage user={user} />} />
+            <Route path="/interviews" element={<InterviewsPage user={user} />} />
+            <Route path="/payments" element={<PaymentsPage user={user} />} />
+            <Route path="/analytics" element={<AnalyticsPage user={user} />} />
+            <Route path="/" element={<Navigate replace to="/dashboard" />} />
+            <Route path="*" element={<Navigate replace to="/dashboard" />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}
 
 function App() {
-  const [apiStatus, setApiStatus] = useState('checking');
-  const [appInfo, setAppInfo] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(getInitialSidebarState);
 
   useEffect(() => {
-    checkBackendConnection();
+    const token = localStorage.getItem('authToken');
+    const userData = localStorage.getItem('userData');
+
+    if (!token || !userData) {
+      return;
+    }
+
+    try {
+      setIsAuthenticated(true);
+      setUser(JSON.parse(userData));
+    } catch (error) {
+      console.error('Unable to restore saved user data:', error);
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userData');
+    }
   }, []);
 
-  const checkBackendConnection = async () => {
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/health`, {
-        timeout: 5000
-      });
-      setApiStatus('connected');
-      setAppInfo(response.data);
-    } catch (error) {
-      console.error('Backend connection error:', error);
-      setApiStatus('disconnected');
-    }
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleLogin = (userData, token) => {
+    setIsAuthenticated(true);
+    setUser(userData);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userData', JSON.stringify(userData));
+    setSidebarOpen(getInitialSidebarState());
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUser(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
+  };
+
+  const handleSidebarClose = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  const handleSidebarToggle = useCallback(() => {
+    setSidebarOpen((open) => !open);
+  }, []);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Woodful Creations</h1>
-        <p>AI-Powered Management System</p>
-        <div className="status-container">
-          <div className={`status-badge ${apiStatus}`}>
-            API Status: {apiStatus.toUpperCase()}
-          </div>
-        </div>
-        {appInfo && (
-          <div className="app-info">
-            <p>Service: {appInfo.service}</p>
-          </div>
-        )}
-        {apiStatus === 'disconnected' && (
-          <div className="error-message">
-            Unable to connect to backend. Please ensure the backend server is running on {process.env.REACT_APP_API_URL}
-          </div>
-        )}
-      </header>
-      <main className="App-main">
-        <section className="feature-section">
-          <h2>Welcome to Woodful Creations</h2>
-          <p>Your comprehensive AI-powered business management system</p>
-          <div className="features-grid">
-            <div className="feature-card">
-              <h3>Stock Inventory</h3>
-              <p>Manage inventory with AI-powered alerts</p>
-            </div>
-            <div className="feature-card">
-              <h3>Cost Estimates</h3>
-              <p>Generate beautiful PDF estimates</p>
-            </div>
-            <div className="feature-card">
-              <h3>Client Management</h3>
-              <p>Track clients and their projects</p>
-            </div>
-            <div className="feature-card">
-              <h3>Employee Management</h3>
-              <p>Attendance and salary management</p>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
+    <Provider store={store}>
+      <Router>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              isAuthenticated ? (
+                <Navigate replace to="/dashboard" />
+              ) : (
+                <LoginPage onLogin={handleLogin} />
+              )
+            }
+          />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <AppShell
+                  isSidebarOpen={sidebarOpen}
+                  onLogout={handleLogout}
+                  onSidebarClose={handleSidebarClose}
+                  onSidebarToggle={handleSidebarToggle}
+                  user={user}
+                />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Router>
+    </Provider>
   );
 }
 

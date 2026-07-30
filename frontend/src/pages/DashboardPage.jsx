@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dashboardAPI } from '../utils/api';
 import ChatWidget from '../components/ChatWidget';
-import '../styles/DashboardPage.css';
+import '../styles/pages/DashboardPage.css';
 
 function DashboardPage({ user }) {
   const [stats, setStats] = useState(null);

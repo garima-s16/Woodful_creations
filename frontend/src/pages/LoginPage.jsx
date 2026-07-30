@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../utils/api';
-import '../styles/LoginPage.css';
+import '../styles/pages/LoginPage.css';
 
 function LoginPage({ onLogin }) {
   const navigate = useNavigate();
@@ -23,21 +23,6 @@ function LoginPage({ onLogin }) {
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    setLoading(true);
-    try {
-      const response = await authAPI.login('nikhil@woodful.com', 'nikhil123');
-      const { token, user } = response.data;
-
-      onLogin(user, token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Demo login failed. Please try with email/password.');
     } finally {
       setLoading(false);
     }
@@ -86,25 +71,6 @@ function LoginPage({ onLogin }) {
               {loading ? 'Logging in...' : 'Login'}
             </button>
           </form>
-
-          <div className="demo-section">
-            <p>Try Demo Account</p>
-            <button
-              type="button"
-              className="demo-button"
-              onClick={handleDemoLogin}
-              disabled={loading}
-            >
-              Demo Login
-            </button>
-          </div>
-
-          <div className="test-credentials">
-            <h4>Test Credentials</h4>
-            <p>Master: nikhil@woodful.com / nikhil123</p>
-            <p>Master: garima@woodful.com / garima123</p>
-            <p>User: user@woodful.com / user123</p>
-          </div>
         </div>
 
         <div className="login-illustration">
