@@ -4,7 +4,9 @@ from typing import List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.constants import MATERIAL_TYPES
-from app.database import Alert, Client, Estimate, StockItem
+from app.models.client import Client
+from app.models.estimate import Estimate
+from app.models.product import Product
 
 import logging
 
@@ -39,10 +41,10 @@ class ChatService:
 
     @staticmethod
     def _handle_inventory_query(db: Session) -> Tuple[str, List[str]]:
-        items = db.query(StockItem).all()
+        items = db.query(Product).all()
         total_items = len(items)
         total_quantity = sum(item.quantity for item in items)
-        total_value = sum(item.unit_cost * item.quantity for item in items)
+        total_value = sum(item.price_per_unit * item.quantity for item in items)
 
         response = f"Inventory Summary: {total_items} material types, {total_quantity} units, Rs {total_value:,.2f} total value"
         suggestions = ["View detailed stock", "Generate inventory report", "Check material prices"]
@@ -50,14 +52,14 @@ class ChatService:
 
     @staticmethod
     def _handle_low_stock_query(db: Session) -> Tuple[str, List[str]]:
-        low_items = db.query(StockItem).filter(StockItem.quantity <= StockItem.min_stock).all()
+        low_items = db.query(Product).filter(Product.quantity <= Product.min_quantity).all()
 
         if not low_items:
             return "All materials are above minimum stock levels. No alerts.", []
 
         response = "Low Stock Alert: {count} items below minimum.\n".format(count=len(low_items))
         for item in low_items:
-            response += f"- {item.name}: {item.quantity}/{item.min_stock} units\n"
+            response += f"- {item.material_type} ({item.thickness} mm): {item.quantity}/{item.min_quantity} units\n"
         return response, ["Reorder now", "View detailed alerts", "Generate PO"]
 
     @staticmethod

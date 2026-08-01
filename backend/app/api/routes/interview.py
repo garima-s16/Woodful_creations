@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse
 from app.models.interview import Interview
@@ -10,7 +10,7 @@ from typing import List
 router = APIRouter(prefix="/api/interviews", tags=["recruitment"])
 security = HTTPBearer()
 
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
+def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
     payload = verify_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")

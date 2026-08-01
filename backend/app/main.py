@@ -38,5 +38,8 @@ async def health_check():
 
 
 app.include_router(routes.auth.router)
-app.include_router(routes.users.router)
+app.include_router(routes.dashboard.router)
 app.include_router(routes.inventory.router)
+app.include_router(routes.client.router)
+app.include_router(routes.payment.router)
+app.include_router(routes.chat.router)

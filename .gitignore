@@ -27,3 +27,4 @@ postgres_data/
 .next/
 out/
 .cache/
+.expo/

@@ -1,142 +1,144 @@
-Woodful Creations - AI-Powered Management System
+# Woodful Creations
 
-Welcome to Woodful Creations, a comprehensive business management system designed for woodcraft and furniture design businesses.
+Woodful Creations is a business management system for inventory, clients, estimates, payments, attendance, interviews, analytics, and AI chat.
 
-Quick Start
+This repository now supports:
 
-1. Clone Repository
+- the existing web frontend in `frontend/`
+- the FastAPI backend in `backend/`
+- a native Expo/React Native iPhone app from the repository root
 
-   git clone https://github.com/garima-s16/Woodful_creations.git
-   cd Woodful_creations
+## Repository layout
 
-2. Set Up PostgreSQL
+- `backend/` FastAPI API and database models
+- `frontend/` React web frontend
+- `mobile/` React Native mobile source used by Expo
+- `database/` SQL schema assets
 
-   Follow the setup guide to create the database:
-   - Database: woodful_creations
-   - User: woodful_user
+## Core mobile coverage
 
-3. Backend Setup
+The native app reuses the existing backend APIs and product concepts for:
 
+- authentication
+- dashboard overview
+- inventory
+- clients
+- payments
+- AI chat
+- additional module overviews for estimates, attendance, interviews, and analytics
+
+## Prerequisites
+
+- Node.js 18 or newer
+- npm 9 or newer
+- Python 3.9 or newer
+- PostgreSQL 12 or newer
+- An iPhone with Expo Go installed for the standard device workflow
+
+## Backend setup
+
+1. Create and activate a virtual environment:
+
+   ```bash
    cd backend
    python -m venv venv
+   source venv/bin/activate
+   ```
 
-   Windows:
-     venv\Scripts\activate
+2. Install backend dependencies:
 
-   macOS/Linux:
-     source venv/bin/activate
-
+   ```bash
    pip install -r requirements.txt
+   ```
 
-   Copy .env.example to .env and configure:
-     cp .env.example .env
+3. Create `backend/.env` from `backend/.env.example` and set at least:
+   - `DATABASE_URL`
+   - `SECRET_KEY`
+   - `SERVER_HOST=0.0.0.0`
+   - `SERVER_PORT=8000`
 
-4. Frontend Setup
+4. Start the backend:
+   ```bash
+   python main.py
+   ```
 
+The API should be available at `http://localhost:8000` on the host machine.
+
+## Web frontend setup
+
+1. Install frontend dependencies:
+
+   ```bash
    cd frontend
    npm install
-   cp .env.example .env
+   ```
 
-5. Run Applications
+2. Create `frontend/.env` from `frontend/.env.example`.
 
-   Terminal 1 - Backend:
-     cd backend
-     source venv/bin/activate
-     python main.py
-
-   Terminal 2 - Frontend:
-     cd frontend
-     npm start
-
-   Access the application:
-   - Web: http://localhost:3000
-   - API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-Docker Deployment
-
-   docker-compose up
-
-System Requirements
-
-- Python 3.9+
-- Node.js 14+
-- PostgreSQL 12+
-- 8GB RAM minimum
-
-Default Admin Users
-
-- Username: nikhils / Password: Nikhil*27
-- Username: garimas / Password: Gullak*16
-
-Features
-
-- Stock Inventory Management
-- Cost Estimation
-- Client Management
-- Employee Management
-- Attendance Tracking
-- Interview Management
-- AI Chat Assistant
-- Analytics Dashboard
-- Document Generation
-- Multi-level Access Control
-
-PWA and Mobile / Desktop Install (new)
-
-This project now includes Progressive Web App (PWA) support so the frontend can be installed on iOS (as an "Add to Home Screen" web app), Android, and desktop browsers that support PWAs. The changes are intentionally minimal and avoid new dependencies.
-
-What was changed
-
-- frontend/public/index.html: added PWA meta tags and manifest link; updated viewport and theme-color.
-- frontend/src/index.js: registers a service worker on window load.
-- frontend/src/App.css: added safe-area (iOS notch) CSS variables and mobile tap-target improvements.
-- frontend/public/service-worker.js: added a conservative service worker that caches the app shell and provides network fallback for API requests.
-
-Files that should exist for full PWA behavior (manifest and icons)
-
-- frontend/public/manifest.json: controls install behavior and references icons (icon-192.png and icon-512.png).
-- frontend/public/icons/icon-192.png
-- frontend/public/icons/icon-512.png
-- frontend/public/icons/apple-touch-icon.png
-
-If these manifest and icon files are not present in your local copy, create them as shown in the project notes or add your own images at the locations above. Placeholder icons may be used temporarily but should be replaced with proper artwork for production.
-
-How the service worker works (summary)
-
-- install: caches the application root (index.html) to provide a basic offline shell.
-- fetch: uses a network-first strategy for API (/api/) requests and a cache-first approach for other GET requests. The service worker is conservative to avoid brittle precaching of hashed build assets. For a full precache, migrate to a Workbox-based setup.
-
-Testing the PWA locally
-
-1. Development server (fast feedback)
-
-   cd frontend
-   npm install
+3. Start the web frontend:
+   ```bash
    npm start
+   ```
 
-   Development servers may not always register service workers due to dev tooling. To test PWA behavior, build the production bundle and serve it.
+## Native iPhone app setup with Expo
 
-2. Production build (recommended for testing service worker and installability)
+1. From the repository root, install root dependencies:
 
-   cd frontend
-   npm run build
-   npx serve -s build
+   ```bash
+   npm install
+   ```
 
-   Open the served URL in Chrome/Edge/Firefox or Safari and check DevTools > Application to confirm the manifest and service worker are active. On Android Chrome you should see an install prompt; on iOS open the site in Safari and use "Add to Home Screen".
+2. Start the Expo development server:
 
-Notes and recommendations
+   ```bash
+   npm run mobile:start:tunnel
+   ```
 
-- No new npm packages were added; the frontend remains a Create React App (react-scripts) project.
-- The service worker added here is intentionally simple. If you need robust offline behavior and accurate precaching of built assets, consider using Workbox or CRA's service worker generation during build.
-- To produce native desktop applications (Windows/macOS) instead of a web-installed PWA, consider adding an Electron or Tauri wrapper. This is outside the scope of the present changes and would add build tooling.
-- Replace placeholder icons with final artwork in frontend/public/icons/ to improve user experience when the app is installed.
+   If your local network works reliably, you can also use:
 
-Support
+   ```bash
+   npm run mobile:start
+   ```
 
-For detailed setup instructions, see SETUP_GUIDE.md
-For project details, see PROJECT_INFO.md
+3. Open Expo Go on your iPhone.
 
-License
+4. Scan the QR code shown by Expo.
 
-Private Project - Woodful Creations
+5. In the mobile login screen, set the API server URL to a backend address reachable from your iPhone. Use your computer's LAN IP, for example:
+
+   ```text
+   http://192.168.1.25:8000
+   ```
+
+   Do not use `http://localhost:8000` on the phone unless the backend is running on the phone itself.
+
+6. Tap `Test connection` in the app.
+
+7. Sign in with an existing backend user account.
+
+## iPhone launch notes
+
+- Your iPhone must be able to reach the machine running the backend.
+- `SERVER_HOST=0.0.0.0` allows the backend to listen on the local network.
+- If the QR code connection is blocked by the network, use `npm run mobile:start:tunnel`.
+- The mobile app stores the selected API URL and session locally on the device.
+
+## Useful commands
+
+From the repository root:
+
+```bash
+npm run mobile:start
+npm run mobile:start:tunnel
+npm run mobile:ios
+npm run backend
+npm run frontend
+npm run build
+npm run lint
+```
+
+## Additional documentation
+
+- `SETUP_GUIDE.md` detailed setup steps
+- `LAUNCH_CHECKLIST.md` launch verification checklist
+- `PROJECT_INFO.md` product and architecture summary

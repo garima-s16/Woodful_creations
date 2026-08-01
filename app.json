@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Woodful Creations",
+    "slug": "woodful-creations",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
