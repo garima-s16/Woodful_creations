@@ -207,11 +207,11 @@ Role-based permission system
 
 ### User Credentials
 
-| Role | Username | Password | Email | Phone | Access Level |
-|------|----------|----------|-------|-------|--------------|
-| Master Admin | garimas | Gullak*16 | garima@woodfulcreations.com | +919229083242 | Full |
-| Master Admin | nikhils | Nikhil*27 | nikhil@woodfulcreations.com | 9339555554 | Full |
-| Regular User | shwetav | Shweta*05 | shweta@woodfulcreations.com | - | Limited |
+| Role | Username | Password | Email | Access Level |
+|------|----------|----------|-------|--------------|
+| Master Admin | garimas | \<password\> | garima@woodfulcreations.com | Full |
+| Master Admin | nikhils | \<password\> | nikhil@woodfulcreations.com | Full |
+| Regular User | shwetav | \<password\> | shweta@woodfulcreations.com | Limited |
 
 ---
 
@@ -292,64 +292,16 @@ Woodful_creations/
 
 ## Installation Overview
 
-### Quick Start for Local Environment
+For full installation and configuration steps, refer to **SETUP_GUIDE.md**.
 
-1. **Clone Repository**
-   ```bash
-   git clone https://github.com/garima-s16/Woodful_creations.git
-   cd Woodful_creations
-   ```
+### Quick Start
 
-2. **Set up PostgreSQL Database**
-   ```bash
-   psql -U postgres
-   CREATE DATABASE woodful_creations;
-   CREATE USER woodful_user WITH PASSWORD 'secure_password';
-   GRANT ALL PRIVILEGES ON DATABASE woodful_creations TO woodful_user;
-   ```
-
-3. **Backend Setup**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   pip install -r requirements.txt
-   cp .env.example .env
-   ```
-
-4. **Frontend Setup**
-   ```bash
-   cd ../frontend
-   npm install
-   cp .env.example .env
-   ```
-
-5. **Initialize Database**
-   ```bash
-   cd ../scripts
-   python init_db.py
-   python create_master_user.py --username garimas --password "Gullak*16" --name "Garima" --role admin
-   python create_master_user.py --username nikhils --password "Nikhil*27" --name "Nikhil" --role admin
-   ```
-
-6. **Launch Application** (Open 3 terminals)
-   ```bash
-   # Terminal 1: Backend
-   cd backend && source venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   
-   # Terminal 2: Frontend
-   cd frontend && npm start
-   
-   # Terminal 3: Database (if not running as service)
-   # PostgreSQL should be running
-   ```
-
-7. **Access Application**
-   - Web Interface: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - API Documentation: http://localhost:8000/docs
-
-For detailed instructions, refer to **SETUP_GUIDE.md**
+1. Clone the repository and navigate to the project root.
+2. Set up PostgreSQL with a `woodful_creations` database and a dedicated user.
+3. Configure backend and frontend `.env` files from the provided `.env.example` templates.
+4. Initialize the database schema and create master users using the scripts in `scripts/`.
+5. Start the backend (`uvicorn`) and frontend (`npm start`) servers.
+6. Access the application at http://localhost:3000.
 
 ---
 
@@ -481,7 +433,7 @@ For detailed instructions, refer to **SETUP_GUIDE.md**
 ### Getting Help
 - Check relevant module documentation
 - Review FastAPI Swagger docs at http://localhost:8000/docs
-- Contact development team: Nikhil (9339555554) or Garima (+919229083242)
+- Contact the development team directly
 
 ---
 

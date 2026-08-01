@@ -32,11 +32,7 @@ Then execute these SQL commands:
 
 ```sql
 CREATE DATABASE woodful_creations;
-CREATE USER woodful_user WITH PASSWORD 'your_secure_password';
-ALTER ROLE woodful_user SET client_encoding TO 'utf8';
-ALTER ROLE woodful_user SET default_transaction_isolation TO 'read committed';
-ALTER ROLE woodful_user SET default_transaction_deferrable TO on;
-ALTER ROLE woodful_user SET default_transaction_read_committed TO off;
+CREATE USER woodful_user WITH PASSWORD '<your_secure_password>';
 GRANT ALL PRIVILEGES ON DATABASE woodful_creations TO woodful_user;
 \q
 ```
@@ -224,30 +220,28 @@ psql -U woodful_user -d woodful_creations -c "\dt"
 Create the master administrator accounts and regular users:
 
 ```bash
-# Create Master User 1 - Garima
+# Create Master User 1
 python create_master_user.py \
   --username garimas \
   --name "Garima" \
   --email "garima@woodfulcreations.com" \
-  --password "Gullak*16" \
-  --phone "+919229083242" \
+  --password "<password>" \
   --role admin
 
-# Create Master User 2 - Nikhil
+# Create Master User 2
 python create_master_user.py \
   --username nikhils \
   --name "Nikhil" \
   --email "nikhil@woodfulcreations.com" \
-  --password "Nikhil*27" \
-  --phone "9339555554" \
+  --password "<password>" \
   --role admin
 
-# Create Regular User - Shweta
+# Create Regular User
 python create_master_user.py \
   --username shwetav \
   --name "Shweta" \
   --email "shweta@woodfulcreations.com" \
-  --password "Shweta*05" \
+  --password "<password>" \
   --role user
 ```
 
@@ -375,11 +369,7 @@ Once all services are running:
 
 ### Web Interface
 - **URL**: http://localhost:3000
-- **Default Master Users**:
-  - Username: `garimas`, Password: `Gullak*16`
-  - Username: `nikhils`, Password: `Nikhil*27`
-- **Regular User**:
-  - Username: `shwetav`, Password: `Shweta*05`
+- Log in with the master admin or regular user credentials you created in Step 6.
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
@@ -541,7 +531,7 @@ curl http://localhost:8000/api/health
 # Test login endpoint
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"garimas","password":"Gullak*16"}'
+  -d '{"username":"<username>","password":"<password>"}'
 ```
 
 ### Test Frontend Connection
@@ -616,7 +606,6 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
-- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
 
 ---
 
