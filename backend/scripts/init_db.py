@@ -43,9 +43,8 @@ def seed_master_users():
             password = os.getenv(master_user["password_env"])
             if not password:
                 logger.warning(
-                    "Skipping master user %s because %s is not set",
+                    "Skipping master user %s because a required password environment variable is not set",
                     master_user["username"],
-                    master_user["password_env"],
                 )
                 continue
 
