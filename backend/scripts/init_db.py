@@ -19,34 +19,47 @@ def init_database():
 def seed_master_users():
     db = SessionLocal()
     try:
-        existing_nikhil = db.query(User).filter(User.email == "nikhils@woodful.com").first()
-        existing_garima = db.query(User).filter(User.email == "garimas@woodful.com").first()
-        
-        if not existing_nikhil:
-            nikhil = User(
-                email="nikhils@woodful.com",
-                username="nikhils",
-                full_name="Nikhil",
-                hashed_password=hash_password("Nikhil*27"),
+        master_users = [
+            {
+                "email": "nikhils@woodful.com",
+                "username": "nikhils",
+                "full_name": "Nikhil",
+                "password_env": "MASTER_USER1_PASSWORD",
+            },
+            {
+                "email": "garimas@woodful.com",
+                "username": "garimas",
+                "full_name": "Garima",
+                "password_env": "MASTER_USER2_PASSWORD",
+            },
+        ]
+
+        for master_user in master_users:
+            existing_user = db.query(User).filter(User.email == master_user["email"]).first()
+
+            if existing_user:
+                continue
+
+            password = os.getenv(master_user["password_env"])
+            if not password:
+                logger.warning(
+                    "Skipping master user %s because %s is not set",
+                    master_user["username"],
+                    master_user["password_env"],
+                )
+                continue
+
+            user = User(
+                email=master_user["email"],
+                username=master_user["username"],
+                full_name=master_user["full_name"],
+                hashed_password=hash_password(password),
                 is_active=True,
                 is_master=True,
                 role="master"
             )
-            db.add(nikhil)
-            logger.info("Master user Nikhil created")
-        
-        if not existing_garima:
-            garima = User(
-                email="garimas@woodful.com",
-                username="garimas",
-                full_name="Garima",
-                hashed_password=hash_password("Gullak*16"),
-                is_active=True,
-                is_master=True,
-                role="master"
-            )
-            db.add(garima)
-            logger.info("Master user Garima created")
+            db.add(user)
+            logger.info("Master user %s created", master_user["full_name"])
         
         db.commit()
     except Exception as e:

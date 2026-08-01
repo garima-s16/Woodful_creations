@@ -207,11 +207,13 @@ Role-based permission system
 
 ### User Credentials
 
-| Role | Username | Password | Email | Phone | Access Level |
-|------|----------|----------|-------|-------|--------------|
-| Master Admin | garimas | Gullak*16 | garima@woodfulcreations.com | +919229083242 | Full |
-| Master Admin | nikhils | Nikhil*27 | nikhil@woodfulcreations.com | 9339555554 | Full |
-| Regular User | shwetav | Shweta*05 | shweta@woodfulcreations.com | - | Limited |
+Credentials are created during local setup and should not be stored in repository files.
+
+| Role | Suggested Username | Suggested Email | Access Level |
+|------|--------------------|-----------------|--------------|
+| Master Admin | `garimas` | `admin1@example.com` | Full |
+| Master Admin | `nikhils` | `admin2@example.com` | Full |
+| Regular User | `shwetav` | `user@example.com` | Limited |
 
 ---
 
@@ -328,8 +330,8 @@ Woodful_creations/
    ```bash
    cd ../scripts
    python init_db.py
-   python create_master_user.py --username garimas --password "Gullak*16" --name "Garima" --role admin
-   python create_master_user.py --username nikhils --password "Nikhil*27" --name "Nikhil" --role admin
+   python create_master_user.py --username garimas --name "Garima" --email "admin1@example.com" --role admin
+   python create_master_user.py --username nikhils --name "Nikhil" --email "admin2@example.com" --role admin
    ```
 
 6. **Launch Application** (Open 3 terminals)
@@ -481,7 +483,7 @@ For detailed instructions, refer to **SETUP_GUIDE.md**
 ### Getting Help
 - Check relevant module documentation
 - Review FastAPI Swagger docs at http://localhost:8000/docs
-- Contact development team: Nikhil (9339555554) or Garima (+919229083242)
+- Contact the development team through your internal support channel
 
 ---
 

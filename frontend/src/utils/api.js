@@ -11,9 +11,11 @@ const client = axios.create({
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
+
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = 'Bearer ' + token;
   }
+
   return config;
 });
 
@@ -25,13 +27,13 @@ client.interceptors.response.use(
       localStorage.removeItem('userData');
       window.location.href = '/';
     }
+
     return Promise.reject(error);
   }
 );
 
 export const authAPI = {
-  login: (email, password) =>
-    client.post('/api/auth/login', { email, password }),
+  login: (email, password) => client.post('/api/auth/login', { email, password }),
 };
 
 export const dashboardAPI = {

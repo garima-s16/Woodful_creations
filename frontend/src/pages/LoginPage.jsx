@@ -28,21 +28,6 @@ function LoginPage({ onLogin }) {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
-    try {
-      const response = await authAPI.login('nikhil@woodful.com', 'nikhil123');
-      const { token, user } = response.data;
-
-      onLogin(user, token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Demo login failed. Please try with email/password.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="login-page">
       <div className="login-container">
@@ -88,22 +73,8 @@ function LoginPage({ onLogin }) {
           </form>
 
           <div className="demo-section">
-            <p>Try Demo Account</p>
-            <button
-              type="button"
-              className="demo-button"
-              onClick={handleDemoLogin}
-              disabled={loading}
-            >
-              Demo Login
-            </button>
-          </div>
-
-          <div className="test-credentials">
-            <h4>Test Credentials</h4>
-            <p>Master: nikhil@woodful.com / nikhil123</p>
-            <p>Master: garima@woodful.com / garima123</p>
-            <p>User: user@woodful.com / user123</p>
+            <p>Use an account created in your local environment.</p>
+            <p>Keep passwords out of repository files and screenshots.</p>
           </div>
         </div>
 

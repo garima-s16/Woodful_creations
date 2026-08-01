@@ -1,151 +1,260 @@
 .App {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background:
+    radial-gradient(circle at top, rgba(138, 92, 54, 0.15), transparent 32%),
+    linear-gradient(180deg, #f6f1ea 0%, #f2f5f8 52%, #eef2f5 100%);
+  color: #1f2933;
 }
 
-.App-header {
-  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-  color: white;
-  padding: 40px 20px;
-  text-align: center;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+.hero {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 72px 24px 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 24px;
+  align-items: stretch;
 }
 
-.App-header h1 {
-  font-size: 2.5rem;
-  margin-bottom: 10px;
+.hero-copy,
+.status-panel,
+.feature-section,
+.detail-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+}
+
+.hero-copy {
+  padding: 40px;
+}
+
+.eyebrow {
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.8rem;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  color: #8a5c36;
 }
 
-.App-header p {
+.hero h1 {
+  font-size: clamp(2.4rem, 5vw, 4.3rem);
+  line-height: 1.05;
+  margin-bottom: 16px;
+  color: #18212b;
+}
+
+.hero-text {
   font-size: 1.1rem;
-  opacity: 0.9;
-  margin-bottom: 20px;
+  line-height: 1.7;
+  color: #52606d;
+  max-width: 680px;
 }
 
-.status-container {
-  margin: 20px 0;
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.primary-action,
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.primary-action {
+  border: none;
+  background: #8a5c36;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(138, 92, 54, 0.28);
+}
+
+.secondary-action {
+  border: 1px solid #d4dce5;
+  color: #243b53;
+  background: #fff;
+}
+
+.primary-action:hover,
+.secondary-action:hover {
+  transform: translateY(-1px);
+}
+
+.status-panel {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .status-badge {
-  display: inline-block;
-  padding: 10px 20px;
-  border-radius: 25px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
 }
 
 .status-badge.connected {
-  background-color: #27ae60;
-  color: white;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .status-badge.disconnected {
-  background-color: #e74c3c;
-  color: white;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .status-badge.checking {
-  background-color: #f39c12;
-  color: white;
+  background: #fef3c7;
+  color: #92400e;
 }
 
-.app-info {
-  margin-top: 15px;
-  font-size: 0.95rem;
-  opacity: 0.8;
+.status-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7b8794;
+}
+
+.status-value,
+.app-info p {
+  color: #243b53;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
 .error-message {
-  background-color: rgba(231, 76, 60, 0.2);
-  color: #fff;
-  padding: 12px 20px;
-  border-radius: 5px;
-  margin-top: 15px;
-  font-size: 0.9rem;
-  border-left: 4px solid #e74c3c;
+  margin-top: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #fff1f2;
+  color: #9f1239;
+  line-height: 1.6;
+  border: 1px solid #fecdd3;
 }
 
 .App-main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 40px 20px;
+  padding: 0 24px 56px;
 }
 
 .feature-section {
-  background: white;
-  border-radius: 10px;
-  padding: 40px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  padding: 36px;
 }
 
-.feature-section h2 {
-  font-size: 2rem;
-  color: #2c3e50;
-  margin-bottom: 10px;
-  text-align: center;
+.section-heading {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 28px;
 }
 
-.feature-section > p {
-  text-align: center;
-  color: #7f8c8d;
-  margin-bottom: 40px;
-  font-size: 1.1rem;
+.section-heading h2,
+.detail-card h2 {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  color: #18212b;
+}
+
+.section-heading p,
+.detail-card p,
+.detail-card li {
+  color: #52606d;
+  line-height: 1.7;
 }
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-top: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px;
 }
 
 .feature-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 30px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.feature-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  padding: 24px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e5e7eb;
 }
 
 .feature-card h3 {
-  font-size: 1.3rem;
-  margin-bottom: 10px;
-  font-weight: 600;
+  font-size: 1.15rem;
+  margin-bottom: 14px;
+  color: #243b53;
 }
 
-.feature-card p {
+.feature-card ul {
+  padding-left: 18px;
+  color: #52606d;
+  line-height: 1.8;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.detail-card {
+  padding: 28px;
+}
+
+.detail-card ol {
+  padding-left: 20px;
+  margin: 16px 0;
+}
+
+.helper-text {
   font-size: 0.95rem;
-  opacity: 0.9;
-  line-height: 1.5;
+}
+
+.detail-card code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 6px;
 }
 
 @media (max-width: 768px) {
-  .App-header h1 {
-    font-size: 1.8rem;
-  }
-
-  .App-header p {
-    font-size: 1rem;
-  }
-
-  .feature-section {
-    padding: 25px;
-  }
-
-  .feature-section h2 {
-    font-size: 1.5rem;
-  }
-
-  .features-grid {
+  .hero {
     grid-template-columns: 1fr;
+    padding: 28px 16px 24px;
+  }
+
+  .hero-copy,
+  .status-panel,
+  .feature-section,
+  .detail-card {
+    padding: 24px;
+  }
+
+  .App-main {
+    padding: 0 16px 40px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .primary-action,
+  .secondary-action {
+    width: 100%;
   }
 }

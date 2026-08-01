@@ -2,55 +2,22 @@
   "name": "woodful-creations",
   "version": "1.0.0",
   "description": "Woodful Creations - Beautiful UI for stock inventory, estimates, attendance, interviews, and client management",
-  "main": "index.js",
   "scripts": {
-    "install-all": "npm install && cd frontend && npm install && cd ..",
+    "install-all": "npm install && npm run install:web",
+    "install:web": "cd frontend && npm install",
+    "install:mobile": "cd mobile && npm install",
     "start": "concurrently \"npm run backend\" \"npm run frontend\"",
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
     "backend": "cd backend && python main.py",
     "frontend": "cd frontend && npm start",
+    "mobile": "cd mobile && npm start",
     "build": "cd frontend && npm run build",
     "test": "cd frontend && npm test",
     "lint": "cd frontend && npm run lint",
     "format": "cd frontend && npm run format"
   },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-native": "^0.72.0",
-    "react-native-web": "^0.19.0",
-    "react-router-dom": "^6.20.0",
-    "axios": "^1.5.0",
-    "redux": "^4.2.0",
-    "react-redux": "^8.1.0",
-    "redux-thunk": "^2.4.2",
-    "@reduxjs/toolkit": "^1.9.5",
-    "formik": "^2.4.5",
-    "yup": "^1.2.0",
-    "date-fns": "^2.30.0",
-    "lodash": "^4.17.21"
-  },
   "devDependencies": {
-    "concurrently": "^8.2.0",
-    "react-scripts": "5.0.1",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "typescript": "^5.2.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.1.0",
-    "eslint": "^8.50.0",
-    "prettier": "^3.0.0"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "concurrently": "^8.2.0"
   },
   "keywords": [
     "woodful",

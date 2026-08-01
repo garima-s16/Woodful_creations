@@ -228,26 +228,21 @@ Create the master administrator accounts and regular users:
 python create_master_user.py \
   --username garimas \
   --name "Garima" \
-  --email "garima@woodfulcreations.com" \
-  --password "Gullak*16" \
-  --phone "+919229083242" \
+  --email "admin1@example.com" \
   --role admin
 
 # Create Master User 2 - Nikhil
 python create_master_user.py \
   --username nikhils \
   --name "Nikhil" \
-  --email "nikhil@woodfulcreations.com" \
-  --password "Nikhil*27" \
-  --phone "9339555554" \
+  --email "admin2@example.com" \
   --role admin
 
 # Create Regular User - Shweta
 python create_master_user.py \
   --username shwetav \
   --name "Shweta" \
-  --email "shweta@woodfulcreations.com" \
-  --password "Shweta*05" \
+  --email "user@example.com" \
   --role user
 ```
 
@@ -375,11 +370,7 @@ Once all services are running:
 
 ### Web Interface
 - **URL**: http://localhost:3000
-- **Default Master Users**:
-  - Username: `garimas`, Password: `Gullak*16`
-  - Username: `nikhils`, Password: `Nikhil*27`
-- **Regular User**:
-  - Username: `shwetav`, Password: `Shweta*05`
+- **Users**: sign in with the accounts you created locally during setup
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
@@ -541,7 +532,7 @@ curl http://localhost:8000/api/health
 # Test login endpoint
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"garimas","password":"Gullak*16"}'
+  -d '{"email":"admin1@example.com","password":"<your-password>"}'
 ```
 
 ### Test Frontend Connection
@@ -616,7 +607,7 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
-- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
+- Woodful Team: use your internal contact list
 
 ---
 
