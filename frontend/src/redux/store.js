@@ -1,11 +1,21 @@
 import { configureStore } from '@reduxjs/toolkit';
-import authReducer from './slices/authSlice';
-import inventoryReducer from './slices/inventorySlice';
+import settingsReducer from './slices/settingsSlice';
+import suppliersReducer from './slices/suppliersSlice';
+import materialsReducer from './slices/materialsSlice';
+import purchasesReducer from './slices/purchasesSlice';
+import issuesReducer from './slices/issuesSlice';
+import ordersReducer from './slices/ordersSlice';
+import paymentsReducer from './slices/paymentsSlice';
 
 const store = configureStore({
   reducer: {
-    auth: authReducer,
-    inventory: inventoryReducer,
+    settings: settingsReducer,
+    suppliers: suppliersReducer,
+    materials: materialsReducer,
+    purchases: purchasesReducer,
+    issues: issuesReducer,
+    orders: ordersReducer,
+    payments: paymentsReducer,
   },
 });
 
