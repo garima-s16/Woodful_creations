@@ -1,116 +1,82 @@
 from sqlalchemy.orm import Session
-from typing import List, Dict, Optional
-from datetime import datetime
-from app.database import StockItem, StockHistory, Alert
-from app.core.constants import MATERIAL_TYPES, ALERT_TYPES
-from app.core.exceptions import LowStockError, InvalidMaterialError, InvalidThicknessError
-import logging
-
-logger = logging.getLogger(__name__)
+from app.models.material import Material
+from app.models.purchase import PurchaseOrder
+from app.models.issue import MaterialIssue
+from typing import List, Dict, Any
 
 class StockService:
-    @staticmethod
-    def validate_material(material_type: str, thickness: float) -> bool:
-        if material_type not in MATERIAL_TYPES:
-            raise InvalidMaterialError(material_type)
-        
-        if thickness not in MATERIAL_TYPES[material_type]:
-            raise InvalidThicknessError(material_type, thickness)
-        
-        return True
     
     @staticmethod
-    def get_low_stock_items(db: Session) -> List[Dict]:
-        items = db.query(StockItem).filter(StockItem.quantity <= StockItem.min_stock).all()
-        return items
+    def update_stock_on_purchase(db: Session, material_id: int, quantity: int) -> Material:
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            material.total_purchased += quantity
+            material.current_stock = material.calculate_current_stock()
+            db.add(material)
+            db.commit()
+            db.refresh(material)
+        return material
     
     @staticmethod
-    def create_low_stock_alert(db: Session, item_id: int, user_id: int) -> Alert:
-        item = db.query(StockItem).filter(StockItem.id == item_id).first()
-        if not item:
-            return None
-        
-        alert = Alert(
-            user_id=user_id,
-            alert_type="LOW_STOCK",
-            title=f"Low Stock: {item.name}",
-            message=f"{item.name} ({item.quantity} units) is below minimum ({item.min_stock} units)",
-            related_item_id=item_id,
-            priority="high"
-        )
-        db.add(alert)
-        db.commit()
-        return alert
+    def update_stock_on_issue(db: Session, material_id: int, quantity: int) -> Material:
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            if material.current_stock < quantity:
+                raise ValueError(f"Insufficient stock. Available: {material.current_stock}")
+            material.total_issued += quantity
+            material.current_stock = material.calculate_current_stock()
+            db.add(material)
+            db.commit()
+            db.refresh(material)
+        return material
     
     @staticmethod
-    def record_stock_movement(db: Session, item_id: int, transaction_type: str, quantity: int, 
-                             notes: Optional[str], performed_by: int) -> StockHistory:
-        history = StockHistory(
-            stock_item_id=item_id,
-            transaction_type=transaction_type,
-            quantity_changed=quantity,
-            reason=notes,
-            performed_by=performed_by
-        )
-        db.add(history)
-        db.commit()
-        return history
+    def get_low_stock_materials(db: Session) -> List[Material]:
+        materials = db.query(Material).filter(
+            Material.current_stock <= Material.minimum_stock,
+            Material.is_active == 1
+        ).all()
+        return materials
     
     @staticmethod
-    def update_stock_quantity(db: Session, item_id: int, new_quantity: int, 
-                             transaction_type: str, notes: Optional[str], performed_by: int) -> StockItem:
-        item = db.query(StockItem).filter(StockItem.id == item_id).first()
-        if not item:
-            return None
+    def get_stock_summary(db: Session) -> Dict[str, Any]:
+        materials = db.query(Material).filter(Material.is_active == 1).all()
         
-        quantity_changed = new_quantity - item.quantity
-        item.quantity = new_quantity
-        item.updated_at = datetime.utcnow()
+        total_stock_value = 0
+        low_stock_count = 0
+        out_of_stock_count = 0
         
-        StockService.record_stock_movement(db, item_id, transaction_type, quantity_changed, notes, performed_by)
-        
-        if new_quantity <= item.min_stock:
-            StockService.create_low_stock_alert(db, item_id, performed_by)
-        
-        db.add(item)
-        db.commit()
-        db.refresh(item)
-        return item
-    
-    @staticmethod
-    def get_stock_value(db: Session) -> Dict:
-        items = db.query(StockItem).all()
-        total_value = sum(item.unit_cost * item.quantity for item in items)
-        total_items = len(items)
-        total_quantity = sum(item.quantity for item in items)
+        for material in materials:
+            material.current_stock = material.calculate_current_stock()
+            status = material.get_stock_status()
+            
+            if status == "LOW_STOCK":
+                low_stock_count += 1
+            elif status == "OUT_OF_STOCK":
+                out_of_stock_count += 1
         
         return {
-            "total_items": total_items,
-            "total_quantity": total_quantity,
-            "total_value": round(total_value, 2),
-            "average_item_value": round(total_value / total_items, 2) if total_items > 0 else 0
+            "total_materials": len(materials),
+            "low_stock_count": low_stock_count,
+            "out_of_stock_count": out_of_stock_count
         }
     
     @staticmethod
-    def get_material_statistics(db: Session) -> Dict:
-        items = db.query(StockItem).all()
-        materials = {}
+    def get_stock_by_category(db: Session) -> Dict[str, Dict[str, Any]]:
+        materials = db.query(Material).filter(Material.is_active == 1).all()
+        category_summary = {}
         
-        for item in items:
-            material = item.name
-            if material not in materials:
-                materials[material] = {
-                    "total_quantity": 0,
-                    "total_value": 0,
-                    "units": []
+        for material in materials:
+            material.current_stock = material.calculate_current_stock()
+            category = material.category
+            
+            if category not in category_summary:
+                category_summary[category] = {
+                    "total_items": 0,
+                    "total_quantity": 0
                 }
             
-            materials[material]["total_quantity"] += item.quantity
-            materials[material]["total_value"] += item.unit_cost * item.quantity
-            materials[material]["units"].append({
-                "id": item.id,
-                "quantity": item.quantity,
-                "sku": item.sku
-            })
+            category_summary[category]["total_items"] += 1
+            category_summary[category]["total_quantity"] += material.current_stock
         
-        return materials
+        return category_summary
