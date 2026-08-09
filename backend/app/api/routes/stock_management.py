@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -116,7 +116,7 @@ def create_stock_in(payload: StockInCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Material not found")
     stock_in = StockIn(**payload.model_dump(exclude_none=True))
     if stock_in.purchased_at is None:
-        stock_in.purchased_at = datetime.utcnow()
+        stock_in.purchased_at = datetime.now(timezone.utc)
     db.add(stock_in)
     db.commit()
     db.refresh(stock_in)
@@ -141,7 +141,7 @@ def create_stock_out(payload: StockOutCreate, db: Session = Depends(get_db)):
 
     stock_out = StockOut(**payload.model_dump(exclude_none=True))
     if stock_out.issued_at is None:
-        stock_out.issued_at = datetime.utcnow()
+        stock_out.issued_at = datetime.now(timezone.utc)
     db.add(stock_out)
     db.commit()
     db.refresh(stock_out)
@@ -207,6 +207,8 @@ def download_stock_report(db: Session = Depends(get_db)):
     suppliers = db.query(Supplier).order_by(Supplier.name.asc()).all()
     summary = dashboard_data(materials, settings.reorder_buffer)
     material_views = [material_to_view(m, settings.reorder_buffer) for m in materials]
+    supplier_map = {supplier.id: supplier.name for supplier in suppliers}
+    material_map = {material.id: material.name for material in materials}
 
     wb = Workbook()
 
@@ -216,13 +218,18 @@ def download_stock_report(db: Session = Depends(get_db)):
     ws_dashboard["A1"] = f"{settings.company_name} - STOCK MANAGEMENT DASHBOARD"
     ws_dashboard["A1"].font = TITLE_FONT
     _style_header(ws_dashboard, 3, ["Metric", "Value", "", ""])
+    metric_rows = []
     ws_dashboard.append(["Total Stock Value", summary["total_stock_value"]])
+    metric_rows.append(ws_dashboard.max_row)
     ws_dashboard.append(["Low Stock Items", summary["low_stock_items"]])
+    metric_rows.append(ws_dashboard.max_row)
     ws_dashboard.append(["Out of Stock", summary["out_of_stock_items"]])
+    metric_rows.append(ws_dashboard.max_row)
     ws_dashboard.append(["Purchase Value", summary["purchase_value"]])
+    metric_rows.append(ws_dashboard.max_row)
 
-    ws_dashboard["B4"].number_format = '#,##0.00'
-    ws_dashboard["B7"].number_format = '#,##0.00'
+    ws_dashboard[f"B{metric_rows[0]}"].number_format = "#,##0.00"
+    ws_dashboard[f"B{metric_rows[3]}"].number_format = "#,##0.00"
 
     ws_dashboard.append([])
     start_row = ws_dashboard.max_row + 1
@@ -248,7 +255,7 @@ def download_stock_report(db: Session = Depends(get_db)):
         ws_materials.append([
             row["name"],
             row["category"],
-            (next((s.name for s in suppliers if s.id == row["supplier_id"]), "") if row["supplier_id"] else ""),
+            supplier_map.get(row["supplier_id"], "") if row["supplier_id"] else "",
             row["unit"],
             row["opening_stock"],
             row["current_stock"],
@@ -261,13 +268,13 @@ def download_stock_report(db: Session = Depends(get_db)):
     ws_in = wb.create_sheet("Stock In - Purchases")
     _style_header(ws_in, 1, ["Date", "Material", "Qty", "Unit Price", "Invoice", "Notes"])
     for row in stock_in_rows:
-        material_name = next((m.name for m in materials if m.id == row.material_id), "")
+        material_name = material_map.get(row.material_id, "")
         ws_in.append([row.purchased_at.isoformat(), material_name, row.quantity, row.unit_price, row.invoice_number, row.notes])
 
     ws_out = wb.create_sheet("Stock Out - Issues")
     _style_header(ws_out, 1, ["Date", "Material", "Qty", "Issued To", "Notes"])
     for row in stock_out_rows:
-        material_name = next((m.name for m in materials if m.id == row.material_id), "")
+        material_name = material_map.get(row.material_id, "")
         ws_out.append([row.issued_at.isoformat(), material_name, row.quantity, row.issued_to, row.notes])
 
     ws_suppliers = wb.create_sheet("Suppliers")
@@ -282,7 +289,7 @@ def download_stock_report(db: Session = Depends(get_db)):
     wb.save(stream)
     stream.seek(0)
 
-    filename = f"stock-management-report-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.xlsx"
+    filename = f"stock-management-report-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.xlsx"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(
         stream,

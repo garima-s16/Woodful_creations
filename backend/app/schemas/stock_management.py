@@ -119,3 +119,4 @@ class DashboardSummary(BaseModel):
     purchase_value: float
     category_summary: list[dict]
     low_stock_action_list: list[dict]
+    generated_at: datetime

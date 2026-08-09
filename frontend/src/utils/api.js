@@ -7,7 +7,8 @@ const resolveApiBaseUrl = () => {
 
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const host = window.location.hostname;
-    return `http://${host}:8000`;
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    return `${protocol}//${host}:8000`;
   }
 
   return 'http://localhost:8000';

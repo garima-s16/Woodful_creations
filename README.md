@@ -115,9 +115,13 @@ Then:
 3. File downloads from backend report endpoint.
 
 ## Quick start from repo root
+> Activate backend Python virtual environment in your terminal before running these scripts.
+
 ```bash
 npm run install-all
 npm run dev
 # or run web+backend+mobile together
 npm run dev:all
 ```
+
+Mobile note: Excel action in Expo currently opens the backend report URL in the device browser for download/share flow.

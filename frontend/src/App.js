@@ -153,61 +153,85 @@ function App() {
       supplier_id: materialForm.supplier_id ? Number(materialForm.supplier_id) : null,
     };
 
-    await stockManagementAPI.createMaterial(payload);
-    setMaterialForm({ name: '', category: '', unit: 'sheet', opening_stock: 0, minimum_stock: 0, unit_price: 0, supplier_id: '' });
-    await refreshAll();
+    try {
+      await stockManagementAPI.createMaterial(payload);
+      setMaterialForm({ name: '', category: '', unit: 'sheet', opening_stock: 0, minimum_stock: 0, unit_price: 0, supplier_id: '' });
+      await refreshAll();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to add material.');
+    }
   };
 
   const submitStockIn = async (e) => {
     e.preventDefault();
     if (!stockInForm.material_id) return setError('Select material for stock in.');
-    await stockManagementAPI.createStockIn({
-      material_id: Number(stockInForm.material_id),
-      quantity: Number(stockInForm.quantity),
-      unit_price: stockInForm.unit_price === '' ? null : Number(stockInForm.unit_price),
-    });
-    setStockInForm({ material_id: '', quantity: 1, unit_price: '' });
-    await refreshAll();
+    try {
+      await stockManagementAPI.createStockIn({
+        material_id: Number(stockInForm.material_id),
+        quantity: Number(stockInForm.quantity),
+        unit_price: stockInForm.unit_price === '' ? null : Number(stockInForm.unit_price),
+      });
+      setStockInForm({ material_id: '', quantity: 1, unit_price: '' });
+      await refreshAll();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to add stock-in entry.');
+    }
   };
 
   const submitStockOut = async (e) => {
     e.preventDefault();
     if (!stockOutForm.material_id) return setError('Select material for stock out.');
-    await stockManagementAPI.createStockOut({
-      material_id: Number(stockOutForm.material_id),
-      quantity: Number(stockOutForm.quantity),
-      issued_to: stockOutForm.issued_to || null,
-    });
-    setStockOutForm({ material_id: '', quantity: 1, issued_to: '' });
-    await refreshAll();
+    try {
+      await stockManagementAPI.createStockOut({
+        material_id: Number(stockOutForm.material_id),
+        quantity: Number(stockOutForm.quantity),
+        issued_to: stockOutForm.issued_to || null,
+      });
+      setStockOutForm({ material_id: '', quantity: 1, issued_to: '' });
+      await refreshAll();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to add stock-out entry.');
+    }
   };
 
   const submitSupplier = async (e) => {
     e.preventDefault();
     if (!supplierForm.name) return setError('Supplier name is required.');
-    await stockManagementAPI.createSupplier(supplierForm);
-    setSupplierForm({ name: '', contact_person: '', phone: '' });
-    await refreshAll();
+    try {
+      await stockManagementAPI.createSupplier(supplierForm);
+      setSupplierForm({ name: '', contact_person: '', phone: '' });
+      await refreshAll();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to add supplier.');
+    }
   };
 
   const saveSettings = async (e) => {
     e.preventDefault();
-    await stockManagementAPI.updateSettings({
-      company_name: settings.company_name,
-      currency: settings.currency,
-      reorder_buffer: Number(settings.reorder_buffer),
-    });
-    await refreshAll();
+    try {
+      await stockManagementAPI.updateSettings({
+        company_name: settings.company_name,
+        currency: settings.currency,
+        reorder_buffer: Number(settings.reorder_buffer),
+      });
+      await refreshAll();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to update settings.');
+    }
   };
 
   const downloadExcel = async () => {
-    const response = await stockManagementAPI.downloadExcel();
-    const url = URL.createObjectURL(new Blob([response.data]));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'stock-management-report.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const response = await stockManagementAPI.downloadExcel();
+      const url = URL.createObjectURL(new Blob([response.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stock-management-report.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to download Excel report.');
+    }
   };
 
   return (

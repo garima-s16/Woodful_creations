@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const USING_LOCALHOST_FALLBACK = !process.env.EXPO_PUBLIC_API_URL;
 const tabs = ['Dashboard', 'Material Master', 'Stock In', 'Stock Out', 'Suppliers', 'Settings'];
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
@@ -22,6 +23,24 @@ async function api(path, options = {}) {
     throw new Error(data.detail || 'Request failed');
   }
   return res.json();
+}
+
+function MaterialSelector({ materials, selectedId, onSelect }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorRow}>
+      {materials.map((material) => (
+        <TouchableOpacity
+          key={material.id}
+          style={[styles.selectorChip, String(material.id) === String(selectedId) && styles.selectorChipActive]}
+          onPress={() => onSelect(String(material.id))}
+        >
+          <Text style={String(material.id) === String(selectedId) ? styles.selectorChipTextActive : styles.selectorChipText}>
+            {material.name}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
 }
 
 export default function App() {
@@ -59,62 +78,98 @@ export default function App() {
   useEffect(() => { refresh(); }, []);
 
   const addMaterial = async () => {
-    if (!materialForm.name || !materialForm.category) return setError('Name and category are required');
-    await api('/api/stock-management/materials', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({
-        ...materialForm,
-        opening_stock: Number(materialForm.opening_stock || 0),
-        minimum_stock: Number(materialForm.minimum_stock || 0),
-        unit_price: Number(materialForm.unit_price || 0),
-        supplier_id: materialForm.supplier_id ? Number(materialForm.supplier_id) : null,
-      }),
-    });
-    setMaterialForm({ name: '', category: '', opening_stock: '0', minimum_stock: '0', unit_price: '0', unit: 'sheet', supplier_id: '' });
-    await refresh();
+    if (!materialForm.name || !materialForm.category) {
+      setError('Name and category are required');
+      return;
+    }
+
+    try {
+      await api('/api/stock-management/materials', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          ...materialForm,
+          opening_stock: Number(materialForm.opening_stock || 0),
+          minimum_stock: Number(materialForm.minimum_stock || 0),
+          unit_price: Number(materialForm.unit_price || 0),
+          supplier_id: materialForm.supplier_id ? Number(materialForm.supplier_id) : null,
+        }),
+      });
+      setMaterialForm({ name: '', category: '', opening_stock: '0', minimum_stock: '0', unit_price: '0', unit: 'sheet', supplier_id: '' });
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   const addStockIn = async () => {
-    if (!stockInForm.material_id) return setError('Select material for stock in');
-    await api('/api/stock-management/stock-in', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ material_id: Number(stockInForm.material_id), quantity: Number(stockInForm.quantity || 0) }),
-    });
-    setStockInForm({ material_id: '', quantity: '1' });
-    await refresh();
+    if (!stockInForm.material_id) {
+      setError('Select material for stock in');
+      return;
+    }
+
+    try {
+      await api('/api/stock-management/stock-in', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ material_id: Number(stockInForm.material_id), quantity: Number(stockInForm.quantity || 0) }),
+      });
+      setStockInForm({ material_id: '', quantity: '1' });
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   const addStockOut = async () => {
-    if (!stockOutForm.material_id) return setError('Select material for stock out');
-    await api('/api/stock-management/stock-out', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ material_id: Number(stockOutForm.material_id), quantity: Number(stockOutForm.quantity || 0) }),
-    });
-    setStockOutForm({ material_id: '', quantity: '1' });
-    await refresh();
+    if (!stockOutForm.material_id) {
+      setError('Select material for stock out');
+      return;
+    }
+
+    try {
+      await api('/api/stock-management/stock-out', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ material_id: Number(stockOutForm.material_id), quantity: Number(stockOutForm.quantity || 0) }),
+      });
+      setStockOutForm({ material_id: '', quantity: '1' });
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   const addSupplier = async () => {
-    if (!supplierName) return setError('Supplier name is required');
-    await api('/api/stock-management/suppliers', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ name: supplierName }),
-    });
-    setSupplierName('');
-    await refresh();
+    if (!supplierName) {
+      setError('Supplier name is required');
+      return;
+    }
+
+    try {
+      await api('/api/stock-management/suppliers', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ name: supplierName }),
+      });
+      setSupplierName('');
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   const saveSettings = async () => {
-    await api('/api/stock-management/settings', {
-      method: 'PUT',
-      headers: jsonHeaders,
-      body: JSON.stringify({ company_name: settings.company_name, currency: settings.currency, reorder_buffer: Number(settings.reorder_buffer || 1) }),
-    });
-    await refresh();
+    try {
+      await api('/api/stock-management/settings', {
+        method: 'PUT',
+        headers: jsonHeaders,
+        body: JSON.stringify({ company_name: settings.company_name, currency: settings.currency, reorder_buffer: Number(settings.reorder_buffer || 1) }),
+      });
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   return (
@@ -130,6 +185,11 @@ export default function App() {
       </ScrollView>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {USING_LOCALHOST_FALLBACK ? (
+        <Text style={styles.warning}>
+          EXPO_PUBLIC_API_URL is not set. For physical iPhone, set it to your computer LAN IP.
+        </Text>
+      ) : null}
 
       <ScrollView style={styles.body}>
         {activeTab === 'Dashboard' && dashboard ? (
@@ -159,19 +219,21 @@ export default function App() {
 
         {activeTab === 'Stock In' ? (
           <>
-            <TextInput style={styles.input} placeholder="Material ID" keyboardType="numeric" value={stockInForm.material_id} onChangeText={(v) => setStockInForm({ ...stockInForm, material_id: v })} />
+            <Text style={styles.caption}>Select material</Text>
+            <MaterialSelector materials={materials} selectedId={stockInForm.material_id} onSelect={(v) => setStockInForm({ ...stockInForm, material_id: v })} />
+            <Text style={styles.caption}>Selected: {materialMap.get(stockInForm.material_id) || 'None'}</Text>
             <TextInput style={styles.input} placeholder="Quantity" keyboardType="numeric" value={stockInForm.quantity} onChangeText={(v) => setStockInForm({ ...stockInForm, quantity: v })} />
             <TouchableOpacity style={styles.button} onPress={addStockIn}><Text style={styles.buttonText}>Add Purchase Entry</Text></TouchableOpacity>
-            {materials.map((m) => <Text key={m.id} style={styles.listItem}>{m.id}: {m.name}</Text>)}
           </>
         ) : null}
 
         {activeTab === 'Stock Out' ? (
           <>
-            <TextInput style={styles.input} placeholder="Material ID" keyboardType="numeric" value={stockOutForm.material_id} onChangeText={(v) => setStockOutForm({ ...stockOutForm, material_id: v })} />
+            <Text style={styles.caption}>Select material</Text>
+            <MaterialSelector materials={materials} selectedId={stockOutForm.material_id} onSelect={(v) => setStockOutForm({ ...stockOutForm, material_id: v })} />
+            <Text style={styles.caption}>Selected: {materialMap.get(stockOutForm.material_id) || 'None'}</Text>
             <TextInput style={styles.input} placeholder="Quantity" keyboardType="numeric" value={stockOutForm.quantity} onChangeText={(v) => setStockOutForm({ ...stockOutForm, quantity: v })} />
             <TouchableOpacity style={styles.button} onPress={addStockOut}><Text style={styles.buttonText}>Add Issue Entry</Text></TouchableOpacity>
-            {materials.map((m) => <Text key={m.id} style={styles.listItem}>{m.id}: {m.name}</Text>)}
           </>
         ) : null}
 
@@ -205,10 +267,17 @@ const styles = StyleSheet.create({
   tabText: { color: '#1f4e78' },
   activeTabText: { color: '#fff' },
   body: { flex: 1 },
+  caption: { marginBottom: 6, color: '#4c5b67' },
+  selectorRow: { maxHeight: 40, marginBottom: 8 },
+  selectorChip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: '#aac2d5', backgroundColor: '#fff', marginRight: 6 },
+  selectorChipActive: { backgroundColor: '#1f4e78', borderColor: '#1f4e78' },
+  selectorChipText: { color: '#1f4e78', fontSize: 12 },
+  selectorChipTextActive: { color: '#fff', fontSize: 12 },
   card: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 8 },
   input: { backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#d5dce4' },
   button: { backgroundColor: '#1f4e78', padding: 11, borderRadius: 8, alignItems: 'center', marginBottom: 10 },
   buttonText: { color: '#fff', fontWeight: '600' },
   listItem: { backgroundColor: '#fff', borderRadius: 6, padding: 8, marginBottom: 6 },
   error: { color: '#b00020', marginBottom: 8 },
+  warning: { color: '#7a5a00', marginBottom: 8 },
 });

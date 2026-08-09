@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -15,7 +15,7 @@ class Supplier(Base):
     phone = Column(String(50), nullable=True)
     email = Column(String(255), nullable=True)
     address = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     materials = relationship("Material", back_populates="supplier")
 
@@ -31,8 +31,13 @@ class Material(Base):
     minimum_stock = Column(Float, default=0.0, nullable=False)
     unit_price = Column(Float, default=0.0, nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
     supplier = relationship("Supplier", back_populates="materials")
     stock_ins = relationship("StockIn", back_populates="material", cascade="all, delete-orphan")
@@ -47,7 +52,7 @@ class StockIn(Base):
     quantity = Column(Float, nullable=False)
     unit_price = Column(Float, nullable=True)
     invoice_number = Column(String(100), nullable=True)
-    purchased_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    purchased_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     notes = Column(Text, nullable=True)
 
     material = relationship("Material", back_populates="stock_ins")
@@ -60,7 +65,7 @@ class StockOut(Base):
     material_id = Column(Integer, ForeignKey("materials.id"), nullable=False)
     quantity = Column(Float, nullable=False)
     issued_to = Column(String(255), nullable=True)
-    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    issued_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     notes = Column(Text, nullable=True)
 
     material = relationship("Material", back_populates="stock_outs")
@@ -73,4 +78,9 @@ class AppSetting(Base):
     company_name = Column(String(255), default="Woodful Creations", nullable=False)
     currency = Column(String(10), default="INR", nullable=False)
     reorder_buffer = Column(Float, default=1.2, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

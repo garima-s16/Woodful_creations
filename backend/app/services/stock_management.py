@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models.stock_management import Material
 
@@ -78,5 +78,5 @@ def dashboard_data(materials: list[Material], reorder_buffer: float = 1.2) -> di
             for item in material_views
             if item["status"] in {"LOW STOCK", "OUT OF STOCK"}
         ],
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }
