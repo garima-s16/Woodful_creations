@@ -10,6 +10,7 @@ function Sidebar({ isOpen, user }) {
     { path: '/stock-inventory', label: 'Stock Inventory', icon: 'I' },
     { path: '/ai-chat', label: 'AI Chat', icon: 'A' },
     { path: '/clients', label: 'Clients', icon: 'C' },
+    { path: '/sales', label: 'Sales Orders', icon: 'S' },
     { path: '/estimates', label: 'Estimates', icon: 'E' },
     { path: '/attendance', label: 'Attendance', icon: 'T' },
     { path: '/interviews', label: 'Interviews', icon: 'V' },

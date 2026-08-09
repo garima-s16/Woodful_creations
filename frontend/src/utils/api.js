@@ -50,3 +50,17 @@ export const chatAPI = {
 };
 
 export default client;
+export const salesAPI = {
+  getOrders: (params) => client.get('/api/sales', { params }),
+  getOrder: (id) => client.get(`/api/sales/${id}`),
+  createOrder: (data) => client.post('/api/sales', data),
+  updateOrder: (id, data) => client.patch(`/api/sales/${id}`, data),
+  deleteOrder: (id) => client.delete(`/api/sales/${id}`),
+};
+
+export const reportsAPI = {
+  downloadInventoryExcel: () =>
+    client.get('/api/reports/inventory/excel', { responseType: 'blob' }),
+  downloadSalesExcel: () =>
+    client.get('/api/reports/sales/excel', { responseType: 'blob' }),
+};

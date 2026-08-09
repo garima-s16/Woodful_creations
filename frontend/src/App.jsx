@@ -14,6 +14,7 @@ import EstimatesPage from './pages/EstimatesPage';
 import InterviewsPage from './pages/InterviewsPage';
 import PaymentsPage from './pages/PaymentsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import SalesOrdersPage from './pages/SalesOrdersPage';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
@@ -104,6 +105,11 @@ function App() {
                 <Route path="/analytics" element={
                   <ProtectedRoute>
                     <AnalyticsPage user={user} />
+                  </ProtectedRoute>
+                } />
+                <Route path="/sales" element={
+                  <ProtectedRoute>
+                    <SalesOrdersPage user={user} />
                   </ProtectedRoute>
                 } />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

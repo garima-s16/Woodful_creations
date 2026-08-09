@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { inventoryAPI } from '../utils/api';
+import { inventoryAPI, reportsAPI } from '../utils/api';
 import { fetchStart, fetchSuccess, fetchFailure, addProduct } from '../redux/slices/inventorySlice';
 import ChatWidget from '../components/ChatWidget';
 import '../styles/StockInventoryPage.css';
@@ -54,7 +54,23 @@ function StockInventoryPage({ user }) {
     }
   };
 
-  const isLowStock = (qty, min) => qty <= min;
+  const downloadInventoryExcel = async () => {
+    try {
+      const res = await reportsAPI.downloadInventoryExcel();
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'inventory_report.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download inventory report.');
+    }
+  };
+
+    const isLowStock = (qty, min) => qty <= min;
 
   const filteredProducts = products.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -70,12 +86,21 @@ function StockInventoryPage({ user }) {
       <div className="page-header">
         <h1>Stock Inventory</h1>
         {canEdit && (
+          <>
+        <button
+          className="add-product-button"
+          onClick={downloadInventoryExcel}
+          style={{ marginRight: '8px', background: '#10b981' }}
+        >
+          Download Excel
+        </button>
           <button
             className="add-product-button"
             onClick={() => setShowForm(!showForm)}
           >
             {showForm ? 'Cancel' : 'Add Product'}
           </button>
+          </>
         )}
       </div>
 
