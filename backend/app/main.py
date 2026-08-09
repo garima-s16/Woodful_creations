@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -41,3 +42,11 @@ async def health_check():
 
 for router in all_routers:
     app.include_router(router)
+=======
+﻿from fastapi import FastAPI
+from app.api import reports
+
+app = FastAPI(title="Woodful Creations - API (bootstrap)")
+
+app.include_router(reports.router)
+>>>>>>> Stashed changes

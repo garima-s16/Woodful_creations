@@ -1,50 +1,13 @@
-{
-  "name": "woodful-frontend",
-  "version": "1.0.0",
+﻿{
+  "name": "woodful-frontend-bootstrap",
+  "version": "0.0.1",
   "private": true,
-  "homepage": "https://garima-s16.github.io/Woodful_creations",
-  "proxy": "http://localhost:8000",
-  "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
-    "format": "prettier --write src/**/*.{js,jsx,ts,tsx,css}"
-  },
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "axios": "^1.5.0",
-    "react-scripts": "5.0.1"
+    "react-dom": "^18.2.0"
   },
-  "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "typescript": "^5.2.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.1.0",
-    "@testing-library/user-event": "^13.5.0",
-    "eslint": "^8.50.0",
-    "eslint-plugin-react": "^7.33.0",
-    "prettier": "^3.0.0"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
   }
 }
