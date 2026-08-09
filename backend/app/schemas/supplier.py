@@ -2,38 +2,40 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-class ClientBase(BaseModel):
-    client_id: str
+class SupplierBase(BaseModel):
+    supplier_id: str
     name: str
+    category: str
+    contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-
-class ClientCreate(ClientBase):
+    gstin: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    lead_source: Optional[str] = None
+    payment_terms: Optional[str] = None
     remarks: Optional[str] = None
 
-class ClientUpdate(BaseModel):
+class SupplierCreate(SupplierBase):
+    pass
+
+class SupplierUpdate(BaseModel):
     name: Optional[str] = None
+    category: Optional[str] = None
+    contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    gstin: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    lead_source: Optional[str] = None
+    payment_terms: Optional[str] = None
     is_active: Optional[int] = None
     remarks: Optional[str] = None
 
-class ClientResponse(ClientBase):
+class SupplierResponse(SupplierBase):
     id: int
-    address: Optional[str]
-    city: Optional[str]
-    state: Optional[str]
-    lead_source: Optional[str]
     is_active: int
-    remarks: Optional[str]
     created_at: datetime
     updated_at: datetime
 

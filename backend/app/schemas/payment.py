@@ -1,28 +1,35 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from decimal import Decimal
 
 class PaymentBase(BaseModel):
+    receipt_id: str
+    order_id: int
+    client_id: int
     payment_type: str
-    related_id: int
-    amount: float
-    payment_date: datetime
-    payment_method: str
-    description: Optional[str] = None
+    payment_mode: str
+    amount: Decimal
 
 class PaymentCreate(PaymentBase):
-    pass
+    reference_number: Optional[str] = None
+    received_by: Optional[str] = None
+    remarks: Optional[str] = None
 
 class PaymentUpdate(BaseModel):
-    amount: Optional[float] = None
-    payment_date: Optional[datetime] = None
-    payment_method: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[str] = None
+    payment_type: Optional[str] = None
+    payment_mode: Optional[str] = None
+    amount: Optional[Decimal] = None
+    reference_number: Optional[str] = None
+    received_by: Optional[str] = None
+    remarks: Optional[str] = None
 
 class PaymentResponse(PaymentBase):
     id: int
-    status: str
+    date: datetime
+    reference_number: Optional[str]
+    received_by: Optional[str]
+    remarks: Optional[str]
     created_at: datetime
     updated_at: datetime
 
