@@ -9,14 +9,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     APP_NAME: str = "Woodful Creations"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = True
     ENVIRONMENT: str = "development"
 
-    DATABASE_URL: str = "postgresql://woodful_user:password@localhost:5432/woodful_creations"
+    DATABASE_URL: str = "sqlite:///./woodful_creations.db"
 
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8000
@@ -34,7 +34,13 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     REDIS_URL: str = "redis://localhost:6379"
 
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+        "http://localhost:8081",
+    ]
 
 
 settings = Settings()

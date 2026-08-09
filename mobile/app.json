@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Woodful Creations",
+    "slug": "woodful-creations",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "ios": {
+      "supportsTablet": true
+    }
+  }
+}

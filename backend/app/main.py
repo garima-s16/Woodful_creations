@@ -4,9 +4,10 @@ FastAPI application entry point for Woodful Creations.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes
+from app.api.routes import stock_management
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.models import stock_management as stock_models  # noqa: F401
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -37,6 +38,4 @@ async def health_check():
     return {"status": "healthy", "service": settings.APP_NAME, "version": settings.APP_VERSION}
 
 
-app.include_router(routes.auth.router)
-app.include_router(routes.users.router)
-app.include_router(routes.inventory.router)
+app.include_router(stock_management.router)
