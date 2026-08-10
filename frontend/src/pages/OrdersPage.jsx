@@ -9,6 +9,7 @@ function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [clients, setClients] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [statusOrder, setStatusOrder] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -39,6 +40,31 @@ function OrdersPage() {
     }
   };
 
+  const handleStatusUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await ordersAPI.update(statusOrder.id, {
+        project_status: formData.project_status,
+        design_status: formData.design_status,
+        execution_status: formData.execution_status,
+        delivery_status: formData.delivery_status,
+        progress_percent: Number(formData.progress_percent),
+      });
+      setStatusOrder(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
+    'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
+    .map((s) => ({ value: s, label: s }));
+  const SIMPLE_STATUS_OPTIONS = ['Pending', 'In Progress', 'Completed'].map((s) => ({ value: s, label: s }));
+
   const columns = [
     { key: 'order_code', label: 'Order ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
@@ -46,10 +72,17 @@ function OrdersPage() {
     { key: 'order_value', label: 'Order Value', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'total_received', label: 'Received', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'balance', label: 'Balance', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'project_status', label: 'Status' }, { key: 'progress_percent', label: 'Progress %' },
+    { key: 'project_status', label: 'Stage' }, { key: 'progress_percent', label: 'Progress %' },
+    { key: 'design_status', label: 'Design' }, { key: 'execution_status', label: 'Execution' },
+    { key: 'delivery_status', label: 'Delivery' },
     {
-      key: 'id', label: 'Estimate', render: (v, row) => (
-        <a href={reportsAPI.downloadUrl(`orders/${v}/estimate.pdf`)} target="_blank" rel="noreferrer">Download PDF</a>
+      key: 'estimate_pdf', label: 'Estimate', render: (v, row) => (
+        <a href={reportsAPI.downloadUrl(`orders/${row.id}/estimate.pdf`)} target="_blank" rel="noreferrer">Download PDF</a>
+      ),
+    },
+    {
+      key: 'status_action', label: 'Status', render: (v, row) => (
+        <button className="btn-link" onClick={() => setStatusOrder(row)}>Update Status</button>
       ),
     },
   ];
@@ -85,6 +118,30 @@ function OrdersPage() {
       <Table columns={columns} data={orders} />
       <Modal isOpen={showAdd} title="New Order" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
+      </Modal>
+
+      <Modal isOpen={!!statusOrder} title={`Update Status - ${statusOrder?.order_code || ''}`} onClose={() => setStatusOrder(null)}>
+        {statusOrder && (
+          <Form
+            fields={[
+              { name: 'project_status', label: 'Overall Stage', type: 'select', required: true, options: STAGE_OPTIONS },
+              { name: 'design_status', label: 'Design Status', type: 'select', required: true, options: SIMPLE_STATUS_OPTIONS },
+              { name: 'execution_status', label: 'Execution Status', type: 'select', required: true, options: SIMPLE_STATUS_OPTIONS },
+              { name: 'delivery_status', label: 'Delivery Status', type: 'select', required: true, options: SIMPLE_STATUS_OPTIONS },
+              { name: 'progress_percent', label: 'Progress %', type: 'number', required: true },
+            ]}
+            onSubmit={handleStatusUpdate}
+            loading={loading}
+            submitText="Update Status"
+            initialValues={{
+              project_status: statusOrder.project_status,
+              design_status: statusOrder.design_status,
+              execution_status: statusOrder.execution_status,
+              delivery_status: statusOrder.delivery_status,
+              progress_percent: statusOrder.progress_percent,
+            }}
+          />
+        )}
       </Modal>
     </div>
   );

@@ -26,6 +26,9 @@ class OrderUpdate(BaseModel):
     delivery_date: Optional[datetime] = None
     order_value: Optional[Decimal] = None
     project_status: Optional[str] = None
+    design_status: Optional[str] = None
+    execution_status: Optional[str] = None
+    delivery_status: Optional[str] = None
     progress_percent: Optional[int] = None
     priority: Optional[str] = None
     supervisor: Optional[str] = None
@@ -40,6 +43,9 @@ class OrderResponse(OrderBase):
     total_received: Decimal
     balance: Decimal
     project_status: str
+    design_status: str
+    execution_status: str
+    delivery_status: str
     progress_percent: int
     created_at: datetime
     updated_at: datetime

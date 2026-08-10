@@ -15,9 +15,11 @@ from app.models.payment import Payment
 from app.models.material import Material
 from app.models.supplier import Supplier
 from app.models.order import Order
+from app.models.estimate import Estimate
+from app.models.salary_slip import SalarySlip
 from app.services.order_service import OrderService
 from app.utils.exporters import build_workbook
-from app.utils.pdf_generator import generate_order_estimate_pdf
+from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -194,4 +196,29 @@ def export_order_estimate_pdf(order_id: int, db: Session = Depends(get_db), auth
     return StreamingResponse(
         buffer, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="estimate-{order.order_code}.pdf"'},
+    )
+
+
+@router.get("/estimates/{estimate_id}/quote.pdf")
+def export_estimate_quote_pdf(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
+    if not estimate:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    buffer = generate_estimate_pdf(estimate)
+    return StreamingResponse(
+        buffer, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="estimate-{estimate.estimate_code}.pdf"'},
+    )
+
+
+@router.get("/salary-slips/{slip_id}.pdf")
+def export_salary_slip_pdf(slip_id: int, db: Session = Depends(get_db),
+                            auth=Depends(require_role("master", "manager"))):
+    slip = db.query(SalarySlip).filter(SalarySlip.id == slip_id).first()
+    if not slip:
+        raise HTTPException(status_code=404, detail="Salary slip not found")
+    buffer = generate_salary_slip_pdf(slip)
+    return StreamingResponse(
+        buffer, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="salary-slip-{slip.month}-{slip.year}.pdf"'},
     )

@@ -29,3 +29,13 @@
 .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
 .app-body { display: flex; flex: 1; }
 .app-content { flex: 1; overflow-x: auto; background: var(--light-bg); }
+
+.chat-page { display: flex; flex-direction: column; height: calc(100vh - 100px); }
+.chat-window { flex: 1; overflow-y: auto; background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.chat-bubble { max-width: 70%; padding: 10px 14px; border-radius: 10px; }
+.chat-user { align-self: flex-end; background: var(--primary-color); color: #fff; }
+.chat-assistant { align-self: flex-start; background: #f0f0f0; color: var(--text-primary); white-space: pre-line; }
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chat-suggestion { font-size: 0.8rem; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--border-color); background: #fff; cursor: pointer; }
+.chat-input-row { display: flex; gap: 10px; }
+.chat-input-row input { flex: 1; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color); }

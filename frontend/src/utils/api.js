@@ -117,6 +117,34 @@ export const settingsAPI = {
   remove: (lookupType, id) => client.delete(`/api/settings/${lookupType}/${id}`),
 };
 
+export const estimatesAPI = {
+  list: (params) => client.get('/api/estimates/', { params }),
+  create: (data) => client.post('/api/estimates/', data),
+  update: (id, data) => client.put(`/api/estimates/${id}`, data),
+};
+
+export const candidatesAPI = {
+  list: (params) => client.get('/api/candidates/', { params }),
+  create: (data) => client.post('/api/candidates/', data),
+  update: (id, data) => client.put(`/api/candidates/${id}`, data),
+};
+
+export const interviewsAPI = {
+  list: (params) => client.get('/api/interviews/', { params }),
+  create: (data) => client.post('/api/interviews/', data),
+  update: (id, data) => client.put(`/api/interviews/${id}`, data),
+};
+
+export const salarySlipsAPI = {
+  list: (params) => client.get('/api/salary-slips/', { params }),
+  create: (data) => client.post('/api/salary-slips/', data),
+  update: (id, data) => client.put(`/api/salary-slips/${id}`, data),
+};
+
+export const chatAPI = {
+  send: (message) => client.post('/api/chat/', { message }),
+};
+
 export const reportsAPI = {
   downloadUrl: (path) => `${API_URL}/api/reports/${path}`,
 };

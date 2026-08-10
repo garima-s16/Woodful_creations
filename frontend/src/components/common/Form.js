@@ -1,9 +1,14 @@
 import React from 'react';
 import './Form.css';
 
-const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit' }) => {
-  const [formData, setFormData] = React.useState({});
+const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initialValues = {} }) => {
+  const [formData, setFormData] = React.useState(initialValues);
   const [errors, setErrors] = React.useState({});
+
+  React.useEffect(() => {
+    setFormData(initialValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(initialValues)]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;

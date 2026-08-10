@@ -14,6 +14,11 @@ from app.api.routes import daily_tasks
 from app.api.routes import production_jobs
 from app.api.routes import dashboard
 from app.api.routes import reports
+from app.api.routes import estimates
+from app.api.routes import candidates
+from app.api.routes import interviews
+from app.api.routes import salary_slips
+from app.api.routes import chat
 
 all_routers = [
     auth.router,
@@ -32,4 +37,9 @@ all_routers = [
     production_jobs.router,
     dashboard.router,
     reports.router,
+    estimates.router,
+    candidates.router,
+    interviews.router,
+    salary_slips.router,
+    chat.router,
 ]

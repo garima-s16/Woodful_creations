@@ -21,6 +21,9 @@ class Order(BaseModel):
     total_received = Column(Numeric(12, 2), nullable=False, default=0)
     balance = Column(Numeric(12, 2), nullable=False, default=0)
     project_status = Column(String(50), nullable=False, default="Enquiry", index=True)
+    design_status = Column(String(50), nullable=False, default="Pending")
+    execution_status = Column(String(50), nullable=False, default="Pending")
+    delivery_status = Column(String(50), nullable=False, default="Pending")
     progress_percent = Column(Integer, nullable=False, default=0)
     priority = Column(String(20), nullable=True)
     supervisor = Column(String(255), nullable=True)
@@ -33,6 +36,7 @@ class Order(BaseModel):
     issues = relationship("Issue", back_populates="order")
     daily_tasks = relationship("DailyTask", back_populates="order")
     production_jobs = relationship("ProductionJob", back_populates="order")
+    estimates = relationship("Estimate", back_populates="order")
 
     def recompute_totals(self):
         """Call after adding/editing a Payment - keeps total_received and

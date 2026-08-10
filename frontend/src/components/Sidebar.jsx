@@ -13,14 +13,19 @@ function Sidebar({ isOpen, user }) {
     { path: '/issues', label: 'Issues', icon: 'I' },
     { path: '/clients', label: 'Clients', icon: 'C' },
     { path: '/orders', label: 'Orders', icon: 'O' },
+    { path: '/estimates', label: 'Estimates', icon: 'Q' },
     { path: '/employees', label: 'Employees', icon: 'E' },
     { path: '/attendance', label: 'Attendance', icon: 'T' },
     { path: '/daily-tasks', label: 'Daily Tasks', icon: 'K' },
+    { path: '/chat', label: 'Assistant', icon: 'A' },
   ];
 
   const masterItems = [
     { path: '/payments', label: 'Payments', icon: '$' },
     { path: '/project-expenses', label: 'Project Expenses', icon: 'X' },
+    { path: '/salary-slips', label: 'Salary Slips', icon: 'R' },
+    { path: '/candidates', label: 'Candidates', icon: 'N' },
+    { path: '/interviews', label: 'Interviews', icon: 'V' },
     { path: '/settings', label: 'Settings', icon: 'G' },
   ];
 

@@ -23,6 +23,11 @@ import EmployeesPage from './pages/EmployeesPage';
 import AttendancePage from './pages/AttendancePage';
 import DailyTasksPage from './pages/DailyTasksPage';
 import SettingsPage from './pages/SettingsPage';
+import EstimatesPage from './pages/EstimatesPage';
+import CandidatesPage from './pages/CandidatesPage';
+import InterviewsPage from './pages/InterviewsPage';
+import SalarySlipsPage from './pages/SalarySlipsPage';
+import ChatPage from './pages/ChatPage';
 
 function AppLayout({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -87,6 +92,11 @@ function AppRoutes() {
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
+      <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
+      <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
+      <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
+      <Route path="/salary-slips" element={<Protected><SalarySlipsPage /></Protected>} />
+      <Route path="/chat" element={<Protected><ChatPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
