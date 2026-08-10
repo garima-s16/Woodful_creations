@@ -11,14 +11,18 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import ClientManagementPage from './pages/ClientManagementPage';
-import StockInventoryPage from './pages/StockInventoryPage';
-import EstimatesPage from './pages/EstimatesPage';
-import AttendancePage from './pages/AttendancePage';
-import InterviewsPage from './pages/InterviewsPage';
+import MaterialsPage from './pages/MaterialsPage';
+import SuppliersPage from './pages/SuppliersPage';
+import PurchasesPage from './pages/PurchasesPage';
+import IssuesPage from './pages/IssuesPage';
+import ClientsPage from './pages/ClientsPage';
+import OrdersPage from './pages/OrdersPage';
 import PaymentsPage from './pages/PaymentsPage';
-import AnalyticsPage from './pages/AnalyticsPage';
-import AIChatPage from './pages/AIChatPage';
+import ProjectExpensesPage from './pages/ProjectExpensesPage';
+import EmployeesPage from './pages/EmployeesPage';
+import AttendancePage from './pages/AttendancePage';
+import DailyTasksPage from './pages/DailyTasksPage';
+import SettingsPage from './pages/SettingsPage';
 
 function AppLayout({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -48,12 +52,18 @@ function AppLayout({ children }) {
   );
 }
 
+function Protected({ children }) {
+  return (
+    <ProtectedRoute>
+      <AppLayout>{children}</AppLayout>
+    </ProtectedRoute>
+  );
+}
+
 function AppRoutes() {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    // The auth cookie (if any) is HttpOnly, so the frontend can't read it
-    // directly - ask the API whether the current session is valid.
     authAPI
       .me()
       .then((res) => dispatch(sessionCheckFinished(res.data)))
@@ -63,96 +73,20 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <DashboardPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/clients"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <ClientManagementPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inventory"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <StockInventoryPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/estimates"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <EstimatesPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/attendance"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <AttendancePage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/interviews"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <InterviewsPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/payments"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <PaymentsPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/analytics"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <AnalyticsPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/chat"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <AIChatPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
+      <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
+      <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />
+      <Route path="/issues" element={<Protected><IssuesPage /></Protected>} />
+      <Route path="/clients" element={<Protected><ClientsPage /></Protected>} />
+      <Route path="/orders" element={<Protected><OrdersPage /></Protected>} />
+      <Route path="/payments" element={<Protected><PaymentsPage /></Protected>} />
+      <Route path="/project-expenses" element={<Protected><ProjectExpensesPage /></Protected>} />
+      <Route path="/employees" element={<Protected><EmployeesPage /></Protected>} />
+      <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
+      <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
+      <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

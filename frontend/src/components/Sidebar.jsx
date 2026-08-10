@@ -7,20 +7,24 @@ function Sidebar({ isOpen, user }) {
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: 'D' },
-    { path: '/stock-inventory', label: 'Stock Inventory', icon: 'I' },
-    { path: '/ai-chat', label: 'AI Chat', icon: 'A' },
+    { path: '/materials', label: 'Materials', icon: 'M' },
+    { path: '/suppliers', label: 'Suppliers', icon: 'S' },
+    { path: '/purchases', label: 'Purchases', icon: 'P' },
+    { path: '/issues', label: 'Issues', icon: 'I' },
     { path: '/clients', label: 'Clients', icon: 'C' },
-    { path: '/estimates', label: 'Estimates', icon: 'E' },
+    { path: '/orders', label: 'Orders', icon: 'O' },
+    { path: '/employees', label: 'Employees', icon: 'E' },
     { path: '/attendance', label: 'Attendance', icon: 'T' },
-    { path: '/interviews', label: 'Interviews', icon: 'V' },
+    { path: '/daily-tasks', label: 'Daily Tasks', icon: 'K' },
   ];
 
   const masterItems = [
-    { path: '/payments', label: 'Payments', icon: 'P' },
-    { path: '/analytics', label: 'Analytics', icon: 'L' },
+    { path: '/payments', label: 'Payments', icon: '$' },
+    { path: '/project-expenses', label: 'Project Expenses', icon: 'X' },
+    { path: '/settings', label: 'Settings', icon: 'G' },
   ];
 
-  const isMaster = user?.role === 'master';
+  const isMaster = user?.role === 'master' || user?.role === 'manager';
   const isActive = (path) => location.pathname === path;
 
   return (

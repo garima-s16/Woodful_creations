@@ -1,42 +1,31 @@
-.page-container {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
+.page { padding: 24px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.page-header h1 { font-size: 1.5rem; color: var(--text-primary); }
+.page-actions { display: flex; gap: 10px; align-items: center; }
 
-.page-container h1 {
-  color: var(--primary-color);
-  font-size: 28px;
-  margin-bottom: 30px;
+.btn-primary, .btn-secondary {
+  display: inline-block; padding: 9px 18px; border-radius: 6px; font-size: 0.9rem;
+  font-weight: 600; cursor: pointer; border: none; text-decoration: none; text-align: center;
 }
+.btn-primary { background: var(--primary-color); color: #fff; }
+.btn-primary:hover { background: var(--secondary-color); }
+.btn-secondary { background: #fff; color: var(--primary-color); border: 1px solid var(--primary-color); }
+.btn-secondary:hover { background: var(--light-bg); }
+.btn-link { background: none; border: none; color: var(--danger); cursor: pointer; text-decoration: underline; padding: 0; font-size: 0.85rem; }
 
-.coming-soon-section {
-  background: white;
-  border-radius: 12px;
-  padding: 60px 40px;
-  text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); }
+.tab { padding: 10px 20px; border: none; background: none; cursor: pointer; font-weight: 600; color: var(--text-secondary); border-bottom: 3px solid transparent; }
+.tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
 
-.coming-soon-section p {
-  color: var(--text-secondary);
-  font-size: 16px;
-  margin-bottom: 15px;
-  line-height: 1.6;
-}
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 20px; }
 
-.coming-soon-section p:first-child {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--primary-color);
-}
+.settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+.settings-list { display: flex; flex-direction: column; gap: 4px; }
+.settings-nav-item { text-align: left; padding: 10px 14px; border: none; background: #fff; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.settings-nav-item.active { background: var(--primary-color); color: #fff; }
+.settings-content { min-height: 200px; }
 
-@media (max-width: 768px) {
-  .page-container h1 {
-    font-size: 24px;
-  }
-
-  .coming-soon-section {
-    padding: 40px 20px;
-  }
-}
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.app-body { display: flex; flex: 1; }
+.app-content { flex: 1; overflow-x: auto; background: var(--light-bg); }
