@@ -1,5 +1,6 @@
 """Order estimate PDF generation (reportlab Platypus)."""
 from io import BytesIO
+from datetime import datetime
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
@@ -10,6 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from app.models.order import Order
 from app.models.estimate import Estimate
 from app.models.salary_slip import SalarySlip
+from app.models.payment import Payment
 
 
 def generate_order_estimate_pdf(order: Order) -> BytesIO:
@@ -186,6 +188,97 @@ def generate_salary_slip_pdf(slip: SalarySlip) -> BytesIO:
         "calculate statutory deductions automatically. Confirm figures with your accountant "
         "before finalizing payroll.", styles["Italic"],
     ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
+    """Client invoice for an order - order value, payment history, and
+    balance due. There is no separate GST/line-item model for orders in
+    this system (unlike Purchases, which do carry GST), so this reflects
+    the order as a single line item plus its actual payment history -
+    it does not invent a tax breakdown the data doesn't support."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.6 * inch)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph("WOODFUL CREATIONS", styles["Title"]))
+    elements.append(Paragraph("Invoice", styles["Heading2"]))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    client_name = order.client.name if order.client else "N/A"
+    client_phone = order.client.phone if order.client else "N/A"
+    client_address = order.client.address if order.client else "N/A"
+
+    for line in [
+        f"Invoice for Order: {order.order_code}",
+        f"Date: {datetime.utcnow().strftime('%d-%m-%Y')}",
+        f"Client: {client_name}",
+        f"Phone: {client_phone}",
+        f"Address: {order.site_address or client_address or 'N/A'}",
+    ]:
+        elements.append(Paragraph(line, styles["Normal"]))
+    elements.append(Spacer(1, 0.3 * inch))
+
+    def money(v):
+        return f"Rs {float(v or 0):,.2f}"
+
+    line_item_table = Table(
+        [["Description", "Amount"], [order.project_type or "Project", money(order.order_value)]],
+        colWidths=[3.5 * inch, 2 * inch],
+    )
+    line_item_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(line_item_table)
+    elements.append(Spacer(1, 0.3 * inch))
+
+    if payments:
+        elements.append(Paragraph("Payment History", styles["Heading3"]))
+        elements.append(Spacer(1, 0.1 * inch))
+        payment_rows = [["Receipt", "Date", "Mode", "Amount"]]
+        for p in payments:
+            payment_rows.append([
+                p.receipt_code, p.date.strftime("%d-%m-%Y") if p.date else "-", p.payment_mode, money(p.amount),
+            ])
+        payment_table = Table(payment_rows, colWidths=[1.5 * inch, 1.3 * inch, 1.3 * inch, 1.4 * inch])
+        payment_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F2F2F2")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(payment_table)
+        elements.append(Spacer(1, 0.3 * inch))
+
+    summary_table = Table(
+        [
+            ["Order Value", money(order.order_value)],
+            ["Total Received", money(order.total_received)],
+            ["Balance Due", money(order.balance)],
+        ],
+        colWidths=[3.5 * inch, 2 * inch],
+    )
+    summary_table.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F2F2F2")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(summary_table)
 
     doc.build(elements)
     buffer.seek(0)

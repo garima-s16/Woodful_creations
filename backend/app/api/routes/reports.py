@@ -19,7 +19,7 @@ from app.models.estimate import Estimate
 from app.models.salary_slip import SalarySlip
 from app.services.order_service import OrderService
 from app.utils.exporters import build_workbook
-from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf
+from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf, generate_invoice_pdf
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -208,6 +208,20 @@ def export_estimate_quote_pdf(estimate_id: int, db: Session = Depends(get_db), a
     return StreamingResponse(
         buffer, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="estimate-{estimate.estimate_code}.pdf"'},
+    )
+
+
+@router.get("/orders/{order_id}/invoice.pdf")
+def export_order_invoice_pdf(order_id: int, db: Session = Depends(get_db),
+                              auth=Depends(require_role("master", "manager"))):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payments = db.query(Payment).filter(Payment.order_id == order_id).order_by(Payment.date).all()
+    buffer = generate_invoice_pdf(order, payments)
+    return StreamingResponse(
+        buffer, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="invoice-{order.order_code}.pdf"'},
     )
 
 

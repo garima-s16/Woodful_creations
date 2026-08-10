@@ -43,6 +43,11 @@ function PaymentsPage() {
     { key: 'payment_type', label: 'Payment Type' }, { key: 'payment_mode', label: 'Payment Mode' },
     { key: 'amount', label: 'Amount', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'reference_number', label: 'Reference No.' }, { key: 'received_by', label: 'Received By' },
+    {
+      key: 'invoice_action', label: '', render: (v, row) => (
+        <a href={reportsAPI.downloadUrl(`orders/${row.order_id}/invoice.pdf`)} target="_blank" rel="noreferrer">Invoice</a>
+      ),
+    },
   ];
 
   const fields = [

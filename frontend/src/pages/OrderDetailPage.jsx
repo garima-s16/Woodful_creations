@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import {
   ordersAPI, clientsAPI, paymentsAPI, projectExpensesAPI, issuesAPI,
   dailyTasksAPI, productionJobsAPI, materialsAPI, reportsAPI,
@@ -24,6 +25,8 @@ const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Product
 
 function OrderDetailPage() {
   const { orderId } = useParams();
+  const { user } = useSelector((state) => state.auth);
+  const canViewFinancials = user?.role === 'master' || user?.role === 'manager';
   const [order, setOrder] = useState(null);
   const [client, setClient] = useState(null);
   const [materials, setMaterials] = useState([]);
@@ -89,6 +92,11 @@ function OrderDetailPage() {
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`orders/${order.id}/estimate.pdf`)} target="_blank" rel="noreferrer">
             Download Estimate PDF
           </a>
+          {canViewFinancials && (
+            <a className="btn-secondary" href={reportsAPI.downloadUrl(`orders/${order.id}/invoice.pdf`)} target="_blank" rel="noreferrer">
+              Download Invoice
+            </a>
+          )}
         </div>
       </div>
 

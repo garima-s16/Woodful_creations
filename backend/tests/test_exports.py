@@ -63,3 +63,27 @@ def test_payments_export_requires_master_or_manager(client, test_user):
 def test_exports_require_auth(client):
     resp = client.get("/api/reports/purchases.xlsx")
     assert resp.status_code == 401
+
+
+def test_order_invoice_pdf_downloads(client, test_user):
+    _login(client, test_user)
+    order = _seed_minimal_order(client)
+
+    resp = client.get(f"/api/reports/orders/{order['id']}/invoice.pdf")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+def test_invoice_reflects_payment_history(client, test_user):
+    _login(client, test_user)
+    order = _seed_minimal_order(client)
+
+    client.post("/api/payments/", json={
+        "receipt_code": "RCPT-INV-001", "date": "2026-08-05T00:00:00", "order_id": order["id"],
+        "payment_type": "Advance", "payment_mode": "UPI", "amount": "15000.00",
+    })
+
+    resp = client.get(f"/api/reports/orders/{order['id']}/invoice.pdf")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"%PDF")
