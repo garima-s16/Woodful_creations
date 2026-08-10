@@ -13,6 +13,7 @@ from app.api.routes import attendance
 from app.api.routes import daily_tasks
 from app.api.routes import production_jobs
 from app.api.routes import dashboard
+from app.api.routes import reports
 
 all_routers = [
     auth.router,
@@ -30,4 +31,5 @@ all_routers = [
     daily_tasks.router,
     production_jobs.router,
     dashboard.router,
+    reports.router,
 ]

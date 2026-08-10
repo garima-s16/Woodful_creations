@@ -1,89 +1,73 @@
+"""Order estimate PDF generation (reportlab Platypus)."""
 from io import BytesIO
-from datetime import datetime
-from typing import Dict, List, Optional
-import logging
 
-logger = logging.getLogger(__name__)
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
-class PDFGenerator:
-    def __init__(self):
-        try:
-            from reportlab.lib.pagesizes import letter, A4
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import inch
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-            from reportlab.lib import colors
-            self.available = True
-        except ImportError:
-            logger.warning("ReportLab not installed. PDF generation disabled.")
-            self.available = False
-    
-    def generate_estimate_pdf(self, estimate_data: Dict, client_data: Dict, items: List) -> Optional[BytesIO]:
-        if not self.available:
-            logger.error("PDF generation not available")
-            return None
-        
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.lib.units import inch
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib import colors
-            
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            elements = []
-            
-            styles = getSampleStyleSheet()
-            
-            title = Paragraph("ESTIMATE", styles['Title'])
-            elements.append(title)
-            elements.append(Spacer(1, 0.3*inch))
-            
-            estimate_info = f"Estimate No: {estimate_data.get('estimate_number', 'N/A')}"
-            elements.append(Paragraph(estimate_info, styles['Normal']))
-            
-            client_info = f"Client: {client_data.get('name', 'N/A')} | Email: {client_data.get('email', 'N/A')}"
-            elements.append(Paragraph(client_info, styles['Normal']))
-            
-            elements.append(Spacer(1, 0.2*inch))
-            
-            table_data = [['Item', 'Quantity', 'Unit Price', 'Amount']]
-            total_amount = 0
-            for item in items:
-                amount = item.get('quantity', 0) * item.get('unit_price', 0)
-                table_data.append([
-                    item.get('description', ''),
-                    str(item.get('quantity', 0)),
-                    f"Rs {item.get('unit_price', 0):,.2f}",
-                    f"Rs {amount:,.2f}"
-                ])
-                total_amount += amount
-            
-            table_data.append(['', '', 'Total', f"Rs {total_amount:,.2f}"])
-            
-            table = Table(table_data, colWidths=[2*inch, 1*inch, 1.5*inch, 1.5*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            elements.append(table)
-            
-            doc.build(elements)
-            buffer.seek(0)
-            return buffer
-        except Exception as e:
-            logger.error(f"PDF generation error: {str(e)}")
-            return None
-    
-    def generate_invoice_pdf(self, invoice_data: Dict) -> Optional[BytesIO]:
-        pass
-    
-    def generate_salary_slip_pdf(self, employee_data: Dict, salary_data: Dict) -> Optional[BytesIO]:
-        pass
+from app.models.order import Order
+
+
+def generate_order_estimate_pdf(order: Order) -> BytesIO:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.6 * inch)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph("WOODFUL CREATIONS", styles["Title"]))
+    elements.append(Paragraph("Order Estimate", styles["Heading2"]))
+    elements.append(Spacer(1, 0.2 * inch))
+
+    client_name = order.client.name if order.client else "N/A"
+    client_phone = order.client.phone if order.client else "N/A"
+    client_address = order.client.address if order.client else "N/A"
+
+    info_lines = [
+        f"Order ID: {order.order_code}",
+        f"Order Date: {order.order_date.strftime('%d-%m-%Y') if order.order_date else 'N/A'}",
+        f"Delivery Date: {order.delivery_date.strftime('%d-%m-%Y') if order.delivery_date else 'N/A'}",
+        f"Client: {client_name}",
+        f"Phone: {client_phone}",
+        f"Site Address: {order.site_address or client_address or 'N/A'}",
+        f"Project Type: {order.project_type or 'N/A'}",
+    ]
+    for line in info_lines:
+        elements.append(Paragraph(line, styles["Normal"]))
+    elements.append(Spacer(1, 0.3 * inch))
+
+    def money(v):
+        return f"Rs {float(v or 0):,.2f}"
+
+    table_data = [
+        ["Description", "Amount"],
+        ["Order Value", money(order.order_value)],
+        ["Advance Received", money(order.advance)],
+        ["Other Received", money(order.other_received)],
+        ["Total Received", money(order.total_received)],
+        ["Balance Due", money(order.balance)],
+    ]
+    table = Table(table_data, colWidths=[3.5 * inch, 2 * inch])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 11),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F2F2F2")),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(table)
+
+    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph(f"Status: {order.project_status} ({order.progress_percent}% complete)", styles["Normal"]))
+    if order.remarks:
+        elements.append(Paragraph(f"Remarks: {order.remarks}", styles["Normal"]))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
