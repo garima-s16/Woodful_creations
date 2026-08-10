@@ -1,1 +1,12 @@
-backend/.env
+# Backend environment files / secrets
+.env
+.env.*
+!.env.example
+
+# Python local/runtime files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.log
