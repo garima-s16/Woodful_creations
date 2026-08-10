@@ -27,3 +27,6 @@ postgres_data/
 .next/
 out/
 .cache/
+*.db
+*.sqlite3
+woodful.db
