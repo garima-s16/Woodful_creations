@@ -224,32 +224,24 @@ psql -U woodful_user -d woodful_creations -c "\dt"
 Create the master administrator accounts and regular users:
 
 ```bash
-# Create Master User 1 - Garima
+# Create Master User 1 - Garima (omit --password to be prompted interactively)
 python create_master_user.py \
-  --username admin1 \
+  --username garimas \
   --name "Garima" \
-  --email "admin1@example.com" \
-  --password "<CHANGE_ME_ADMIN1_PASSWORD>" \
-  --phone "<REDACTED_PHONE>" \
-  --role admin
+  --email "garima@woodfulcreations.com"
 
 # Create Master User 2 - Nikhil
 python create_master_user.py \
-  --username admin2 \
+  --username nikhils \
   --name "Nikhil" \
-  --email "admin2@example.com" \
-  --password "<CHANGE_ME_ADMIN2_PASSWORD>" \
-  --phone "<REDACTED_PHONE>" \
-  --role admin
-
-# Create Regular User - Shweta
-python create_master_user.py \
-  --username user1 \
-  --name "Shweta" \
-  --email "user1@example.com" \
-  --password "<CHANGE_ME_USER1_PASSWORD>" \
-  --role user
+  --email "nikhil@woodfulcreations.com"
 ```
+
+The script only supports `--email`, `--username`, `--name`, and an optional `--password`;
+every account it creates has the `master` role - there is no `--phone` or `--role` flag.
+To create a non-master ("regular") user, use the app's own user-management screen/API
+once logged in. Never write real passwords into this file, shell history, or any file
+committed to git.
 
 ---
 
@@ -296,7 +288,9 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # Start the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Note: the FastAPI app object lives at app/main.py (app.main:app),
+# NOT at the top-level main.py (which is just the launcher for `python main.py`).
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Expected output**:
@@ -376,10 +370,10 @@ Once all services are running:
 ### Web Interface
 - **URL**: http://localhost:3000
 - **Default Master Users**:
-  - Username: `admin1`, Password: `<CHANGE_ME_ADMIN1_PASSWORD>`
-  - Username: `admin2`, Password: `<CHANGE_ME_ADMIN2_PASSWORD>`
+  - Username: `garimas` (password set when you ran `create_master_user.py`)
+  - Username: `nikhils` (password set when you ran `create_master_user.py`)
 - **Regular User**:
-  - Username: `user1`, Password: `<CHANGE_ME_USER1_PASSWORD>`
+  - Username: `shwetav` (regular user, created via the app's user-management screen)
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
@@ -470,7 +464,7 @@ psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE woodful_creations TO woodf
 **Solution**:
 ```bash
 # Use a different port
-uvicorn main:app --reload --host 0.0.0.0 --port 8001
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
 # Or kill the existing process
 # Windows:
@@ -541,7 +535,7 @@ curl http://localhost:8000/api/health
 # Test login endpoint
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin1","password":"<CHANGE_ME_ADMIN1_PASSWORD>"}'
+  -d '{"username":"garimas","password":"YOUR_PASSWORD"}'
 ```
 
 ### Test Frontend Connection
@@ -616,7 +610,7 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
-- Woodful Team: Nikhil (<REDACTED_PHONE>) or Garima (<REDACTED_PHONE>)
+- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
 
 ---
 

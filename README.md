@@ -66,13 +66,13 @@ System Requirements
 
 Default Admin Users
 
-No accounts ship with this repository. Create your own via
-`backend/scripts/create_master_user.py` (see SETUP_GUIDE.md). Placeholders
-below are examples only — real credentials were previously committed here
-and have been removed; see the security note in SETUP_GUIDE.md.
+No admin accounts ship with the repo. After the database is initialized, create your own
+master user (credentials are never committed to git):
 
-- Username: <your-choice> / Password: <CHANGE_ME_ADMIN2_PASSWORD>
-- Username: <your-choice> / Password: <CHANGE_ME_ADMIN1_PASSWORD>
+    cd backend
+    python scripts/create_master_user.py --email you@example.com --username you --name "Your Name"
+
+Omit --password to be prompted interactively so the value never appears in shell history or logs.
 
 Features
 

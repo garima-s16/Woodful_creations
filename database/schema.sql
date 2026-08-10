@@ -1,3 +1,22 @@
+-- ============================================================================
+-- STALE / LEGACY FILE - DO NOT RUN THIS AGAINST A NEW DATABASE.
+--
+-- This file predates the Milestone 2/3 API rebuild and describes an old
+-- schema (users, inventory, projects, ...) that no longer matches the
+-- current SQLAlchemy models in backend/app/models/ (which define materials,
+-- suppliers, purchases, orders, production_jobs, salary_slips, etc).
+--
+-- The current source of truth for the schema is:
+--   - backend/app/models/*.py           (SQLAlchemy models)
+--   - backend/alembic/versions/*.py     (migrations)
+--
+-- To create/update a real database, run Alembic migrations from backend/:
+--   alembic upgrade head
+-- or, for a quick local SQLite dev DB:
+--   python scripts/init_db.py
+-- Kept here for historical reference only.
+-- ============================================================================
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,

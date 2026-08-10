@@ -59,10 +59,7 @@ services:
       dockerfile: Dockerfile
     container_name: woodful_frontend
     environment:
-      # utils/api.js already prefixes every call with /api (e.g. /api/auth/login),
-      # so this must be the bare origin - a trailing /api here double-prefixes
-      # every request (.../api/api/auth/login -> 404).
-      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_API_URL: http://localhost:8000/api
     ports:
       - "3000:3000"
     depends_on:

@@ -26,4 +26,4 @@ uploads/
 postgres_data/
 .next/
 out/
-.cache/.env
+.cache/

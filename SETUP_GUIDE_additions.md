@@ -10,13 +10,15 @@
    pip install -r requirements.txt
 
 3) Initialize DB tables and seed sample data:
-   cd backend\scripts
-   # Ensure DATABASE_URL in backend\app\core\config.py points to your local DB
+   cd backend
+   # Copy backend\.env.example to backend\.env and set DATABASE_URL there (never edit config.py directly)
+   cd scripts
    python .\seed_sample_data.py
 
 4) Create master users (if not created by seeder):
-   python .\create_master_user.py --email admin1@example.com --username admin1 --name "Garima Sharma" --password "<CHANGE_ME_ADMIN1_PASSWORD>"
-   python .\create_master_user.py --email admin2@example.com --username admin2 --name "Nikhil" --password "<CHANGE_ME_ADMIN2_PASSWORD>"
+   python .\create_master_user.py --email garima@woodfulcreations.com --username garimas --name "Garima Sharma"
+   python .\create_master_user.py --email nikhil@woodfulcreations.com --username nikhils --name "Nikhil"
+   # Omit --password so you are prompted interactively - keeps real passwords out of shell history and git
 
 5) Run backend (example):
    cd backend

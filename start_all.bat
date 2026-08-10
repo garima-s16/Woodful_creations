@@ -38,7 +38,7 @@ echo ======================================
 echo.
 echo Access points:
 echo   Backend API: http://localhost:8000
-echo   API Docs: http://localhost:8000/docs
+echo   API Docs: http://localhost:8000/api/docs
 echo   Frontend: http://localhost:3000
 echo.
 echo Close the command windows to stop services
