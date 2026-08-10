@@ -42,3 +42,5 @@ logs/
 # Runtime / local data
 uploads/
 postgres_data/
+
+# Environment files / secrets.env.env.*!.env.example
