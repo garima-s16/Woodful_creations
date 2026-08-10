@@ -42,7 +42,13 @@ class Settings(BaseSettings):
     # --- CORS ---
     # Comma-separated list of exact origins allowed to call this API.
     # Never use "*" in production, especially alongside cookies.
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    # Stored as a plain string, not List[str] - pydantic-settings tries to
+    # JSON-decode env values for list-typed fields before any validator
+    # runs, which crashes on a plain comma-separated string like
+    # "http://a,http://b" with "error parsing value ... from source
+    # EnvSettingsSource". Splitting it ourselves via the property below
+    # avoids that entirely.
+    CORS_ORIGINS: str = "http://localhost:3000"
 
     # --- Rate limiting ---
     RATE_LIMIT_LOGIN_PER_MINUTE: int = 5
@@ -58,20 +64,16 @@ class Settings(BaseSettings):
     # --- Uploads ---
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
     UPLOAD_DIRECTORY: str = "./uploads"
-    ALLOWED_EXTENSIONS: List[str] = ["pdf", "xlsx", "docx", "jpg", "png", "jpeg"]
+    # Same reasoning as CORS_ORIGINS above - plain string, split via property.
+    ALLOWED_EXTENSIONS: str = "pdf,xlsx,docx,jpg,png,jpeg"
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def split_cors_origins(cls, v):
-        # Accept either a plain comma-separated string (CORS_ORIGINS=a,b,c)
-        # or a JSON array (CORS_ORIGINS=["a","b","c"]) - comma-separated is
-        # what most people type into a .env file by hand.
-        if isinstance(v, str):
-            stripped = v.strip()
-            if stripped.startswith("["):
-                return v  # let pydantic's normal JSON parsing handle it
-            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
-        return v
+    @property
+    def cors_origins_list(self) -> List[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def allowed_extensions_list(self) -> List[str]:
+        return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()]
 
     @field_validator("SECRET_KEY")
     @classmethod
