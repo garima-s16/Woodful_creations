@@ -6,14 +6,20 @@ No secret ever ships with a hardcoded default in production mode -
 SECRET_KEY and DATABASE_URL must be supplied via the environment.
 """
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve .env relative to backend/ regardless of the process's current
+# working directory - avoids "SECRET_KEY field required" failures when the
+# app is launched from the repo root instead of from inside backend/.
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), case_sensitive=True, extra="ignore")
 
     # --- App ---
     APP_NAME: str = "Woodful Creations"
