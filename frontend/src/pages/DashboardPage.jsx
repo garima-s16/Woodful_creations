@@ -32,7 +32,7 @@ function AttentionRequired() {
           <div className="attention-column">
             <h4>Low Stock Materials</h4>
             {lowStock.map((m) => (
-              <button key={m.material} className="attention-item" onClick={() => navigate('/materials')}>
+              <button key={m.material} className="attention-item" onClick={() => navigate(`/materials/${m.id}`)}>
                 <span>{m.material}</span>
                 <span className="status-badge status-warning">{m.current}/{m.minimum}</span>
               </button>
@@ -54,7 +54,7 @@ function AttentionRequired() {
           <div className="attention-column">
             <h4>Outstanding Payments</h4>
             {outstandingOrders.map((o) => (
-              <button key={o.order_id} className="attention-item" onClick={() => navigate('/payments')}>
+              <button key={o.order_id} className="attention-item" onClick={() => navigate(`/orders/${o.id}`)}>
                 <span>{o.order_id} - {o.client}</span>
                 <span className="status-badge status-warning">Rs {o.pending.toLocaleString()}</span>
               </button>
@@ -65,7 +65,7 @@ function AttentionRequired() {
           <div className="attention-column">
             <h4>Pending Tasks</h4>
             {tasks.map((t) => (
-              <button key={t.id} className="attention-item" onClick={() => navigate('/daily-tasks')}>
+              <button key={t.id} className="attention-item" onClick={() => navigate(`/daily-tasks/${t.id}`)}>
                 <span>{t.task_description}</span>
                 <span className="status-badge status-warning">{t.priority || 'Normal'}</span>
               </button>

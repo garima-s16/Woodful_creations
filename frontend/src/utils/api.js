@@ -108,6 +108,7 @@ export const leavesAPI = {
 
 export const dailyTasksAPI = {
   list: (params) => client.get('/api/daily-tasks/', { params }),
+  get: (id) => client.get(`/api/daily-tasks/${id}`),
   create: (data) => client.post('/api/daily-tasks/', data),
   update: (id, data) => client.put(`/api/daily-tasks/${id}`, data),
 };

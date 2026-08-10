@@ -39,6 +39,14 @@ def create_daily_task(data: DailyTaskCreate, db: Session = Depends(get_db), auth
     return task
 
 
+@router.get("/{task_id}", response_model=DailyTaskResponse)
+def get_daily_task(task_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    task = db.query(DailyTask).filter(DailyTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
 @router.put("/{task_id}", response_model=DailyTaskResponse)
 def update_daily_task(task_id: int, data: DailyTaskUpdate, db: Session = Depends(get_db),
                        auth=Depends(get_current_user)):

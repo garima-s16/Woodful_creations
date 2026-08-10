@@ -29,6 +29,7 @@ import EmployeeDetailPage from './pages/EmployeeDetailPage';
 import AttendancePage from './pages/AttendancePage';
 import LeavesPage from './pages/LeavesPage';
 import DailyTasksPage from './pages/DailyTasksPage';
+import TaskDetailPage from './pages/TaskDetailPage';
 import ProductionJobsPage from './pages/ProductionJobsPage';
 import SettingsPage from './pages/SettingsPage';
 import EstimatesPage from './pages/EstimatesPage';
@@ -107,6 +108,7 @@ function AppRoutes() {
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/leaves" element={<Protected><LeavesPage /></Protected>} />
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
+      <Route path="/daily-tasks/:taskId" element={<Protected><TaskDetailPage /></Protected>} />
       <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />

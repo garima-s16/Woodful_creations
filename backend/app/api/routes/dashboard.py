@@ -39,7 +39,7 @@ def stock_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user
         "purchase_value": round(purchase_value, 2),
         "low_stock_action_list": [
             {
-                "material": m.name, "current": m.current_stock, "minimum": m.minimum_stock,
+                "id": m.id, "material": m.name, "current": m.current_stock, "minimum": m.minimum_stock,
                 "status": m.stock_status,
                 "suggested_order": max(m.minimum_stock - m.current_stock, 0),
                 "supplier": m.primary_supplier.name if m.primary_supplier else None,

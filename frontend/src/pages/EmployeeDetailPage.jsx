@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI } from '../utils/api';
+import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI, ordersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import Modal from '../components/common/Modal';
+import Form from '../components/common/Form';
+import Alert from '../components/common/Alert';
 
 function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
@@ -15,7 +18,11 @@ function EmployeeDetailPage() {
   const [leaves, setLeaves] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [tab, setTab] = useState('Overview');
+  const [activeAction, setActiveAction] = useState(null); // 'attendance' | 'task' | 'production'
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   const load = useCallback(() => {
     employeesAPI.get(employeeId).then((res) => setEmployee(res.data)).catch(() => setEmployee(null));
@@ -25,9 +32,53 @@ function EmployeeDetailPage() {
     // production_jobs doesn't support an employee_id filter server-side yet;
     // filter client-side here rather than fetch nothing.
     productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId))));
+    ordersAPI.list().then((res) => setOrders(res.data));
   }, [employeeId]);
 
   useEffect(load, [load]);
+
+  const closeAction = () => { setActiveAction(null); setActionError(''); };
+
+  const handleRecordAttendance = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await attendanceAPI.create({
+        ...formData, employee_id: Number(employeeId),
+        date: new Date(formData.date).toISOString(),
+        in_time: formData.in_time ? new Date(`${formData.date}T${formData.in_time}`).toISOString() : null,
+        out_time: formData.out_time ? new Date(`${formData.date}T${formData.out_time}`).toISOString() : null,
+      });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to record attendance'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleAssignTask = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await dailyTasksAPI.create({
+        ...formData, employee_id: Number(employeeId),
+        order_id: formData.order_id ? Number(formData.order_id) : null,
+        date: new Date(formData.date).toISOString(),
+      });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to assign task'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleCreateProductionJob = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await productionJobsAPI.create({
+        ...formData, employee_id: Number(employeeId),
+        order_id: formData.order_id ? Number(formData.order_id) : null,
+        date: new Date(formData.date).toISOString(),
+        planned_qty: Number(formData.planned_qty || 0),
+      });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to create production job'); }
+    finally { setActionLoading(false); }
+  };
 
   if (!employee) return <div className="page">Loading...</div>;
 
@@ -42,6 +93,11 @@ function EmployeeDetailPage() {
           <Link to="/employees" className="btn-link">&larr; Back to Employees</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{employee.name}</h1>
           <div className="detail-subtitle">{employee.employee_code} &middot; {employee.department || 'No department'}</div>
+        </div>
+        <div className="page-actions">
+          <button className="btn-secondary" onClick={() => setActiveAction('attendance')}>Record Attendance</button>
+          <button className="btn-secondary" onClick={() => setActiveAction('task')}>Assign Task</button>
+          <button className="btn-secondary" onClick={() => setActiveAction('production')}>Create Production Job</button>
         </div>
       </div>
 
@@ -119,6 +175,55 @@ function EmployeeDetailPage() {
           emptyMessage="No production jobs for this employee yet."
         />
       )}
+
+      <Modal isOpen={activeAction === 'attendance'} title="Record Attendance" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'in_time', label: 'In Time', type: 'time' },
+            { name: 'out_time', label: 'Out Time', type: 'time' },
+            { name: 'attendance_status', label: 'Status', type: 'select', options: [
+              { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
+              { value: 'Half Day', label: 'Half Day' }, { value: 'Leave', label: 'Leave' },
+            ] },
+            { name: 'remarks', label: 'Remarks' },
+          ]}
+          onSubmit={handleRecordAttendance} loading={actionLoading} submitText="Record Attendance"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'task'} title="Assign Task" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'task_code', label: 'Task Code', required: true, placeholder: 'TSK-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'order_id', label: 'Project (Order)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
+            { name: 'task_description', label: 'Task Description', required: true, type: 'textarea' },
+            { name: 'priority', label: 'Priority', type: 'select', options: [
+              { value: 'Low', label: 'Low' }, { value: 'Medium', label: 'Medium' },
+              { value: 'High', label: 'High' }, { value: 'Urgent', label: 'Urgent' },
+            ] },
+          ]}
+          onSubmit={handleAssignTask} loading={actionLoading} submitText="Assign Task"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'production'} title="Create Production Job" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'job_code', label: 'Job Code', required: true, placeholder: 'JOB-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'order_id', label: 'Project (Order)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
+            { name: 'machine', label: 'Machine' },
+            { name: 'operation', label: 'Operation' },
+            { name: 'planned_qty', label: 'Planned Quantity', type: 'number', required: true },
+          ]}
+          onSubmit={handleCreateProductionJob} loading={actionLoading} submitText="Create Production Job"
+        />
+      </Modal>
     </div>
   );
 }

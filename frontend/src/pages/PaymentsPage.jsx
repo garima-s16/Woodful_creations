@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { paymentsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,9 +7,12 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function PaymentsPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isTrueMaster = user?.role === 'master';
   const [payments, setPayments] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +40,24 @@ function PaymentsPage() {
     }
   };
 
+  const handleUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await paymentsAPI.update(editingPayment.id, {
+        payment_type: formData.payment_type, payment_mode: formData.payment_mode,
+        amount: formData.amount, reference_number: formData.reference_number,
+        received_by: formData.received_by, remarks: formData.remarks,
+      });
+      setEditingPayment(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update payment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const columns = [
     { key: 'receipt_code', label: 'Receipt ID' },
     { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
@@ -48,9 +70,14 @@ function PaymentsPage() {
         <a href={reportsAPI.downloadUrl(`orders/${row.order_id}/invoice.pdf`)} target="_blank" rel="noreferrer">Invoice</a>
       ),
     },
+    {
+      key: 'edit_action', label: '', render: (v, row) => (
+        isTrueMaster && <button className="btn-link" onClick={() => setEditingPayment(row)}>Edit</button>
+      ),
+    },
   ];
 
-  const fields = [
+  const createFields = [
     { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-008' },
     { name: 'date', label: 'Date', type: 'date', required: true },
     { name: 'order_id', label: 'Order', type: 'select', required: true, options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
@@ -65,6 +92,8 @@ function PaymentsPage() {
     { name: 'received_by', label: 'Received By' },
   ];
 
+  const editFields = createFields.filter((f) => !['receipt_code', 'date', 'order_id'].includes(f.name));
+
   return (
     <div className="page">
       <div className="page-header">
@@ -75,9 +104,14 @@ function PaymentsPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={payments} />
+      <Table columns={columns} data={payments} emptyMessage="No payments recorded yet." />
       <Modal isOpen={showAdd} title="Record Payment" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Payment" />
+        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Record Payment" />
+      </Modal>
+      <Modal isOpen={!!editingPayment} title={`Edit ${editingPayment?.receipt_code || ''}`} onClose={() => setEditingPayment(null)}>
+        {editingPayment && (
+          <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingPayment} />
+        )}
       </Modal>
     </div>
   );

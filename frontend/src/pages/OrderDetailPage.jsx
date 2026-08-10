@@ -3,10 +3,12 @@ import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   ordersAPI, clientsAPI, paymentsAPI, projectExpensesAPI, issuesAPI,
-  dailyTasksAPI, productionJobsAPI, materialsAPI, reportsAPI,
+  dailyTasksAPI, productionJobsAPI, materialsAPI, employeesAPI, reportsAPI,
 } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import Modal from '../components/common/Modal';
+import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function money(v) {
@@ -30,6 +32,7 @@ function OrderDetailPage() {
   const [order, setOrder] = useState(null);
   const [client, setClient] = useState(null);
   const [materials, setMaterials] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [payments, setPayments] = useState(null);
   const [expenses, setExpenses] = useState(null);
   const [issues, setIssues] = useState([]);
@@ -38,6 +41,62 @@ function OrderDetailPage() {
   const [profitability, setProfitability] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('Overview');
+  const [activeAction, setActiveAction] = useState(null); // 'payment' | 'expense' | 'issue' | 'task' | 'production'
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  const closeAction = () => { setActiveAction(null); setActionError(''); };
+
+  const handleQuickPayment = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await paymentsAPI.create({ ...formData, order_id: Number(orderId), date: new Date(formData.date).toISOString() });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to record payment'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleQuickExpense = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await projectExpensesAPI.create({ ...formData, order_id: Number(orderId), date: new Date(formData.date).toISOString() });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to add expense'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleQuickIssue = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await issuesAPI.create({ ...formData, order_id: Number(orderId), material_id: Number(formData.material_id), date: new Date(formData.date).toISOString() });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to issue material'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleQuickTask = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await dailyTasksAPI.create({ ...formData, order_id: Number(orderId), employee_id: Number(formData.employee_id), date: new Date(formData.date).toISOString() });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to assign task'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleQuickProduction = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await productionJobsAPI.create({
+        ...formData, order_id: Number(orderId),
+        employee_id: formData.employee_id ? Number(formData.employee_id) : null,
+        material_id: formData.material_id ? Number(formData.material_id) : null,
+        date: new Date(formData.date).toISOString(),
+        planned_qty: Number(formData.planned_qty || 0),
+      });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to create production job'); }
+    finally { setActionLoading(false); }
+  };
 
   const load = useCallback(() => {
     ordersAPI.get(orderId).then((res) => {
@@ -46,6 +105,7 @@ function OrderDetailPage() {
     }).catch(() => setError('Unable to load this order.'));
 
     materialsAPI.list().then((res) => setMaterials(res.data));
+    employeesAPI.list().then((res) => setEmployees(res.data));
     issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data));
     dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data));
     productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data));
@@ -105,6 +165,14 @@ function OrderDetailPage() {
         <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{money(order.total_received)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{money(order.balance)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Progress</div><h3>{order.progress_percent}%</h3></div></Card>
+      </div>
+
+      <div className="page-actions" style={{ marginBottom: 'var(--space-5)' }}>
+        {canViewFinancials && <button className="btn-secondary" onClick={() => setActiveAction('payment')}>Record Payment</button>}
+        {canViewFinancials && <button className="btn-secondary" onClick={() => setActiveAction('expense')}>Add Expense</button>}
+        <button className="btn-secondary" onClick={() => setActiveAction('issue')}>Issue Material</button>
+        <button className="btn-secondary" onClick={() => setActiveAction('task')}>Assign Task</button>
+        <button className="btn-secondary" onClick={() => setActiveAction('production')}>Create Production Job</button>
       </div>
 
       <div className="tab-bar">
@@ -232,6 +300,94 @@ function OrderDetailPage() {
             </Card>
           )
       )}
+
+      <Modal isOpen={activeAction === 'payment'} title="Record Payment" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, options: [
+              { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },
+            ] },
+            { name: 'payment_mode', label: 'Payment Mode', type: 'select', required: true, options: [
+              { value: 'Cash', label: 'Cash' }, { value: 'UPI', label: 'UPI' }, { value: 'Bank', label: 'Bank' }, { value: 'Credit Card', label: 'Credit Card' },
+            ] },
+            { name: 'amount', label: 'Amount', type: 'number', required: true },
+            { name: 'reference_number', label: 'Reference No.' },
+            { name: 'received_by', label: 'Received By' },
+          ]}
+          onSubmit={handleQuickPayment} loading={actionLoading} submitText="Record Payment"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'expense'} title="Add Project Expense" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'expense_code', label: 'Expense Code', required: true, placeholder: 'EXP-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'category', label: 'Category', required: true },
+            { name: 'description', label: 'Description' },
+            { name: 'paid_to', label: 'Paid To' },
+            { name: 'amount', label: 'Amount', type: 'number', required: true },
+            { name: 'approved_by', label: 'Approved By' },
+          ]}
+          onSubmit={handleQuickExpense} loading={actionLoading} submitText="Add Expense"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'issue'} title="Issue Material" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'issue_code', label: 'Issue Code', required: true, placeholder: 'ISS-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'material_id', label: 'Material', type: 'select', required: true, options: materials.map((m) => ({ value: m.id, label: `${m.name} (${m.current_stock} in stock)` })) },
+            { name: 'quantity_issued', label: 'Quantity Issued', type: 'number', required: true },
+            { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
+            { name: 'issued_to', label: 'Issued To' },
+            { name: 'department', label: 'Department' },
+            { name: 'purpose', label: 'Purpose' },
+            { name: 'approved_by', label: 'Approved By' },
+          ]}
+          onSubmit={handleQuickIssue} loading={actionLoading} submitText="Issue Material"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'task'} title="Assign Task" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'task_code', label: 'Task Code', required: true, placeholder: 'TSK-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
+            { name: 'task_description', label: 'Task Description', required: true, type: 'textarea' },
+            { name: 'priority', label: 'Priority', type: 'select', options: [
+              { value: 'Low', label: 'Low' }, { value: 'Medium', label: 'Medium' },
+              { value: 'High', label: 'High' }, { value: 'Urgent', label: 'Urgent' },
+            ] },
+            { name: 'checked_by', label: 'Checked By' },
+          ]}
+          onSubmit={handleQuickTask} loading={actionLoading} submitText="Assign Task"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'production'} title="Create Production Job" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'job_code', label: 'Job Code', required: true, placeholder: 'JOB-011' },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'machine', label: 'Machine' },
+            { name: 'operation', label: 'Operation' },
+            { name: 'employee_id', label: 'Operator', type: 'select', options: employees.map((e) => ({ value: e.id, label: e.name })) },
+            { name: 'material_id', label: 'Material', type: 'select', options: materials.map((m) => ({ value: m.id, label: m.name })) },
+            { name: 'planned_qty', label: 'Planned Quantity', type: 'number', required: true },
+          ]}
+          onSubmit={handleQuickProduction} loading={actionLoading} submitText="Create Production Job"
+        />
+      </Modal>
     </div>
   );
 }
