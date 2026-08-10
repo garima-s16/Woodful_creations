@@ -186,7 +186,7 @@ Role-based permission system
 ## User Roles & Permissions
 
 ### Master Administrators (2 users)
-**Users**: Nikhil (nikhils) & Garima (garimas)
+**Users**: Nikhil (admin2) & Garima (admin1)
 - Full access to all modules and features
 - Can view and update all data across all departments
 - Can add/remove regular users
@@ -196,7 +196,7 @@ Role-based permission system
 - Full access to analytics and reports
 
 ### Regular Users
-**Users**: shwetav (Stock team member)
+**Users**: user1 (Stock team member)
 - Limited data access based on department
 - Can view stock inventory
 - Can update product status (design/execution/delivery)
@@ -209,9 +209,9 @@ Role-based permission system
 
 | Role | Username | Password | Email | Phone | Access Level |
 |------|----------|----------|-------|-------|--------------|
-| Master Admin | garimas | Gullak*16 | garima@woodfulcreations.com | +919229083242 | Full |
-| Master Admin | nikhils | Nikhil*27 | nikhil@woodfulcreations.com | 9339555554 | Full |
-| Regular User | shwetav | Shweta*05 | shweta@woodfulcreations.com | - | Limited |
+| Master Admin | admin1 | <CHANGE_ME_ADMIN1_PASSWORD> | admin1@example.com | <REDACTED_PHONE> | Full |
+| Master Admin | admin2 | <CHANGE_ME_ADMIN2_PASSWORD> | admin2@example.com | <REDACTED_PHONE> | Full |
+| Regular User | user1 | <CHANGE_ME_USER1_PASSWORD> | user1@example.com | - | Limited |
 
 ---
 
@@ -328,8 +328,8 @@ Woodful_creations/
    ```bash
    cd ../scripts
    python init_db.py
-   python create_master_user.py --username garimas --password "Gullak*16" --name "Garima" --role admin
-   python create_master_user.py --username nikhils --password "Nikhil*27" --name "Nikhil" --role admin
+   python create_master_user.py --username admin1 --password "<CHANGE_ME_ADMIN1_PASSWORD>" --name "Garima" --role admin
+   python create_master_user.py --username admin2 --password "<CHANGE_ME_ADMIN2_PASSWORD>" --name "Nikhil" --role admin
    ```
 
 6. **Launch Application** (Open 3 terminals)
@@ -357,7 +357,7 @@ For detailed instructions, refer to **SETUP_GUIDE.md**
 
 ### Web Interface
 - **URL**: http://localhost:3000
-- **Default Master Users**: Nikhil (nikhils), Garima (garimas)
+- **Default Master Users**: Nikhil (admin2), Garima (admin1)
 - **Responsive**: Desktop and mobile compatible
 
 ### Backend API
@@ -481,7 +481,7 @@ For detailed instructions, refer to **SETUP_GUIDE.md**
 ### Getting Help
 - Check relevant module documentation
 - Review FastAPI Swagger docs at http://localhost:8000/docs
-- Contact development team: Nikhil (9339555554) or Garima (+919229083242)
+- Contact development team: Nikhil (<REDACTED_PHONE>) or Garima (<REDACTED_PHONE>)
 
 ---
 

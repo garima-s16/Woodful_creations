@@ -15,8 +15,8 @@
    python .\seed_sample_data.py
 
 4) Create master users (if not created by seeder):
-   python .\create_master_user.py --email garima@woodfulcreations.com --username garimas --name "Garima Sharma" --password "Gullak*16"
-   python .\create_master_user.py --email nikhil@woodfulcreations.com --username nikhils --name "Nikhil" --password "Nikhil*27"
+   python .\create_master_user.py --email admin1@example.com --username admin1 --name "Garima Sharma" --password "<CHANGE_ME_ADMIN1_PASSWORD>"
+   python .\create_master_user.py --email admin2@example.com --username admin2 --name "Nikhil" --password "<CHANGE_ME_ADMIN2_PASSWORD>"
 
 5) Run backend (example):
    cd backend

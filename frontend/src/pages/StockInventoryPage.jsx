@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { inventoryAPI } from '../utils/api';
+import { materialsAPI, purchasesAPI, issuesAPI } from '../utils/api';
 import { fetchStart, fetchSuccess, fetchFailure, addProduct } from '../redux/slices/inventorySlice';
 import ChatWidget from '../components/ChatWidget';
 import '../styles/StockInventoryPage.css';
@@ -27,7 +27,7 @@ function StockInventoryPage({ user }) {
   const fetchProducts = async () => {
     dispatch(fetchStart());
     try {
-      const response = await inventoryAPI.getInventory();
+      const response = await materialsAPI.getInventory();
       dispatch(fetchSuccess(response.data));
     } catch (error) {
       dispatch(fetchFailure(error.message));
@@ -37,7 +37,7 @@ function StockInventoryPage({ user }) {
   const handleAddProduct = async (e) => {
     e.preventDefault();
     try {
-      const response = await inventoryAPI.addProduct(formData);
+      const response = await materialsAPI.addProduct(formData);
       dispatch(addProduct(response.data));
       setFormData({
         name: '',

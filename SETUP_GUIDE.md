@@ -226,28 +226,28 @@ Create the master administrator accounts and regular users:
 ```bash
 # Create Master User 1 - Garima
 python create_master_user.py \
-  --username garimas \
+  --username admin1 \
   --name "Garima" \
-  --email "garima@woodfulcreations.com" \
-  --password "Gullak*16" \
-  --phone "+919229083242" \
+  --email "admin1@example.com" \
+  --password "<CHANGE_ME_ADMIN1_PASSWORD>" \
+  --phone "<REDACTED_PHONE>" \
   --role admin
 
 # Create Master User 2 - Nikhil
 python create_master_user.py \
-  --username nikhils \
+  --username admin2 \
   --name "Nikhil" \
-  --email "nikhil@woodfulcreations.com" \
-  --password "Nikhil*27" \
-  --phone "9339555554" \
+  --email "admin2@example.com" \
+  --password "<CHANGE_ME_ADMIN2_PASSWORD>" \
+  --phone "<REDACTED_PHONE>" \
   --role admin
 
 # Create Regular User - Shweta
 python create_master_user.py \
-  --username shwetav \
+  --username user1 \
   --name "Shweta" \
-  --email "shweta@woodfulcreations.com" \
-  --password "Shweta*05" \
+  --email "user1@example.com" \
+  --password "<CHANGE_ME_USER1_PASSWORD>" \
   --role user
 ```
 
@@ -376,10 +376,10 @@ Once all services are running:
 ### Web Interface
 - **URL**: http://localhost:3000
 - **Default Master Users**:
-  - Username: `garimas`, Password: `Gullak*16`
-  - Username: `nikhils`, Password: `Nikhil*27`
+  - Username: `admin1`, Password: `<CHANGE_ME_ADMIN1_PASSWORD>`
+  - Username: `admin2`, Password: `<CHANGE_ME_ADMIN2_PASSWORD>`
 - **Regular User**:
-  - Username: `shwetav`, Password: `Shweta*05`
+  - Username: `user1`, Password: `<CHANGE_ME_USER1_PASSWORD>`
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
@@ -541,7 +541,7 @@ curl http://localhost:8000/api/health
 # Test login endpoint
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"garimas","password":"Gullak*16"}'
+  -d '{"username":"admin1","password":"<CHANGE_ME_ADMIN1_PASSWORD>"}'
 ```
 
 ### Test Frontend Connection
@@ -616,7 +616,7 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
-- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
+- Woodful Team: Nikhil (<REDACTED_PHONE>) or Garima (<REDACTED_PHONE>)
 
 ---
 

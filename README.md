@@ -66,8 +66,13 @@ System Requirements
 
 Default Admin Users
 
-- Username: nikhils / Password: Nikhil*27
-- Username: garimas / Password: Gullak*16
+No accounts ship with this repository. Create your own via
+`backend/scripts/create_master_user.py` (see SETUP_GUIDE.md). Placeholders
+below are examples only — real credentials were previously committed here
+and have been removed; see the security note in SETUP_GUIDE.md.
+
+- Username: <your-choice> / Password: <CHANGE_ME_ADMIN2_PASSWORD>
+- Username: <your-choice> / Password: <CHANGE_ME_ADMIN1_PASSWORD>
 
 Features
 

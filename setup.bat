@@ -125,7 +125,7 @@ echo    - Run: start_frontend.bat
 echo.
 echo 4. Access the application:
 echo    Backend API: http://localhost:8000
-echo    API Docs: http://localhost:8000/api/docs
+echo    API Docs: http://localhost:8000/docs
 echo    Frontend: http://localhost:3000
 echo.
 pause

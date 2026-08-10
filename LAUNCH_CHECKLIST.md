@@ -150,32 +150,32 @@ This document provides a comprehensive verification checklist to ensure your Woo
 - [ ] Master User 1 (Garima) Created
   ```bash
   python create_master_user.py \
-    --username garimas \
+    --username admin1 \
     --name "Garima" \
-    --email "garima@woodfulcreations.com" \
-    --password "Gullak*16" \
-    --phone "+919229083242" \
+    --email "admin1@example.com" \
+    --password "<CHANGE_ME_ADMIN1_PASSWORD>" \
+    --phone "<REDACTED_PHONE>" \
     --role admin
   ```
 
 - [ ] Master User 2 (Nikhil) Created
   ```bash
   python create_master_user.py \
-    --username nikhils \
+    --username admin2 \
     --name "Nikhil" \
-    --email "nikhil@woodfulcreations.com" \
-    --password "Nikhil*27" \
-    --phone "9339555554" \
+    --email "admin2@example.com" \
+    --password "<CHANGE_ME_ADMIN2_PASSWORD>" \
+    --phone "<REDACTED_PHONE>" \
     --role admin
   ```
 
 - [ ] Regular User (Shweta) Created
   ```bash
   python create_master_user.py \
-    --username shwetav \
+    --username user1 \
     --name "Shweta" \
-    --email "shweta@woodfulcreations.com" \
-    --password "Shweta*05" \
+    --email "user1@example.com" \
+    --password "<CHANGE_ME_USER1_PASSWORD>" \
     --role user
   ```
 
@@ -311,8 +311,8 @@ This document provides a comprehensive verification checklist to ensure your Woo
 
 ### Test Master Admin Login (Garima)
 - [ ] Navigate to http://localhost:3000
-- [ ] Enter Username: `garimas`
-- [ ] Enter Password: `Gullak*16`
+- [ ] Enter Username: `admin1`
+- [ ] Enter Password: `<CHANGE_ME_ADMIN1_PASSWORD>`
 - [ ] Click Login Button
 - [ ] Verify: Redirected to dashboard
 - [ ] Verify: Session token received (check localStorage/cookies)
@@ -325,16 +325,16 @@ This document provides a comprehensive verification checklist to ensure your Woo
   - [ ] Logout button clicked
   - [ ] Redirected to login page
   - [ ] Session cleared
-- [ ] Enter Username: `nikhils`
-- [ ] Enter Password: `Nikhil*27`
+- [ ] Enter Username: `admin2`
+- [ ] Enter Password: `<CHANGE_ME_ADMIN2_PASSWORD>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in as Nikhil
 - [ ] Verify: Full admin access confirmed
 
 ### Test Regular User Login (Shweta)
 - [ ] Logout from current session
-- [ ] Enter Username: `shwetav`
-- [ ] Enter Password: `Shweta*05`
+- [ ] Enter Username: `user1`
+- [ ] Enter Password: `<CHANGE_ME_USER1_PASSWORD>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in
 - [ ] Verify: Dashboard visible with limited access
@@ -376,7 +376,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
   ```bash
   curl -X POST http://localhost:8000/api/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"garimas","password":"Gullak*16"}'
+    -d '{"username":"admin1","password":"<CHANGE_ME_ADMIN1_PASSWORD>"}'
   ```
   Expected: 200 OK with token
 
@@ -564,8 +564,8 @@ When all checks pass, complete the following:
 
 ## Support Contacts
 
-- **Nikhil (Master Admin)**: 9339555554 | nikhil@woodfulcreations.com
-- **Garima (Master Admin)**: +919229083242 | garima@woodfulcreations.com
+- **Nikhil (Master Admin)**: <REDACTED_PHONE> | admin2@example.com
+- **Garima (Master Admin)**: <REDACTED_PHONE> | admin1@example.com
 
 ---
 
