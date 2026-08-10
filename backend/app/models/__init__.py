@@ -20,6 +20,7 @@ from app.models.estimate import Estimate
 
 from app.models.employee import Employee
 from app.models.attendance import Attendance
+from app.models.leave import Leave
 from app.models.daily_task import DailyTask
 from app.models.production_job import ProductionJob
 from app.models.salary_slip import SalarySlip
@@ -36,7 +37,7 @@ __all__ = [
     "ProjectStatus", "Priority", "PaymentMode", "LeadSource", "ProjectType", "ExpenseCategory",
     "Supplier", "Material", "Purchase", "Issue",
     "Client", "Order", "Payment", "ProjectExpense", "Estimate",
-    "Employee", "Attendance", "DailyTask", "ProductionJob", "SalarySlip",
+    "Employee", "Attendance", "Leave", "DailyTask", "ProductionJob", "SalarySlip",
     "Candidate", "Interview",
     "AuditLog",
 ]

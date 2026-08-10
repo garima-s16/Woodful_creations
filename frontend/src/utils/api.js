@@ -100,6 +100,12 @@ export const attendanceAPI = {
   update: (id, data) => client.put(`/api/attendance/${id}`, data),
 };
 
+export const leavesAPI = {
+  list: (params) => client.get('/api/leaves/', { params }),
+  create: (data) => client.post('/api/leaves/', data),
+  update: (id, data) => client.put(`/api/leaves/${id}`, data),
+};
+
 export const dailyTasksAPI = {
   list: (params) => client.get('/api/daily-tasks/', { params }),
   create: (data) => client.post('/api/daily-tasks/', data),

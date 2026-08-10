@@ -43,6 +43,7 @@ function Sidebar({ isOpen, user }) {
       items: [
         { path: '/employees', label: 'Employees' },
         { path: '/attendance', label: 'Attendance' },
+        { path: '/leaves', label: 'Leave' },
         ...(isMaster ? [
           { path: '/salary-slips', label: 'Salary' },
           { path: '/candidates', label: 'Candidates' },

@@ -10,6 +10,7 @@ from app.api.routes import payments
 from app.api.routes import project_expenses
 from app.api.routes import employees
 from app.api.routes import attendance
+from app.api.routes import leaves
 from app.api.routes import daily_tasks
 from app.api.routes import production_jobs
 from app.api.routes import dashboard
@@ -35,6 +36,7 @@ all_routers = [
     project_expenses.router,
     employees.router,
     attendance.router,
+    leaves.router,
     daily_tasks.router,
     production_jobs.router,
     dashboard.router,

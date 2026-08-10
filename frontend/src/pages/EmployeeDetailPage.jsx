@@ -1,17 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI } from '../utils/api';
+import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 
 function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
-const TABS = ['Overview', 'Attendance', 'Tasks', 'Production'];
+const TABS = ['Overview', 'Attendance', 'Leave', 'Tasks', 'Production'];
 
 function EmployeeDetailPage() {
   const { employeeId } = useParams();
   const [employee, setEmployee] = useState(null);
   const [attendance, setAttendance] = useState([]);
+  const [leaves, setLeaves] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
   const [tab, setTab] = useState('Overview');
@@ -19,6 +20,7 @@ function EmployeeDetailPage() {
   const load = useCallback(() => {
     employeesAPI.get(employeeId).then((res) => setEmployee(res.data)).catch(() => setEmployee(null));
     attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data));
+    leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data));
     dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data));
     // production_jobs doesn't support an employee_id filter server-side yet;
     // filter client-side here rather than fetch nothing.
@@ -79,6 +81,20 @@ function EmployeeDetailPage() {
           ]}
           data={attendance}
           emptyMessage="No attendance records for this employee yet."
+        />
+      )}
+
+      {tab === 'Leave' && (
+        <Table
+          columns={[
+            { key: 'leave_type', label: 'Type' },
+            { key: 'start_date', label: 'From', render: (v) => new Date(v).toLocaleDateString() },
+            { key: 'end_date', label: 'To', render: (v) => new Date(v).toLocaleDateString() },
+            { key: 'days', label: 'Days' }, { key: 'reason', label: 'Reason' },
+            { key: 'status', label: 'Status' },
+          ]}
+          data={leaves}
+          emptyMessage="No leave requests for this employee yet."
         />
       )}
 
