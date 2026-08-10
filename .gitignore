@@ -26,4 +26,7 @@ uploads/
 postgres_data/
 .next/
 out/
-.cache/.env
+.cache/
+*.db
+*.sqlite3
+woodful.db
