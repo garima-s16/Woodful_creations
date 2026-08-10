@@ -148,6 +148,17 @@ export const chatAPI = {
   send: (message) => client.post('/api/chat/', { message }),
 };
 
+export const usersAPI = {
+  list: (params) => client.get('/api/users/', { params }),
+  create: (data) => client.post('/api/users/', data),
+  update: (id, data) => client.put(`/api/users/${id}`, data),
+  remove: (id) => client.delete(`/api/users/${id}`),
+};
+
+export const auditLogsAPI = {
+  list: (params) => client.get('/api/audit-logs/', { params }),
+};
+
 export const reportsAPI = {
   downloadUrl: (path) => `${API_URL}/api/reports/${path}`,
 };

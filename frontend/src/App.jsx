@@ -34,6 +34,8 @@ import EstimatesPage from './pages/EstimatesPage';
 import CandidatesPage from './pages/CandidatesPage';
 import InterviewsPage from './pages/InterviewsPage';
 import SalarySlipsPage from './pages/SalarySlipsPage';
+import UsersPage from './pages/UsersPage';
+import AuditLogsPage from './pages/AuditLogsPage';
 
 function AppLayout({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -105,6 +107,8 @@ function AppRoutes() {
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
       <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
+      <Route path="/users" element={<Protected><UsersPage /></Protected>} />
+      <Route path="/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />
       <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
       <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />

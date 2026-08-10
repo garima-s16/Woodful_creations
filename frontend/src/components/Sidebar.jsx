@@ -5,6 +5,7 @@ import '../styles/Sidebar.css';
 function Sidebar({ isOpen, user }) {
   const location = useLocation();
   const isMaster = user?.role === 'master' || user?.role === 'manager';
+  const isTrueMaster = user?.role === 'master';
 
   const groups = [
     {
@@ -51,7 +52,13 @@ function Sidebar({ isOpen, user }) {
     },
     ...(isMaster ? [{
       name: 'Administration',
-      items: [{ path: '/settings', label: 'Settings' }],
+      items: [
+        { path: '/settings', label: 'Settings' },
+        ...(isTrueMaster ? [
+          { path: '/users', label: 'Users' },
+          { path: '/audit-logs', label: 'Audit Logs' },
+        ] : []),
+      ],
     }] : []),
   ];
 

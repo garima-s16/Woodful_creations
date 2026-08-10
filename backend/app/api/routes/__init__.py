@@ -19,6 +19,8 @@ from app.api.routes import candidates
 from app.api.routes import interviews
 from app.api.routes import salary_slips
 from app.api.routes import chat
+from app.api.routes import users
+from app.api.routes import audit_logs
 
 all_routers = [
     auth.router,
@@ -42,4 +44,6 @@ all_routers = [
     interviews.router,
     salary_slips.router,
     chat.router,
+    users.router,
+    audit_logs.router,
 ]
