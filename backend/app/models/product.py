@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Numeric
 from datetime import datetime
 from app.core.database import Base
 
@@ -12,7 +12,7 @@ class Product(Base):
     description = Column(Text, nullable=True)
     quantity = Column(Integer, default=0)
     min_quantity = Column(Integer, default=10)
-    price_per_unit = Column(Float, default=0.0)
+    price_per_unit = Column(Numeric(12, 2), default=0)
     unit = Column(String, default="sheets")
     sku = Column(String, unique=True, nullable=True)
     supplier = Column(String, nullable=True)

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
@@ -8,7 +9,7 @@ class EmployeeBase(BaseModel):
     phone: str
     position: str
     department: str
-    salary: float
+    salary: Decimal
 
 class EmployeeCreate(EmployeeBase):
     pass
@@ -18,7 +19,7 @@ class EmployeeUpdate(BaseModel):
     phone: Optional[str] = None
     position: Optional[str] = None
     department: Optional[str] = None
-    salary: Optional[float] = None
+    salary: Optional[Decimal] = None
     is_active: Optional[bool] = None
 
 class EmployeeResponse(EmployeeBase):

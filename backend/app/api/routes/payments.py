@@ -1,23 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user as verify_auth, require_role
 from app.models.payment import Payment
 from app.schemas.payment import PaymentCreate, PaymentUpdate, PaymentResponse
 from app.services.payment_service import PaymentService
 
 router = APIRouter(prefix="/api/payments", tags=["Payments"])
-security = HTTPBearer()
-
-
-def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    payload = verify_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return payload
 
 
 @router.get("/", response_model=List[PaymentResponse])
@@ -38,7 +29,7 @@ async def get_payments(
 
 
 @router.post("/", response_model=PaymentResponse, status_code=201)
-async def create_payment(payment: PaymentCreate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
+async def create_payment(payment: PaymentCreate, db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
     existing = db.query(Payment).filter(Payment.receipt_id == payment.receipt_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="Receipt ID already exists")
@@ -59,7 +50,7 @@ async def get_payment(payment_id: int, db: Session = Depends(get_db), auth=Depen
 
 
 @router.put("/{payment_id}", response_model=PaymentResponse)
-async def update_payment(payment_id: int, payment_update: PaymentUpdate, db: Session = Depends(get_db), auth=Depends(verify_auth)):
+async def update_payment(payment_id: int, payment_update: PaymentUpdate, db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
     payment = db.query(Payment).filter(Payment.id == payment_id).first()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")

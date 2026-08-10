@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Numeric
 from datetime import datetime
 from app.core.database import Base
 
@@ -11,7 +11,7 @@ class Employee(Base):
     phone = Column(String)
     position = Column(String)
     department = Column(String)
-    salary = Column(Float, default=0.0)
+    salary = Column(Numeric(12, 2), default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

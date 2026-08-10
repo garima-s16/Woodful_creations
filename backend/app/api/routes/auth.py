@@ -7,7 +7,7 @@ from app.core.rate_limit import rate_limit
 from app.core.audit import log_action
 from app.core.config import settings
 from app.models.user import User
-from app.schemas.user import LoginResponse, UserLogin
+from app.schemas.user import LoginResponse, MobileLoginResponse, UserLogin
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -24,8 +24,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit("login", settings.RATE_LIMIT_LOGIN_PER_MINUTE))])
-def login(request: UserLogin, response: Response, http_request: Request, db: Session = Depends(get_db)):
+def _authenticate(request: UserLogin, db: Session) -> User:
     user = db.query(User).filter(User.email == request.email, User.is_deleted.is_(False)).first()
 
     if not user or not verify_password(request.password, user.password_hash):
@@ -35,22 +34,46 @@ def login(request: UserLogin, response: Response, http_request: Request, db: Ses
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been deactivated")
 
+    return user
+
+
+def _user_payload(user: User) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit("login", settings.RATE_LIMIT_LOGIN_PER_MINUTE))])
+def login(request: UserLogin, response: Response, http_request: Request, db: Session = Depends(get_db)):
+    """Web login. The token is set as an HttpOnly cookie only - it is never
+    present in this JSON response, so page JavaScript can never read it."""
+    user = _authenticate(request, db)
+
     token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
     _set_auth_cookie(response, token)
     log_action(db, http_request, user_id=user.id, action="login", module_name="auth")
 
-    return LoginResponse(
-        token=token,  # kept for native mobile clients that store it in the OS keychain
-        user={
-            "id": user.id,
-            "email": user.email,
-            "username": user.username,
-            "full_name": user.full_name,
-            "role": user.role,
-            "is_active": user.is_active,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        },
-    )
+    return LoginResponse(user=_user_payload(user))
+
+
+@router.post("/login/mobile", response_model=MobileLoginResponse, dependencies=[Depends(rate_limit("login", settings.RATE_LIMIT_LOGIN_PER_MINUTE))])
+def login_mobile(request: UserLogin, http_request: Request, db: Session = Depends(get_db)):
+    """Native app login. Returns the token directly for the app to store in
+    the OS keychain (Keychain/Keystore) and send back as a Bearer header -
+    no HttpOnly cookie is set here since a native HTTP client can't rely on
+    browser cookie handling the same way."""
+    user = _authenticate(request, db)
+
+    token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
+    log_action(db, http_request, user_id=user.id, action="login", module_name="auth")
+
+    return MobileLoginResponse(token=token, user=_user_payload(user))
 
 
 @router.post("/logout")

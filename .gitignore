@@ -1,46 +1,29 @@
-# Dependencies
 node_modules/
-
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
+.env
+.env.local
+.env.*.local
+.venv
 venv/
 ENV/
-*.egg-info/
-
-# Environment files / secrets
-.env
-.env.*
-!.env.example
-
-# Frontend / build output
 build/
 dist/
-.next/
-out/
-
-# IDE / OS
+*.egg-info/
 .DS_Store
 .idea/
 .vscode/
 *.swp
-*.swo/
-
-# Testing / coverage / caches
+*.swo
 .pytest_cache/
 .coverage
 htmlcov/
 .mypy_cache/
-.cache/
-
-# Logs
 *.log
 logs/
-
-# Runtime / local data
 uploads/
 postgres_data/
-
-# Environment files / secrets.env.env.*!.env.example
+.next/
+out/
+.cache/.env

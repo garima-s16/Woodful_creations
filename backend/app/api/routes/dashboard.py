@@ -8,6 +8,7 @@ from app.core.security import get_current_user as verify_auth
 from app.models.attendance import Attendance
 from app.models.client_project import ClientProject
 from app.models.employee import Employee
+from app.models.estimate import Estimate
 from app.models.payment import Payment
 from app.models.product import Product
 
@@ -22,7 +23,9 @@ def get_dashboard(db: Session = Depends(get_db), auth=Depends(verify_auth)):
     low_stock_items = [p for p in products if getattr(p, "quantity", 0) <= getattr(p, "min_quantity", getattr(p, "min_stock", 0))]
 
     projects = db.query(ClientProject).all()
-    pending_projects = [p for p in projects if getattr(p, "delivery_status", "") != "delivered"]
+
+    estimates = db.query(Estimate).all()
+    pending_estimates = [e for e in estimates if getattr(e, "status", "") in ("draft", "pending")]
 
     payments = db.query(Payment).all()
     pending_payments = [p for p in payments if getattr(p, "status", "") == "pending"]
@@ -31,7 +34,7 @@ def get_dashboard(db: Session = Depends(get_db), auth=Depends(verify_auth)):
         "totalMaterials": len(products),
         "lowStockItems": len(low_stock_items),
         "totalInventoryValue": round(sum(getattr(p, "price_per_unit", 0) * getattr(p, "quantity", 0) for p in products), 2),
-        "pendingEstimates": len(pending_projects),
+        "pendingEstimates": len(pending_estimates),
         "activeClients": len({p.client_id for p in projects if getattr(p, "client_id", None) is not None}),
         "pendingPayments": round(sum(getattr(p, "amount", 0) for p in pending_payments), 2),
     }

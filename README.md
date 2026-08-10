@@ -66,14 +66,8 @@ System Requirements
 
 Default Admin Users
 
-Initial Administrator Setup
-
-Administrator credentials are not stored in this repository.
-
-Configure the administrator account securely during initial setup.
-Never commit usernames, passwords, API keys, or other credentials
-to Git.
-
+- Username: nikhils / Password: Nikhil*27
+- Username: garimas / Password: Gullak*16
 
 Features
 

@@ -12,7 +12,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U woodful_user"]
       interval: 10s
@@ -40,6 +39,9 @@ services:
       REDIS_URL: redis://redis:6379
       ENVIRONMENT: production
       DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
+      COOKIE_SECURE: "True"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
     depends_on:

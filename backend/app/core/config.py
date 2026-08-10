@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # short-lived access token
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     COOKIE_NAME: str = "access_token"
-    COOKIE_SECURE: bool = True          # only sent over HTTPS
+    COOKIE_SECURE: bool = False         # set True in production (docker-compose does this) - only sent over HTTPS
     COOKIE_SAMESITE: str = "lax"        # "strict" if web+API share exact site, "lax" is safer default
 
     # --- CORS ---
@@ -53,6 +53,19 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
     UPLOAD_DIRECTORY: str = "./uploads"
     ALLOWED_EXTENSIONS: List[str] = ["pdf", "xlsx", "docx", "jpg", "png", "jpeg"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def split_cors_origins(cls, v):
+        # Accept either a plain comma-separated string (CORS_ORIGINS=a,b,c)
+        # or a JSON array (CORS_ORIGINS=["a","b","c"]) - comma-separated is
+        # what most people type into a .env file by hand.
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("["):
+                return v  # let pydantic's normal JSON parsing handle it
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return v
 
     @field_validator("SECRET_KEY")
     @classmethod

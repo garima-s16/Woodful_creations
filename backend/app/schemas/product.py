@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -9,7 +10,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = None
     quantity: int
     min_quantity: int = 10
-    price_per_unit: float
+    price_per_unit: Decimal
     unit: str = "sheets"
     sku: Optional[str] = None
     supplier: Optional[str] = None
@@ -24,7 +25,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     quantity: Optional[int] = None
     min_quantity: Optional[int] = None
-    price_per_unit: Optional[float] = None
+    price_per_unit: Optional[Decimal] = None
     unit: Optional[str] = None
     sku: Optional[str] = None
     supplier: Optional[str] = None
