@@ -15,6 +15,5 @@ class Client(BaseModel):
     lead_source = Column(String(100), nullable=True)
     is_active = Column(Integer, default=1)
     remarks = Column(Text, nullable=True)
-    
-    orders = relationship("Order", back_populates="client")
+
     payments = relationship("Payment", back_populates="client")

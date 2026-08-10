@@ -1,11 +1,10 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user as verify_auth
 from app.models.attendance import Attendance
 from app.models.client_project import ClientProject
 from app.models.employee import Employee
@@ -13,14 +12,6 @@ from app.models.payment import Payment
 from app.models.product import Product
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-security = HTTPBearer()
-
-
-def verify_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    payload = verify_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return payload
 
 
 @router.get("/")

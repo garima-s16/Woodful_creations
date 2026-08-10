@@ -1,21 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
 from sqlalchemy.orm import Session
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse
 from app.models.interview import Interview
 from app.core.database import get_db
-from app.core.security import verify_token
+from app.core.security import get_current_user as verify_auth
 from typing import List
 
 router = APIRouter(prefix="/api/interviews", tags=["recruitment"])
-security = HTTPBearer()
-
-def verify_auth(credentials: HTTPAuthCredentials = Depends(security)):
-    payload = verify_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return payload
-
 @router.get("/", response_model=List[InterviewResponse])
 def get_interviews(candidate_id: int = Query(None), db: Session = Depends(get_db), auth=Depends(verify_auth)):
     query = db.query(Interview)

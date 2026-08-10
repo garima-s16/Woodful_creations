@@ -1,25 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, verify_password, get_current_user
+from app.core.rate_limit import rate_limit
+from app.core.audit import log_action
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.user import LoginResponse, UserLogin
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=LoginResponse)
-def login(request: UserLogin, db: Session = Depends(get_db)):
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=settings.COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+
+
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(rate_limit("login", settings.RATE_LIMIT_LOGIN_PER_MINUTE))])
+def login(request: UserLogin, response: Response, http_request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email, User.is_deleted.is_(False)).first()
 
     if not user or not verify_password(request.password, user.password_hash):
+        # Deliberately generic message - do not reveal whether the email exists.
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
+
     token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
+    _set_auth_cookie(response, token)
+    log_action(db, http_request, user_id=user.id, action="login", module_name="auth")
 
     return LoginResponse(
-        token=token,
+        token=token,  # kept for native mobile clients that store it in the OS keychain
         user={
             "id": user.id,
             "email": user.email,
@@ -30,3 +51,25 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
             "created_at": user.created_at.isoformat() if user.created_at else None,
         },
     )
+
+
+@router.post("/logout")
+def logout(response: Response, http_request: Request, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    response.delete_cookie(key=settings.COOKIE_NAME, path="/")
+    log_action(db, http_request, user_id=user.get("user_id"), action="logout", module_name="auth")
+    return {"message": "Logged out"}
+
+
+@router.get("/me")
+def me(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    db_user = db.query(User).filter(User.id == user.get("user_id"), User.is_deleted.is_(False)).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": db_user.id,
+        "email": db_user.email,
+        "username": db_user.username,
+        "full_name": db_user.full_name,
+        "role": db_user.role,
+        "is_active": db_user.is_active,
+    }

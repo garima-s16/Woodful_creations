@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.security import get_current_user, require_role
 from app.models.client import Client
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from typing import List
@@ -12,7 +13,8 @@ async def get_clients(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     lead_source: str = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    auth=Depends(get_current_user),
 ):
     query = db.query(Client).filter(Client.is_active == 1)
     if lead_source:
@@ -21,7 +23,7 @@ async def get_clients(
     return clients
 
 @router.post("/", response_model=ClientResponse, status_code=201)
-async def create_client(client: ClientCreate, db: Session = Depends(get_db)):
+async def create_client(client: ClientCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     existing = db.query(Client).filter(Client.client_id == client.client_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="Client ID already exists")
@@ -33,14 +35,14 @@ async def create_client(client: ClientCreate, db: Session = Depends(get_db)):
     return db_client
 
 @router.get("/{client_id}", response_model=ClientResponse)
-async def get_client(client_id: int, db: Session = Depends(get_db)):
+async def get_client(client_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
 
 @router.put("/{client_id}", response_model=ClientResponse)
-async def update_client(client_id: int, client_update: ClientUpdate, db: Session = Depends(get_db)):
+async def update_client(client_id: int, client_update: ClientUpdate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -55,7 +57,7 @@ async def update_client(client_id: int, client_update: ClientUpdate, db: Session
     return client
 
 @router.delete("/{client_id}")
-async def delete_client(client_id: int, db: Session = Depends(get_db)):
+async def delete_client(client_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")

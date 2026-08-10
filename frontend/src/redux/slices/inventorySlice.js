@@ -3,13 +3,9 @@ import { createSlice } from '@reduxjs/toolkit';
 const inventorySlice = createSlice({
   name: 'inventory',
   initialState: {
-    products: [],
+    items: [],
     loading: false,
     error: null,
-    filter: {
-      search: '',
-      category: 'all',
-    },
   },
   reducers: {
     fetchStart: (state) => {
@@ -18,37 +14,23 @@ const inventorySlice = createSlice({
     },
     fetchSuccess: (state, action) => {
       state.loading = false;
-      state.products = action.payload;
-      state.error = null;
+      state.items = action.payload;
     },
     fetchFailure: (state, action) => {
       state.loading = false;
       state.error = action.payload;
     },
     addProduct: (state, action) => {
-      state.products.push(action.payload);
+      state.items.push(action.payload);
     },
     updateProduct: (state, action) => {
-      const index = state.products.findIndex(
-        (p) => p.id === action.payload.id
-      );
-      if (index >= 0) {
-        state.products[index] = action.payload;
-      }
-    },
-    setFilter: (state, action) => {
-      state.filter = { ...state.filter, ...action.payload };
+      const idx = state.items.findIndex((i) => i.id === action.payload.id);
+      if (idx !== -1) state.items[idx] = action.payload;
     },
   },
 });
 
-export const {
-  fetchStart,
-  fetchSuccess,
-  fetchFailure,
-  addProduct,
-  updateProduct,
-  setFilter,
-} = inventorySlice.actions;
+export const { fetchStart, fetchSuccess, fetchFailure, addProduct, updateProduct } =
+  inventorySlice.actions;
 
 export default inventorySlice.reducer;

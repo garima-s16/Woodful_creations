@@ -1,11 +1,11 @@
-﻿import React from "react";
+import React from "react";
 
 export default function ExportButton({ url, filename, label="Download" }) {
   const handleDownload = async () => {
     try {
       const res = await fetch(url, {
         method: "GET",
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        credentials: "include", // sends the HttpOnly auth cookie
       });
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();

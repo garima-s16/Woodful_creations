@@ -1,46 +1,41 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import { authAPI } from '../utils/api';
+import { loginStart, loginSuccess, loginFailure } from '../redux/slices/authSlice';
 import '../styles/LoginPage.css';
 
-function LoginPage({ onLogin }) {
+function LoginPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const performLogin = async (loginEmail, loginPassword) => {
     setError('');
     setLoading(true);
+    dispatch(loginStart());
 
     try {
-      const response = await authAPI.login(email, password);
-      const { token, user } = response.data;
-
-      onLogin(user, token);
-      navigate('/dashboard');
+      const response = await authAPI.login(loginEmail, loginPassword);
+      // The auth token itself lives in an HttpOnly cookie the browser now
+      // holds automatically - we never touch it here or store it ourselves.
+      dispatch(loginSuccess(response.data));
+      navigate('/', { replace: true });
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      const message = err.response?.data?.detail || 'Login failed. Please try again.';
+      setError(message);
+      dispatch(loginFailure(message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
-    try {
-      const response = await authAPI.login('nikhil@woodful.com', 'nikhil123');
-      const { token, user } = response.data;
-
-      onLogin(user, token);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Demo login failed. Please try with email/password.');
-    } finally {
-      setLoading(false);
-    }
+  const handleLogin = (e) => {
+    e.preventDefault();
+    performLogin(email, password);
   };
 
   return (
@@ -86,25 +81,6 @@ function LoginPage({ onLogin }) {
               {loading ? 'Logging in...' : 'Login'}
             </button>
           </form>
-
-          <div className="demo-section">
-            <p>Try Demo Account</p>
-            <button
-              type="button"
-              className="demo-button"
-              onClick={handleDemoLogin}
-              disabled={loading}
-            >
-              Demo Login
-            </button>
-          </div>
-
-          <div className="test-credentials">
-            <h4>Test Credentials</h4>
-            <p>Master: nikhil@woodful.com / nikhil123</p>
-            <p>Master: garima@woodful.com / garima123</p>
-            <p>User: user@woodful.com / user123</p>
-          </div>
         </div>
 
         <div className="login-illustration">

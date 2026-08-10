@@ -1,52 +1,54 @@
-<<<<<<< Updated upstream
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.core.middleware import SecurityHeadersMiddleware
 from app.api.routes import all_routers
 
-Base.metadata.create_all(bind=engine)
+# Ensure every model is registered on the shared Base before create_all runs.
+from app import models  # noqa: F401
+
+logging.basicConfig(level=logging.INFO if not settings.DEBUG else logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="AI-powered management system for Woodful Creations",
     version=settings.APP_VERSION,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    debug=settings.DEBUG,
+    # Hide interactive docs in production to avoid exposing the full API surface.
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
+# CORS: explicit origin allow-list only. Required for cookie-based auth to work
+# from the browser (credentials cannot be used with a wildcard origin).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-@app.get("/", tags=["Health"])
-async def root():
-    return {
-        "message": "Woodful Creations API",
-        "version": settings.APP_VERSION,
-        "status": "running"
-    }
-
-@app.get("/api/health", tags=["Health"])
-async def health_check():
-    return {
-        "status": "healthy",
-        "service": settings.APP_NAME,
-        "version": settings.APP_VERSION
-    }
+app.add_middleware(SecurityHeadersMiddleware)
 
 for router in all_routers:
     app.include_router(router)
-=======
-﻿from fastapi import FastAPI
-from app.api import reports
 
-app = FastAPI(title="Woodful Creations - API (bootstrap)")
 
-app.include_router(reports.router)
->>>>>>> Stashed changes
+@app.on_event("startup")
+def on_startup():
+    if not settings.is_production:
+        # Convenience for local development only. In staging/production, use
+        # Alembic migrations instead of create_all.
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables ensured (development mode).")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "environment": settings.ENVIRONMENT}
