@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { employeesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function EmployeesPage() {
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
@@ -58,7 +60,7 @@ function EmployeesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Employee</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={employees} />
+      <Table columns={columns} data={employees} onRowClick={(row) => navigate(`/employees/${row.id}`)} emptyMessage="No records yet." />
       <Modal isOpen={showAdd} title="Add Employee" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Employee" />
       </Modal>

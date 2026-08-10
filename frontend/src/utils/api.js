@@ -34,6 +34,7 @@ export const dashboardAPI = {
 
 export const suppliersAPI = {
   list: (params) => client.get('/api/suppliers/', { params }),
+  get: (id) => client.get(`/api/suppliers/${id}`),
   create: (data) => client.post('/api/suppliers/', data),
   update: (id, data) => client.put(`/api/suppliers/${id}`, data),
   remove: (id) => client.delete(`/api/suppliers/${id}`),
@@ -86,6 +87,7 @@ export const projectExpensesAPI = {
 
 export const employeesAPI = {
   list: (params) => client.get('/api/employees/', { params }),
+  get: (id) => client.get(`/api/employees/${id}`),
   create: (data) => client.post('/api/employees/', data),
   update: (id, data) => client.put(`/api/employees/${id}`, data),
   remove: (id) => client.delete(`/api/employees/${id}`),

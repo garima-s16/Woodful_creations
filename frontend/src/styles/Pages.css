@@ -72,3 +72,13 @@
   .settings-layout { grid-template-columns: 1fr; }
   .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+.attention-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-5); }
+.attention-column h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: var(--space-2); }
+.attention-item {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--border-color); padding: 8px 0; cursor: pointer;
+  font-size: 0.83rem; color: var(--text-primary);
+}
+.attention-item:hover { color: var(--color-gold); }

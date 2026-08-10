@@ -13,15 +13,19 @@ import ChatWidget from './components/ChatWidget';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MaterialsPage from './pages/MaterialsPage';
+import MaterialDetailPage from './pages/MaterialDetailPage';
 import SuppliersPage from './pages/SuppliersPage';
+import SupplierDetailPage from './pages/SupplierDetailPage';
 import PurchasesPage from './pages/PurchasesPage';
 import IssuesPage from './pages/IssuesPage';
 import ClientsPage from './pages/ClientsPage';
+import ClientDetailPage from './pages/ClientDetailPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import PaymentsPage from './pages/PaymentsPage';
 import ProjectExpensesPage from './pages/ProjectExpensesPage';
 import EmployeesPage from './pages/EmployeesPage';
+import EmployeeDetailPage from './pages/EmployeeDetailPage';
 import AttendancePage from './pages/AttendancePage';
 import DailyTasksPage from './pages/DailyTasksPage';
 import SettingsPage from './pages/SettingsPage';
@@ -83,15 +87,19 @@ function AppRoutes() {
       <Route path="/" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
+      <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
       <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
+      <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />
       <Route path="/issues" element={<Protected><IssuesPage /></Protected>} />
       <Route path="/clients" element={<Protected><ClientsPage /></Protected>} />
+      <Route path="/clients/:clientId" element={<Protected><ClientDetailPage /></Protected>} />
       <Route path="/orders" element={<Protected><OrdersPage /></Protected>} />
       <Route path="/orders/:orderId" element={<Protected><OrderDetailPage /></Protected>} />
       <Route path="/payments" element={<Protected><PaymentsPage /></Protected>} />
       <Route path="/project-expenses" element={<Protected><ProjectExpensesPage /></Protected>} />
       <Route path="/employees" element={<Protected><EmployeesPage /></Protected>} />
+      <Route path="/employees/:employeeId" element={<Protected><EmployeeDetailPage /></Protected>} />
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />

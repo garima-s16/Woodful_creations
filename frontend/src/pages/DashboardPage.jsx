@@ -1,8 +1,81 @@
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI } from '../utils/api';
+import { useNavigate } from 'react-router-dom';
+import { dashboardAPI, dailyTasksAPI } from '../utils/api';
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
+
+function AttentionRequired() {
+  const navigate = useNavigate();
+  const [stock, setStock] = useState(null);
+  const [orders, setOrders] = useState(null);
+  const [pendingTasks, setPendingTasks] = useState([]);
+
+  useEffect(() => {
+    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
+    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
+    dailyTasksAPI.list({ status: 'Not Started' }).then((res) => setPendingTasks(res.data)).catch(() => {});
+  }, []);
+
+  const lowStock = (stock?.low_stock_action_list || []).slice(0, 4);
+  const onHoldOrders = (orders?.top_orders || []).filter((o) => o.status === 'On Hold').slice(0, 4);
+  const outstandingOrders = (orders?.top_orders || []).filter((o) => o.pending > 0).slice(0, 4);
+  const tasks = (pendingTasks || []).slice(0, 4);
+
+  const hasAny = lowStock.length || onHoldOrders.length || outstandingOrders.length || tasks.length;
+  if (!hasAny) return null;
+
+  return (
+    <Card title="Attention Required">
+      <div className="card-body attention-grid">
+        {lowStock.length > 0 && (
+          <div className="attention-column">
+            <h4>Low Stock Materials</h4>
+            {lowStock.map((m) => (
+              <button key={m.material} className="attention-item" onClick={() => navigate('/materials')}>
+                <span>{m.material}</span>
+                <span className="status-badge status-warning">{m.current}/{m.minimum}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {onHoldOrders.length > 0 && (
+          <div className="attention-column">
+            <h4>Delayed Projects</h4>
+            {onHoldOrders.map((o) => (
+              <button key={o.order_id} className="attention-item" onClick={() => navigate(`/orders/${o.id}`)}>
+                <span>{o.order_id} - {o.client}</span>
+                <span className="status-badge status-danger">On Hold</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {outstandingOrders.length > 0 && (
+          <div className="attention-column">
+            <h4>Outstanding Payments</h4>
+            {outstandingOrders.map((o) => (
+              <button key={o.order_id} className="attention-item" onClick={() => navigate('/payments')}>
+                <span>{o.order_id} - {o.client}</span>
+                <span className="status-badge status-warning">Rs {o.pending.toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {tasks.length > 0 && (
+          <div className="attention-column">
+            <h4>Pending Tasks</h4>
+            {tasks.map((t) => (
+              <button key={t.id} className="attention-item" onClick={() => navigate('/daily-tasks')}>
+                <span>{t.task_description}</span>
+                <span className="status-badge status-warning">{t.priority || 'Normal'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function StockDashboard() {
   const [data, setData] = useState(null);
@@ -141,6 +214,7 @@ function DashboardPage() {
   return (
     <div className="page">
       <h1>Dashboard</h1>
+      <AttentionRequired />
       <div className="tab-bar">
         <button className={tab === 'stock' ? 'tab active' : 'tab'} onClick={() => setTab('stock')}>Stock</button>
         <button className={tab === 'orders' ? 'tab active' : 'tab'} onClick={() => setTab('orders')}>Orders & Sales</button>

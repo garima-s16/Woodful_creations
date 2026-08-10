@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { suppliersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function SuppliersPage() {
+  const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
@@ -52,7 +54,7 @@ function SuppliersPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Supplier</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={suppliers} />
+      <Table columns={columns} data={suppliers} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No records yet." />
       <Modal isOpen={showAdd} title="Add Supplier" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Supplier" />
       </Modal>

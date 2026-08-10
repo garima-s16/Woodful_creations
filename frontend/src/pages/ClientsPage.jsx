@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clientsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function ClientsPage() {
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
@@ -51,7 +53,7 @@ function ClientsPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={clients} />
+      <Table columns={columns} data={clients} onRowClick={(row) => navigate(`/clients/${row.id}`)} emptyMessage="No records yet." />
       <Modal isOpen={showAdd} title="Add Client" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Client" />
       </Modal>

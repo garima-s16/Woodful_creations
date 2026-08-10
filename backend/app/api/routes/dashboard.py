@@ -70,7 +70,7 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
         "order_pipeline": [{"status": s, "orders": c} for s, c in pipeline.items()],
         "top_orders": [
             {
-                "order_id": o.order_code, "client": o.client.name if o.client else None,
+                "id": o.id, "order_id": o.order_code, "client": o.client.name if o.client else None,
                 "order_value": float(o.order_value or 0), "received": float(o.total_received or 0),
                 "pending": float(o.balance or 0), "progress": o.progress_percent, "status": o.project_status,
             }
