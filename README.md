@@ -66,13 +66,8 @@ System Requirements
 
 Default Admin Users
 
-No admin accounts ship with the repo. After the database is initialized, create your own
-master user (credentials are never committed to git):
-
-    cd backend
-    python scripts/create_master_user.py --email you@example.com --username you --name "Your Name"
-
-Omit --password to be prompted interactively so the value never appears in shell history or logs.
+- Username: nikhils / Password: Nikhil*27
+- Username: garimas / Password: Gullak*16
 
 Features
 

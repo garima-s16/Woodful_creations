@@ -207,15 +207,11 @@ Role-based permission system
 
 ### User Credentials
 
-| Role | Username | Email | Phone | Access Level |
-|------|----------|-------|-------|--------------|
-| Master Admin | garimas | garima@woodfulcreations.com | +919229083242 | Full |
-| Master Admin | nikhils | nikhil@woodfulcreations.com | 9339555554 | Full |
-| Regular User | shwetav | shweta@woodfulcreations.com | - | Limited |
-
-Passwords are never stored in this document. Create/reset each account with
-`python backend/scripts/create_master_user.py --email <email> --username <username> --name "<name>"`
-and enter the password at the interactive prompt.
+| Role | Username | Password | Email | Phone | Access Level |
+|------|----------|----------|-------|-------|--------------|
+| Master Admin | garimas | Gullak*16 | garima@woodfulcreations.com | +919229083242 | Full |
+| Master Admin | nikhils | Nikhil*27 | nikhil@woodfulcreations.com | 9339555554 | Full |
+| Regular User | shwetav | Shweta*05 | shweta@woodfulcreations.com | - | Limited |
 
 ---
 
@@ -275,7 +271,7 @@ Woodful_creations/
 │   └── .gitignore
 │
 ├── database/                         # Database files
-│   └── schema.sql                  # Legacy reference only - NOT the current schema, see note in the file itself
+│   └── schema.sql                  # Complete database schema
 │
 ├── scripts/                          # Utility scripts
 │   ├── init_db.py                  # Database initialization
@@ -332,10 +328,8 @@ Woodful_creations/
    ```bash
    cd ../scripts
    python init_db.py
-   python create_master_user.py --email garima@woodfulcreations.com --username garimas --name "Garima"
-   python create_master_user.py --email nikhil@woodfulcreations.com --username nikhils --name "Nikhil"
-   # (omit --password and you'll be prompted interactively; the script only accepts
-   #  --email/--username/--name/--password - there is no --role flag, accounts are always "master")
+   python create_master_user.py --username garimas --password "Gullak*16" --name "Garima" --role admin
+   python create_master_user.py --username nikhils --password "Nikhil*27" --name "Nikhil" --role admin
    ```
 
 6. **Launch Application** (Open 3 terminals)

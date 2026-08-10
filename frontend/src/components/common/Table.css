@@ -1,0 +1,68 @@
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  margin: var(--space-4) 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--surface);
+  font-size: 0.88rem;
+}
+
+.data-table thead {
+  background-color: var(--color-ivory);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.data-table th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background-color: var(--color-ivory-dim);
+}
+
+.data-table tbody tr.clickable {
+  cursor: pointer;
+}
+
+.table-loading,
+.table-error,
+.table-empty {
+  padding: var(--space-6);
+  text-align: center;
+  background-color: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  margin: var(--space-4) 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.table-error {
+  background-color: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+  border-style: solid;
+}

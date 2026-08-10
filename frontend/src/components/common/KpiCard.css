@@ -1,0 +1,6 @@
+.kpi-card { text-align: center; padding: 12px; }
+.kpi-label { font-size: 0.85rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 8px; }
+.kpi-value { font-size: 1.8rem; font-weight: 700; color: #1f2937; }
+.kpi-warning .kpi-value { color: #d97706; }
+.kpi-danger .kpi-value { color: #dc2626; }
+.kpi-success .kpi-value { color: #16a34a; }

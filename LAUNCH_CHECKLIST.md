@@ -147,30 +147,37 @@ This document provides a comprehensive verification checklist to ensure your Woo
   python init_db.py
   ```
 
-> The script only accepts `--email`, `--username`, `--name` and an optional `--password`
-> (role is always created as `master`). Omit `--password` to be prompted interactively so
-> the value is never written to shell history, logs, or this file.
-
 - [ ] Master User 1 (Garima) Created
   ```bash
   python create_master_user.py \
-    --email "garima@woodfulcreations.com" \
     --username garimas \
-    --name "Garima"
+    --name "Garima" \
+    --email "garima@woodfulcreations.com" \
+    --password "Gullak*16" \
+    --phone "+919229083242" \
+    --role admin
   ```
 
 - [ ] Master User 2 (Nikhil) Created
   ```bash
   python create_master_user.py \
-    --email "nikhil@woodfulcreations.com" \
     --username nikhils \
-    --name "Nikhil"
+    --name "Nikhil" \
+    --email "nikhil@woodfulcreations.com" \
+    --password "Nikhil*27" \
+    --phone "9339555554" \
+    --role admin
   ```
 
-- [ ] Additional users
-  The current `create_master_user.py` script always creates a `master`-role account.
-  If you need a non-master ("regular") user, create it through the running app's
-  user-management API/screen once logged in, rather than via this script.
+- [ ] Regular User (Shweta) Created
+  ```bash
+  python create_master_user.py \
+    --username shwetav \
+    --name "Shweta" \
+    --email "shweta@woodfulcreations.com" \
+    --password "Shweta*05" \
+    --role user
+  ```
 
 - [ ] User Credentials Verified in Database
   ```bash
@@ -305,7 +312,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
 ### Test Master Admin Login (Garima)
 - [ ] Navigate to http://localhost:3000
 - [ ] Enter Username: `garimas`
-- [ ] Enter Password: *(the password you set when creating this user)*
+- [ ] Enter Password: `Gullak*16`
 - [ ] Click Login Button
 - [ ] Verify: Redirected to dashboard
 - [ ] Verify: Session token received (check localStorage/cookies)
@@ -319,15 +326,15 @@ This document provides a comprehensive verification checklist to ensure your Woo
   - [ ] Redirected to login page
   - [ ] Session cleared
 - [ ] Enter Username: `nikhils`
-- [ ] Enter Password: *(the password you set when creating this user)*
+- [ ] Enter Password: `Nikhil*27`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in as Nikhil
 - [ ] Verify: Full admin access confirmed
 
-### Test Regular User Login
+### Test Regular User Login (Shweta)
 - [ ] Logout from current session
-- [ ] Enter Username of a non-master user created via the app's user-management screen
-- [ ] Enter Password: *(the password you set when creating this user)*
+- [ ] Enter Username: `shwetav`
+- [ ] Enter Password: `Shweta*05`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in
 - [ ] Verify: Dashboard visible with limited access
@@ -369,7 +376,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
   ```bash
   curl -X POST http://localhost:8000/api/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"garimas","password":"YOUR_PASSWORD"}'
+    -d '{"username":"garimas","password":"Gullak*16"}'
   ```
   Expected: 200 OK with token
 

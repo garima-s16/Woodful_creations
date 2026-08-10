@@ -1,0 +1,52 @@
+.form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.form-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.required { color: var(--danger); }
+
+.form-input {
+  padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: 0.9rem; font-family: var(--font-body); color: var(--text-primary);
+  background: var(--surface); transition: border-color var(--transition);
+}
+.form-input:focus { outline: none; border-color: var(--color-gold); box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15); }
+.form-input.error { border-color: var(--danger); }
+
+.form-hint { font-size: 0.75rem; color: var(--text-secondary); }
+.error-message { font-size: 0.78rem; color: var(--danger); }
+
+.btn-submit {
+  padding: 11px 24px; border: none; border-radius: var(--radius-sm);
+  background: var(--color-ink); color: var(--color-ivory); font-weight: 600;
+  font-size: 0.88rem; cursor: pointer; transition: all var(--transition);
+}
+.btn-submit:hover:not(:disabled) { background: var(--color-wood); }
+.btn-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Multi-step wizard */
+.form-wizard { gap: var(--space-5); }
+
+.wizard-steps {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-3);
+}
+.wizard-step {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 100px; background: var(--color-ivory);
+}
+.wizard-step.active { background: var(--color-ink); color: var(--color-ivory); }
+.wizard-step.done { color: var(--success); }
+
+.wizard-panel { display: flex; flex-direction: column; gap: var(--space-4); min-height: 120px; }
+
+.wizard-review { gap: var(--space-5); }
+.review-section h4 { font-size: 0.85rem; margin-bottom: var(--space-2); color: var(--color-wood); }
+.review-row {
+  display: flex; justify-content: space-between; padding: 6px 0;
+  border-bottom: 1px solid var(--border-color); font-size: 0.85rem;
+}
+.review-label { color: var(--text-secondary); }
+.review-value { font-weight: 600; }
+
+.wizard-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
