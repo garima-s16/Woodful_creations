@@ -19,3 +19,4 @@ class User(BaseModel):
     two_factor_enabled = Column(Boolean, default=False, nullable=False)
     otp_secret = Column(String(255), nullable=True)
     last_login = Column(DateTime, nullable=True)
+    cannot_be_deleted = Column(Boolean, default=False, nullable=False)  # protects seeded master accounts

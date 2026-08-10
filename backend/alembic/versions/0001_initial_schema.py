@@ -1,9 +1,5 @@
-"""Initial schema - generated from the current SQLAlchemy models
-
-This is the single source of truth for the database schema going forward.
-database/schema.sql has been removed - it had drifted from these models
-(e.g. inventory vs products, hashed_password vs password_hash) and is no
-longer used anywhere.
+"""Initial schema - materials/procurement/orders domain, generated from the
+current SQLAlchemy models (replaces the earlier CRM/HR-domain schema).
 
 Revision ID: 0001
 Revises:
@@ -18,17 +14,27 @@ branch_labels = None
 depends_on = None
 
 
-def _timestamps():
+def _base_cols():
     return [
+        sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     ]
 
 
+def _lookup_table(name):
+    op.create_table(
+        name,
+        *_base_cols(),
+        sa.Column("name", sa.String(100), unique=True, nullable=False, index=True),
+        sa.Column("description", sa.String(255), nullable=True),
+    )
+
+
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column("id", sa.Integer(), primary_key=True),
+        *_base_cols(),
         sa.Column("username", sa.String(255), unique=True, nullable=False, index=True),
         sa.Column("email", sa.String(255), unique=True, nullable=False, index=True),
         sa.Column("password_hash", sa.String(500), nullable=False),
@@ -41,175 +47,205 @@ def upgrade() -> None:
         sa.Column("two_factor_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("otp_secret", sa.String(255), nullable=True),
         sa.Column("last_login", sa.DateTime(), nullable=True),
-        *_timestamps(),
+        sa.Column("cannot_be_deleted", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
+
+    for lookup in [
+        "units", "material_categories", "stock_statuses", "stock_payment_statuses",
+        "locations", "supplier_terms", "departments", "task_statuses",
+        "attendance_statuses", "machines", "project_statuses", "priorities",
+        "payment_modes", "lead_sources", "project_types", "expense_categories",
+    ]:
+        _lookup_table(lookup)
+
+    op.create_table(
+        "suppliers",
+        *_base_cols(),
+        sa.Column("supplier_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("name", sa.String(255), nullable=False, index=True),
+        sa.Column("category", sa.String(100), nullable=True),
+        sa.Column("contact_person", sa.String(255), nullable=True),
+        sa.Column("phone", sa.String(20), nullable=True),
+        sa.Column("gstin", sa.String(20), nullable=True),
+        sa.Column("payment_terms", sa.String(50), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
+    )
+
+    op.create_table(
+        "materials",
+        *_base_cols(),
+        sa.Column("material_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("name", sa.String(255), nullable=False, index=True),
+        sa.Column("category", sa.String(100), nullable=True, index=True),
+        sa.Column("brand_grade", sa.String(100), nullable=True),
+        sa.Column("thickness_size", sa.String(50), nullable=True),
+        sa.Column("unit", sa.String(20), nullable=False),
+        sa.Column("opening_stock", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("total_purchased", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("total_issued", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("current_stock", sa.Integer(), nullable=False, server_default="0", index=True),
+        sa.Column("minimum_stock", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("average_rate", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("supplier_id", sa.Integer(), sa.ForeignKey("suppliers.id"), nullable=True, index=True),
+        sa.Column("location", sa.String(100), nullable=True),
     )
 
     op.create_table(
         "clients",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("client_id", sa.String(20), unique=True, nullable=False, index=True),
+        *_base_cols(),
+        sa.Column("client_code", sa.String(20), unique=True, nullable=False, index=True),
         sa.Column("name", sa.String(255), nullable=False, index=True),
         sa.Column("phone", sa.String(20), nullable=True, index=True),
         sa.Column("email", sa.String(255), nullable=True),
         sa.Column("address", sa.Text(), nullable=True),
-        sa.Column("city", sa.String(100), nullable=True),
-        sa.Column("state", sa.String(100), nullable=True),
         sa.Column("lead_source", sa.String(100), nullable=True),
-        sa.Column("is_active", sa.Integer(), server_default="1"),
+        sa.Column("first_contact_date", sa.DateTime(), nullable=True),
         sa.Column("remarks", sa.Text(), nullable=True),
-        *_timestamps(),
     )
 
     op.create_table(
-        "client_projects",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("client_id", sa.Integer(), index=True),
-        sa.Column("project_name", sa.String(), index=True),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("design_status", sa.String(), server_default="pending"),
-        sa.Column("execution_status", sa.String(), server_default="pending"),
-        sa.Column("delivery_status", sa.String(), server_default="pending"),
-        sa.Column("estimated_delivery", sa.DateTime(), nullable=True),
-        sa.Column("cost", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("amount_paid", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("amount_pending", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
-    )
-
-    op.create_table(
-        "products",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("material_type", sa.String(), index=True),
-        sa.Column("thickness", sa.Float(), index=True),
-        sa.Column("category", sa.String(), index=True),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("quantity", sa.Integer(), server_default="0"),
-        sa.Column("min_quantity", sa.Integer(), server_default="10"),
-        sa.Column("price_per_unit", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("unit", sa.String(), server_default="sheets"),
-        sa.Column("sku", sa.String(), unique=True, nullable=True),
-        sa.Column("supplier", sa.String(), nullable=True),
-        sa.Column("last_restocked", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
-    )
-
-    op.create_table(
-        "estimates",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("client_id", sa.Integer(), index=True),
-        sa.Column("client_name", sa.String(), nullable=True),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("material_cost", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("labor_cost", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("total_cost", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("status", sa.String(), server_default="draft"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
-    )
-
-    op.create_table(
-        "attendance",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("employee_id", sa.Integer(), index=True),
-        sa.Column("attendance_date", sa.DateTime(), index=True),
-        sa.Column("check_in", sa.DateTime(), nullable=True),
-        sa.Column("check_out", sa.DateTime(), nullable=True),
-        sa.Column("hours_worked", sa.Float(), server_default="0"),
-        sa.Column("status", sa.String(), server_default="present"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
+        "orders",
+        *_base_cols(),
+        sa.Column("order_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("client_id", sa.Integer(), sa.ForeignKey("clients.id"), nullable=False, index=True),
+        sa.Column("project_type", sa.String(100), nullable=True),
+        sa.Column("order_date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("delivery_date", sa.DateTime(), nullable=True),
+        sa.Column("order_value", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("advance", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("other_received", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("total_received", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("balance", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("project_status", sa.String(50), nullable=False, server_default="Enquiry", index=True),
+        sa.Column("progress_percent", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("priority", sa.String(20), nullable=True),
+        sa.Column("supervisor", sa.String(255), nullable=True),
+        sa.Column("site_address", sa.Text(), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
     )
 
     op.create_table(
         "employees",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("name", sa.String(), index=True),
-        sa.Column("email", sa.String(), unique=True, index=True),
-        sa.Column("phone", sa.String(), nullable=True),
-        sa.Column("position", sa.String(), nullable=True),
-        sa.Column("department", sa.String(), nullable=True),
-        sa.Column("salary", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("is_active", sa.Boolean(), server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
+        *_base_cols(),
+        sa.Column("employee_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("name", sa.String(255), nullable=False, index=True),
+        sa.Column("department", sa.String(100), nullable=True, index=True),
+        sa.Column("phone", sa.String(20), nullable=True),
+        sa.Column("joining_date", sa.DateTime(), nullable=True),
+        sa.Column("monthly_salary", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("status", sa.String(20), nullable=False, server_default="Active"),
+        sa.Column("emergency_contact", sa.String(20), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
     )
 
     op.create_table(
-        "candidates",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("name", sa.String(), index=True),
-        sa.Column("email", sa.String(), unique=True, index=True),
-        sa.Column("phone", sa.String(), nullable=True),
-        sa.Column("position", sa.String(), nullable=True),
-        sa.Column("experience", sa.String(), nullable=True),
-        sa.Column("resume_url", sa.String(), nullable=True),
-        sa.Column("status", sa.String(), server_default="applied"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
+        "purchases",
+        *_base_cols(),
+        sa.Column("purchase_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("supplier_id", sa.Integer(), sa.ForeignKey("suppliers.id"), nullable=False, index=True),
+        sa.Column("material_id", sa.Integer(), sa.ForeignKey("materials.id"), nullable=False, index=True),
+        sa.Column("quantity", sa.Numeric(12, 2), nullable=False),
+        sa.Column("unit", sa.String(20), nullable=False),
+        sa.Column("rate", sa.Numeric(12, 2), nullable=False),
+        sa.Column("taxable_value", sa.Numeric(12, 2), nullable=False),
+        sa.Column("gst_percent", sa.Numeric(5, 2), nullable=False, server_default="0"),
+        sa.Column("gst_amount", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("invoice_total", sa.Numeric(12, 2), nullable=False),
+        sa.Column("payment_status", sa.String(20), nullable=False, server_default="Paid"),
     )
 
     op.create_table(
-        "interviews",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("candidate_id", sa.Integer(), index=True),
-        sa.Column("round", sa.String(), nullable=True),
-        sa.Column("scheduled_date", sa.DateTime(), index=True),
-        sa.Column("interviewer", sa.String(), nullable=True),
-        sa.Column("feedback", sa.Text(), nullable=True),
-        sa.Column("status", sa.String(), server_default="scheduled"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
-    )
-
-    op.create_table(
-        "salary_slips",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("employee_id", sa.Integer(), index=True),
-        sa.Column("month", sa.String(), nullable=True),
-        sa.Column("year", sa.String(), nullable=True),
-        sa.Column("basic_salary", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("allowances", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("deductions", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("net_salary", sa.Numeric(12, 2), server_default="0"),
-        sa.Column("status", sa.String(), server_default="pending"),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
+        "issues",
+        *_base_cols(),
+        sa.Column("issue_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=True, index=True),
+        sa.Column("material_id", sa.Integer(), sa.ForeignKey("materials.id"), nullable=False, index=True),
+        sa.Column("quantity_issued", sa.Numeric(12, 2), nullable=False),
+        sa.Column("unit", sa.String(20), nullable=False),
+        sa.Column("issued_to", sa.String(255), nullable=True),
+        sa.Column("department", sa.String(100), nullable=True),
+        sa.Column("purpose", sa.String(255), nullable=True),
+        sa.Column("approved_by", sa.String(255), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
     )
 
     op.create_table(
         "payments",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("receipt_id", sa.String(20), unique=True, nullable=False, index=True),
+        *_base_cols(),
+        sa.Column("receipt_code", sa.String(20), unique=True, nullable=False, index=True),
         sa.Column("date", sa.DateTime(), nullable=False, index=True),
-        sa.Column("client_id", sa.Integer(), sa.ForeignKey("clients.id"), nullable=False, index=True),
-        sa.Column("client_project_id", sa.Integer(), sa.ForeignKey("client_projects.id"), nullable=True, index=True),
+        sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=False, index=True),
         sa.Column("payment_type", sa.String(50), nullable=False),
         sa.Column("payment_mode", sa.String(50), nullable=False),
-        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
-        sa.Column("amount", sa.Numeric(12, 2), nullable=False),
-        sa.Column("reference_number", sa.String(100), nullable=True, index=True),
+        sa.Column("amount", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("reference_number", sa.String(100), nullable=True),
         sa.Column("received_by", sa.String(255), nullable=True),
         sa.Column("remarks", sa.Text(), nullable=True),
-        *_timestamps(),
     )
 
-    for table_name, name_len in [
-        ("project_statuses", 50),
-        ("priorities", 50),
-        ("payment_modes", 50),
-        ("lead_sources", 50),
-        ("project_types", 100),
-        ("expense_categories", 100),
-    ]:
-        op.create_table(
-            table_name,
-            sa.Column("id", sa.Integer(), primary_key=True),
-            sa.Column("name", sa.String(name_len), unique=True, nullable=False, index=True),
-            sa.Column("description", sa.String(255), nullable=True),
-            *([sa.Column("display_order", sa.Integer(), server_default="0")] if table_name == "project_statuses" else []),
-            *_timestamps(),
-        )
+    op.create_table(
+        "project_expenses",
+        *_base_cols(),
+        sa.Column("expense_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=False, index=True),
+        sa.Column("category", sa.String(100), nullable=False),
+        sa.Column("description", sa.String(255), nullable=True),
+        sa.Column("paid_to", sa.String(255), nullable=True),
+        sa.Column("amount", sa.Numeric(12, 2), nullable=False, server_default="0"),
+        sa.Column("approved_by", sa.String(255), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
+    )
+
+    op.create_table(
+        "attendance",
+        *_base_cols(),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("employee_id", sa.Integer(), sa.ForeignKey("employees.id"), nullable=False, index=True),
+        sa.Column("in_time", sa.DateTime(), nullable=True),
+        sa.Column("out_time", sa.DateTime(), nullable=True),
+        sa.Column("standard_hours", sa.Numeric(5, 2), nullable=False, server_default="8"),
+        sa.Column("attendance_status", sa.String(20), nullable=False, server_default="Present"),
+        sa.Column("remarks", sa.Text(), nullable=True),
+    )
+
+    op.create_table(
+        "daily_tasks",
+        *_base_cols(),
+        sa.Column("task_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("employee_id", sa.Integer(), sa.ForeignKey("employees.id"), nullable=False, index=True),
+        sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=True, index=True),
+        sa.Column("task_description", sa.String(500), nullable=False),
+        sa.Column("priority", sa.String(20), nullable=True),
+        sa.Column("planned_start", sa.Time(), nullable=True),
+        sa.Column("planned_end", sa.Time(), nullable=True),
+        sa.Column("status", sa.String(20), nullable=False, server_default="Not Started", index=True),
+        sa.Column("completion_percent", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("checked_by", sa.String(255), nullable=True),
+        sa.Column("delay_reason", sa.String(255), nullable=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
+    )
+
+    op.create_table(
+        "production_jobs",
+        *_base_cols(),
+        sa.Column("job_code", sa.String(20), unique=True, nullable=False, index=True),
+        sa.Column("date", sa.DateTime(), nullable=False, index=True),
+        sa.Column("machine", sa.String(100), nullable=True),
+        sa.Column("employee_id", sa.Integer(), sa.ForeignKey("employees.id"), nullable=True, index=True),
+        sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=True, index=True),
+        sa.Column("operation", sa.String(255), nullable=True),
+        sa.Column("material_id", sa.Integer(), sa.ForeignKey("materials.id"), nullable=True, index=True),
+        sa.Column("planned_qty", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("completed_qty", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("start_time", sa.Time(), nullable=True),
+        sa.Column("end_time", sa.Time(), nullable=True),
+        sa.Column("status", sa.String(20), nullable=False, server_default="Not Started", index=True),
+        sa.Column("remarks", sa.Text(), nullable=True),
+    )
 
     op.create_table(
         "audit_logs",
@@ -224,23 +260,16 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), index=True),
     )
 
-    op.create_table(
-        "activity_logs",
-        sa.Column("id", sa.Integer(), primary_key=True, index=True),
-        sa.Column("user_id", sa.String(), index=True),
-        sa.Column("action", sa.String(), index=True),
-        sa.Column("resource_type", sa.String(), nullable=True),
-        sa.Column("resource_id", sa.Integer(), nullable=True),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("timestamp", sa.DateTime(), index=True),
-    )
-
 
 def downgrade() -> None:
     for table in [
-        "activity_logs", "audit_logs", "expense_categories", "project_types",
-        "lead_sources", "payment_modes", "priorities", "project_statuses",
-        "payments", "salary_slips", "interviews", "candidates", "employees",
-        "attendance", "estimates", "products", "client_projects", "clients", "users",
+        "audit_logs", "production_jobs", "daily_tasks", "attendance",
+        "project_expenses", "payments", "issues", "purchases", "employees",
+        "orders", "clients", "materials", "suppliers",
+        "expense_categories", "project_types", "lead_sources", "payment_modes",
+        "priorities", "project_statuses", "machines", "attendance_statuses",
+        "task_statuses", "departments", "supplier_terms", "locations",
+        "stock_payment_statuses", "stock_statuses", "material_categories", "units",
+        "users",
     ]:
         op.drop_table(table)

@@ -1,34 +1,44 @@
-from sqlalchemy import Column, String, Integer, Numeric, Float, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
+
 class Material(BaseModel):
+    """Live Material Stock Master. current_stock/total_purchased/total_issued
+    are maintained transactionally by StockService whenever a Purchase or
+    Issue is recorded - see services/stock_service.py."""
     __tablename__ = "materials"
-    
-    material_id = Column(String(20), unique=True, nullable=False, index=True)
+
+    material_code = Column(String(20), unique=True, nullable=False, index=True)  # MAT-001
     name = Column(String(255), nullable=False, index=True)
-    category = Column(String(100), nullable=False, index=True)
-    brand_grade = Column(String(255), nullable=True)
-    thickness_size = Column(String(100), nullable=True)
-    unit = Column(String(50), nullable=False)
-    opening_stock = Column(Integer, default=0)
-    total_purchased = Column(Integer, default=0)
-    total_issued = Column(Integer, default=0)
-    current_stock = Column(Integer, default=0)
-    minimum_stock = Column(Integer, default=10)
-    is_active = Column(Integer, default=1)
-    
-    purchases = relationship("PurchaseOrder", back_populates="material")
-    issues = relationship("MaterialIssue", back_populates="material")
-    
-    def calculate_current_stock(self):
-        self.current_stock = self.opening_stock + self.total_purchased - self.total_issued
-        return self.current_stock
-    
-    def get_stock_status(self):
-        if self.current_stock <= 0:
-            return "OUT_OF_STOCK"
-        elif self.current_stock <= self.minimum_stock:
-            return "LOW_STOCK"
-        else:
-            return "STOCK_OK"
+    category = Column(String(100), nullable=True, index=True)
+    brand_grade = Column(String(100), nullable=True)
+    thickness_size = Column(String(50), nullable=True)
+    unit = Column(String(20), nullable=False)
+
+    opening_stock = Column(Integer, nullable=False, default=0)
+    total_purchased = Column(Integer, nullable=False, default=0)
+    total_issued = Column(Integer, nullable=False, default=0)
+    current_stock = Column(Integer, nullable=False, default=0, index=True)
+    minimum_stock = Column(Integer, nullable=False, default=0)
+
+    average_rate = Column(Numeric(12, 2), nullable=False, default=0)
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
+    location = Column(String(100), nullable=True)
+
+    primary_supplier = relationship("Supplier", back_populates="materials")
+    purchases = relationship("Purchase", back_populates="material")
+    issues = relationship("Issue", back_populates="material")
+
+    @property
+    def stock_value(self):
+        return round(float(self.current_stock or 0) * float(self.average_rate or 0), 2)
+
+    @property
+    def stock_status(self):
+        if (self.current_stock or 0) <= 0:
+            return "OUT OF STOCK"
+        if (self.current_stock or 0) <= (self.minimum_stock or 0):
+            return "LOW STOCK"
+        return "STOCK OK"

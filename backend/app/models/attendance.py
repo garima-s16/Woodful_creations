@@ -1,15 +1,32 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float
-from datetime import datetime, date
-from app.core.database import Base
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from app.models.base import BaseModel
 
-class Attendance(Base):
+
+class Attendance(BaseModel):
+    """Employee Attendance & Overtime."""
     __tablename__ = "attendance"
 
-    id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, index=True)
-    attendance_date = Column(DateTime, index=True)
-    check_in = Column(DateTime, nullable=True)
-    check_out = Column(DateTime, nullable=True)
-    hours_worked = Column(Float, default=0.0)
-    status = Column(String, default="present")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    date = Column(DateTime, nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    in_time = Column(DateTime, nullable=True)
+    out_time = Column(DateTime, nullable=True)
+    standard_hours = Column(Numeric(5, 2), nullable=False, default=8)
+    attendance_status = Column(String(20), nullable=False, default="Present")
+    remarks = Column(Text, nullable=True)
+
+    employee = relationship("Employee", back_populates="attendance_records")
+
+    @property
+    def working_hours(self):
+        if not self.in_time or not self.out_time:
+            return 0
+        delta = self.out_time - self.in_time
+        return round(delta.total_seconds() / 3600, 2)
+
+    @property
+    def overtime_hours(self):
+        worked = self.working_hours
+        std = float(self.standard_hours or 0)
+        return round(max(worked - std, 0), 2)
