@@ -82,3 +82,6 @@
   font-size: 0.83rem; color: var(--text-primary);
 }
 .attention-item:hover { color: var(--color-gold); }
+
+.page-search { display: flex; gap: var(--space-3); margin-bottom: var(--space-4); max-width: 420px; }
+.page-search input { flex: 1; }

@@ -6,20 +6,34 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
+const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
+  'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
+  .map((s) => ({ value: s, label: s }));
+const SIMPLE_STATUS_OPTIONS = ['Pending', 'In Progress', 'Completed'].map((s) => ({ value: s, label: s }));
+const PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Urgent'].map((s) => ({ value: s, label: s }));
+
 function OrdersPage() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [clients, setClients] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [statusOrder, setStatusOrder] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = () => {
-    ordersAPI.list().then((res) => setOrders(res.data));
+  const load = (filter) => {
+    ordersAPI.list(filter?.status ? { status: filter.status } : undefined).then((res) => setOrders(res.data));
     clientsAPI.list().then((res) => setClients(res.data));
   };
-  useEffect(load, []);
+  useEffect(() => load(), []);
+
+  const handleFilterChange = (e) => {
+    const value = e.target.value;
+    setStatusFilter(value);
+    load({ status: value });
+  };
 
   const handleCreate = async (formData) => {
     setLoading(true);
@@ -34,7 +48,7 @@ function OrdersPage() {
         advance: formData.advance || '0',
       });
       setShowAdd(false);
-      load();
+      load({ status: statusFilter });
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create order');
     } finally {
@@ -54,7 +68,7 @@ function OrdersPage() {
         progress_percent: Number(formData.progress_percent),
       });
       setStatusOrder(null);
-      load();
+      load({ status: statusFilter });
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update status');
     } finally {
@@ -62,10 +76,27 @@ function OrdersPage() {
     }
   };
 
-  const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
-    'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
-    .map((s) => ({ value: s, label: s }));
-  const SIMPLE_STATUS_OPTIONS = ['Pending', 'In Progress', 'Completed'].map((s) => ({ value: s, label: s }));
+  const handleDetailsUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await ordersAPI.update(editingOrder.id, {
+        project_type: formData.project_type,
+        order_value: formData.order_value,
+        delivery_date: formData.delivery_date ? new Date(formData.delivery_date).toISOString() : null,
+        priority: formData.priority,
+        supervisor: formData.supervisor,
+        site_address: formData.site_address,
+        remarks: formData.remarks,
+      });
+      setEditingOrder(null);
+      load({ status: statusFilter });
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update order');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const columns = [
     { key: 'order_code', label: 'Order ID' },
@@ -83,13 +114,18 @@ function OrdersPage() {
       ),
     },
     {
-      key: 'status_action', label: 'Status', render: (v, row) => (
+      key: 'edit_action', label: '', render: (v, row) => (
+        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingOrder(row); }}>Edit Details</button>
+      ),
+    },
+    {
+      key: 'status_action', label: '', render: (v, row) => (
         <button className="btn-link" onClick={(e) => { e.stopPropagation(); setStatusOrder(row); }}>Update Status</button>
       ),
     },
   ];
 
-  const fields = [
+  const createFields = [
     { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
     { name: 'order_code', label: 'Order Code', required: true, placeholder: 'WC-2026-006', section: 'Client & Project' },
     { name: 'project_type', label: 'Project Type', section: 'Client & Project' },
@@ -97,12 +133,19 @@ function OrdersPage() {
     { name: 'advance', label: 'Advance', type: 'number', section: 'Commercial' },
     { name: 'order_date', label: 'Order Date', type: 'date', required: true, section: 'Schedule' },
     { name: 'delivery_date', label: 'Delivery Date', type: 'date', section: 'Schedule' },
-    { name: 'priority', label: 'Priority', type: 'select', section: 'Schedule', options: [
-      { value: 'Low', label: 'Low' }, { value: 'Medium', label: 'Medium' },
-      { value: 'High', label: 'High' }, { value: 'Urgent', label: 'Urgent' },
-    ] },
+    { name: 'priority', label: 'Priority', type: 'select', section: 'Schedule', options: PRIORITY_OPTIONS },
     { name: 'supervisor', label: 'Supervisor', section: 'Site & Supervisor' },
     { name: 'site_address', label: 'Site Address', type: 'textarea', section: 'Site & Supervisor' },
+  ];
+
+  const detailsFields = [
+    { name: 'project_type', label: 'Project Type' },
+    { name: 'order_value', label: 'Order Value', type: 'number', required: true },
+    { name: 'delivery_date', label: 'Delivery Date', type: 'date' },
+    { name: 'priority', label: 'Priority', type: 'select', options: PRIORITY_OPTIONS },
+    { name: 'supervisor', label: 'Supervisor' },
+    { name: 'site_address', label: 'Site Address', type: 'textarea' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];
 
   return (
@@ -117,9 +160,32 @@ function OrdersPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      <form className="page-search" onSubmit={(e) => e.preventDefault()}>
+        <select className="form-input" value={statusFilter} onChange={handleFilterChange}>
+          <option value="">All Stages</option>
+          {STAGE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+      </form>
       <Table columns={columns} data={orders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
       <Modal isOpen={showAdd} title="New Order" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
+        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
+      </Modal>
+
+      <Modal isOpen={!!editingOrder} title={`Edit Order - ${editingOrder?.order_code || ''}`} onClose={() => setEditingOrder(null)}>
+        {editingOrder && (
+          <Form
+            fields={detailsFields}
+            onSubmit={handleDetailsUpdate}
+            loading={loading}
+            submitText="Save Changes"
+            initialValues={{
+              project_type: editingOrder.project_type, order_value: editingOrder.order_value,
+              delivery_date: editingOrder.delivery_date ? editingOrder.delivery_date.slice(0, 10) : '',
+              priority: editingOrder.priority, supervisor: editingOrder.supervisor,
+              site_address: editingOrder.site_address, remarks: editingOrder.remarks,
+            }}
+          />
+        )}
       </Modal>
 
       <Modal isOpen={!!statusOrder} title={`Update Status - ${statusOrder?.order_code || ''}`} onClose={() => setStatusOrder(null)}>

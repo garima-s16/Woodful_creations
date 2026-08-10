@@ -33,6 +33,7 @@ function Sidebar({ isOpen, user }) {
       name: 'Projects & Production',
       items: [
         { path: '/daily-tasks', label: 'Tasks' },
+        { path: '/production-jobs', label: 'Production Jobs' },
         ...(isMaster ? [{ path: '/project-expenses', label: 'Project Expenses' }] : []),
       ],
     },

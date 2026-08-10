@@ -83,6 +83,7 @@ export const paymentsAPI = {
 export const projectExpensesAPI = {
   list: (params) => client.get('/api/project-expenses/', { params }),
   create: (data) => client.post('/api/project-expenses/', data),
+  update: (id, data) => client.put(`/api/project-expenses/${id}`, data),
 };
 
 export const employeesAPI = {

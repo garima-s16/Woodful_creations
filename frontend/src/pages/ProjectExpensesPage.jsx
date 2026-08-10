@@ -9,6 +9,7 @@ function ProjectExpensesPage() {
   const [expenses, setExpenses] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +37,23 @@ function ProjectExpensesPage() {
     }
   };
 
+  const handleUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await projectExpensesAPI.update(editingExpense.id, {
+        category: formData.category, description: formData.description, paid_to: formData.paid_to,
+        amount: formData.amount, approved_by: formData.approved_by, remarks: formData.remarks,
+      });
+      setEditingExpense(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update expense');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const columns = [
     { key: 'expense_code', label: 'Expense ID' },
     { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
@@ -43,6 +61,11 @@ function ProjectExpensesPage() {
     { key: 'category', label: 'Category' }, { key: 'description', label: 'Description' },
     { key: 'paid_to', label: 'Paid To' },
     { key: 'amount', label: 'Amount', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    {
+      key: 'edit_action', label: '', render: (v, row) => (
+        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingExpense(row); }}>Edit</button>
+      ),
+    },
   ];
 
   const fields = [
@@ -56,6 +79,8 @@ function ProjectExpensesPage() {
     { name: 'approved_by', label: 'Approved By' },
   ];
 
+  const editFields = fields.filter((f) => !['expense_code', 'order_id'].includes(f.name));
+
   return (
     <div className="page">
       <div className="page-header">
@@ -63,9 +88,14 @@ function ProjectExpensesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Expense</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={expenses} />
+      <Table columns={columns} data={expenses} emptyMessage="No project expenses recorded yet." />
       <Modal isOpen={showAdd} title="Add Expense" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Expense" />
+      </Modal>
+      <Modal isOpen={!!editingExpense} title={`Edit ${editingExpense?.expense_code || ''}`} onClose={() => setEditingExpense(null)}>
+        {editingExpense && (
+          <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingExpense} />
+        )}
       </Modal>
     </div>
   );

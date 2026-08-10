@@ -10,16 +10,27 @@ function MaterialsPage() {
   const navigate = useNavigate();
   const [materials, setMaterials] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [search, setSearch] = useState('');
+  const [lowStockOnly, setLowStockOnly] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = () => {
-    materialsAPI.list().then((res) => setMaterials(res.data));
+  const load = (params) => {
+    materialsAPI.list(params).then((res) => setMaterials(res.data));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
   };
 
-  useEffect(load, []);
+  useEffect(() => load(), []);
+
+  const applyFilters = (e) => {
+    e?.preventDefault();
+    const params = {};
+    if (search) params.search = search;
+    if (lowStockOnly) params.low_stock_only = true;
+    load(params);
+  };
 
   const handleCreate = async (formData) => {
     setLoading(true);
@@ -33,9 +44,28 @@ function MaterialsPage() {
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
       });
       setShowAdd(false);
-      load();
+      applyFilters();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to add material');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await materialsAPI.update(editingMaterial.id, {
+        name: formData.name, category: formData.category, brand_grade: formData.brand_grade,
+        thickness_size: formData.thickness_size, unit: formData.unit,
+        minimum_stock: Number(formData.minimum_stock || 0), average_rate: formData.average_rate,
+        supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null, location: formData.location,
+      });
+      setEditingMaterial(null);
+      applyFilters();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update material');
     } finally {
       setLoading(false);
     }
@@ -49,9 +79,14 @@ function MaterialsPage() {
     { key: 'average_rate', label: 'Avg Rate', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'stock_value', label: 'Stock Value', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'location', label: 'Location' },
+    {
+      key: 'edit_action', label: '', render: (v, row) => (
+        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingMaterial(row); }}>Edit</button>
+      ),
+    },
   ];
 
-  const fields = [
+  const createFields = [
     { name: 'material_code', label: 'Material Code', required: true, placeholder: 'MAT-011' },
     { name: 'name', label: 'Name', required: true },
     { name: 'category', label: 'Category' },
@@ -61,12 +96,11 @@ function MaterialsPage() {
     { name: 'opening_stock', label: 'Opening Stock', type: 'number' },
     { name: 'minimum_stock', label: 'Minimum Stock', type: 'number' },
     { name: 'average_rate', label: 'Average Rate', type: 'number' },
-    {
-      name: 'supplier_id', label: 'Primary Supplier', type: 'select',
-      options: suppliers.map((s) => ({ value: s.id, label: s.name })),
-    },
+    { name: 'supplier_id', label: 'Primary Supplier', type: 'select', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
     { name: 'location', label: 'Location' },
   ];
+
+  const editFields = createFields.filter((f) => !['material_code', 'opening_stock'].includes(f.name));
 
   return (
     <div className="page">
@@ -80,10 +114,26 @@ function MaterialsPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={materials} onRowClick={(row) => navigate(`/materials/${row.id}`)} emptyMessage="No records yet." />
+      <form className="page-search" onSubmit={applyFilters}>
+        <input
+          type="text" placeholder="Search by name or code..." value={search}
+          onChange={(e) => setSearch(e.target.value)} className="form-input"
+        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} />
+          Low stock only
+        </label>
+        <button type="submit" className="btn-secondary">Filter</button>
+      </form>
+      <Table columns={columns} data={materials} onRowClick={(row) => navigate(`/materials/${row.id}`)} emptyMessage="No materials yet. Add your first material to begin tracking inventory." />
 
       <Modal isOpen={showAdd} title="Add Material" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
+        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
+      </Modal>
+      <Modal isOpen={!!editingMaterial} title={`Edit ${editingMaterial?.name || ''}`} onClose={() => setEditingMaterial(null)}>
+        {editingMaterial && (
+          <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingMaterial} />
+        )}
       </Modal>
     </div>
   );

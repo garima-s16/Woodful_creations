@@ -10,6 +10,7 @@ function SuppliersPage() {
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -30,10 +31,29 @@ function SuppliersPage() {
     }
   };
 
+  const handleUpdate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await suppliersAPI.update(editingSupplier.id, formData);
+      setEditingSupplier(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update supplier');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const columns = [
     { key: 'supplier_code', label: 'Supplier ID' }, { key: 'name', label: 'Name' },
     { key: 'category', label: 'Category' }, { key: 'contact_person', label: 'Contact Person' },
     { key: 'phone', label: 'Phone' }, { key: 'payment_terms', label: 'Payment Terms' },
+    {
+      key: 'edit_action', label: '', render: (v, row) => (
+        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingSupplier(row); }}>Edit</button>
+      ),
+    },
   ];
 
   const fields = [
@@ -47,6 +67,8 @@ function SuppliersPage() {
     { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];
 
+  const editFields = fields.filter((f) => f.name !== 'supplier_code');
+
   return (
     <div className="page">
       <div className="page-header">
@@ -54,9 +76,14 @@ function SuppliersPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Supplier</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={suppliers} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No records yet." />
+      <Table columns={columns} data={suppliers} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No suppliers yet. Add your first supplier to get started." />
       <Modal isOpen={showAdd} title="Add Supplier" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Supplier" />
+      </Modal>
+      <Modal isOpen={!!editingSupplier} title={`Edit ${editingSupplier?.name || ''}`} onClose={() => setEditingSupplier(null)}>
+        {editingSupplier && (
+          <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingSupplier} />
+        )}
       </Modal>
     </div>
   );

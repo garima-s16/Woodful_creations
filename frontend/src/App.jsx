@@ -28,6 +28,7 @@ import EmployeesPage from './pages/EmployeesPage';
 import EmployeeDetailPage from './pages/EmployeeDetailPage';
 import AttendancePage from './pages/AttendancePage';
 import DailyTasksPage from './pages/DailyTasksPage';
+import ProductionJobsPage from './pages/ProductionJobsPage';
 import SettingsPage from './pages/SettingsPage';
 import EstimatesPage from './pages/EstimatesPage';
 import CandidatesPage from './pages/CandidatesPage';
@@ -102,6 +103,7 @@ function AppRoutes() {
       <Route path="/employees/:employeeId" element={<Protected><EmployeeDetailPage /></Protected>} />
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
+      <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
       <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />

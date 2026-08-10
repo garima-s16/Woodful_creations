@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import require_role
 from app.models.project_expense import ProjectExpense
-from app.schemas.project_expense import ProjectExpenseCreate, ProjectExpenseResponse
+from app.schemas.project_expense import ProjectExpenseCreate, ProjectExpenseUpdate, ProjectExpenseResponse
 
 router = APIRouter(prefix="/api/project-expenses", tags=["project-expenses"])
 
@@ -38,4 +38,18 @@ def get_project_expense(expense_id: int, db: Session = Depends(get_db),
     expense = db.query(ProjectExpense).filter(ProjectExpense.id == expense_id).first()
     if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
+
+
+@router.put("/{expense_id}", response_model=ProjectExpenseResponse)
+def update_project_expense(expense_id: int, data: ProjectExpenseUpdate, db: Session = Depends(get_db),
+                            auth=Depends(require_role("master", "manager"))):
+    expense = db.query(ProjectExpense).filter(ProjectExpense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    for field, value in data.dict(exclude_unset=True).items():
+        setattr(expense, field, value)
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
     return expense

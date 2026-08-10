@@ -20,6 +20,15 @@ class ProjectExpenseCreate(ProjectExpenseBase):
     pass
 
 
+class ProjectExpenseUpdate(BaseModel):
+    category: Optional[str] = None
+    description: Optional[str] = None
+    paid_to: Optional[str] = None
+    amount: Optional[Decimal] = None
+    approved_by: Optional[str] = None
+    remarks: Optional[str] = None
+
+
 class ProjectExpenseResponse(ProjectExpenseBase):
     id: int
     created_at: datetime
