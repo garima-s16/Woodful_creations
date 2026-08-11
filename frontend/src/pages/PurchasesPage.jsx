@@ -4,6 +4,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 function PurchasesPage() {
   const [purchases, setPurchases] = useState([]);
@@ -47,7 +48,7 @@ function PurchasesPage() {
     { key: 'supplier_id', label: 'Supplier', render: (v) => suppliers.find((s) => s.id === v)?.name || v },
     { key: 'material_id', label: 'Material', render: (v) => materials.find((m) => m.id === v)?.name || v },
     { key: 'quantity', label: 'Quantity' }, { key: 'unit', label: 'Unit' }, { key: 'rate', label: 'Rate' },
-    { key: 'invoice_total', label: 'Invoice Total', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'invoice_total', label: 'Invoice Total', render: (v) => formatCurrency(v) },
     { key: 'payment_status', label: 'Payment Status' },
   ];
 

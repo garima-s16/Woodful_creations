@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 function PaymentsPage() {
   const { user } = useSelector((state) => state.auth);
@@ -63,7 +64,7 @@ function PaymentsPage() {
     { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
     { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
     { key: 'payment_type', label: 'Payment Type' }, { key: 'payment_mode', label: 'Payment Mode' },
-    { key: 'amount', label: 'Amount', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'amount', label: 'Amount', render: (v) => formatCurrency(v) },
     { key: 'reference_number', label: 'Reference No.' }, { key: 'received_by', label: 'Received By' },
     {
       key: 'invoice_action', label: '', render: (v, row) => (

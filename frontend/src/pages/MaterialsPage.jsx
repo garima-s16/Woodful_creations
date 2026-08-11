@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
+import { formatCurrency } from '../utils/currency';
 
 function MaterialsPage() {
   const navigate = useNavigate();
@@ -79,8 +80,8 @@ function MaterialsPage() {
     { key: 'category', label: 'Category' }, { key: 'unit', label: 'Unit' },
     { key: 'current_stock', label: 'Available Stock' }, { key: 'minimum_stock', label: 'Reorder Level' },
     { key: 'stock_status', label: 'Status' },
-    { key: 'average_rate', label: 'Avg Rate', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'stock_value', label: 'Stock Value', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'average_rate', label: 'Avg Rate', render: (v) => formatCurrency(v) },
+    { key: 'stock_value', label: 'Stock Value', render: (v) => formatCurrency(v) },
     { key: 'location', label: 'Location' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
@@ -124,7 +125,7 @@ function MaterialsPage() {
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <div className="kpi-row">
-        <KpiCard label="Inventory Value" value={`Rs ${inventoryValue.toLocaleString()}`} />
+        <KpiCard label="Inventory Value" value={formatCurrency(inventoryValue)} />
         <KpiCard label="Low Stock" value={lowStockCount} tone={lowStockCount > 0 ? 'warning' : 'success'} />
         <KpiCard label="Out of Stock" value={outOfStockCount} tone={outOfStockCount > 0 ? 'danger' : 'success'} />
       </div>

@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
   'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
@@ -107,9 +108,9 @@ function OrdersPage() {
     { key: 'order_code', label: 'Order ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
     { key: 'project_type', label: 'Project Type' },
-    { key: 'order_value', label: 'Order Value', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'total_received', label: 'Received', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'balance', label: 'Balance', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'order_value', label: 'Order Value', render: (v) => formatCurrency(v) },
+    { key: 'total_received', label: 'Received', render: (v) => formatCurrency(v) },
+    { key: 'balance', label: 'Balance', render: (v) => formatCurrency(v) },
     { key: 'project_status', label: 'Stage' }, { key: 'progress_percent', label: 'Progress %' },
     { key: 'design_status', label: 'Design' }, { key: 'execution_status', label: 'Execution' },
     { key: 'delivery_status', label: 'Delivery' },

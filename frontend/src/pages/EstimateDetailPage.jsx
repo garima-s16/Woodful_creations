@@ -5,8 +5,8 @@ import Card from '../components/common/Card';
 import Table from '../components/common/Table';
 import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 function EstimateDetailPage() {
   const { estimateId } = useParams();
@@ -69,10 +69,10 @@ function EstimateDetailPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Material Cost</div><h3>{money(estimate.material_cost)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Labor Cost</div><h3>{money(estimate.labor_cost)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Tax ({Number(estimate.tax_percent)}%)</div><h3>{money(estimate.tax_amount)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Total Estimate</div><h3>{money(estimate.total_cost)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Material Cost</div><h3>{formatCurrency(estimate.material_cost)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Labor Cost</div><h3>{formatCurrency(estimate.labor_cost)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Tax ({Number(estimate.tax_percent)}%)</div><h3>{formatCurrency(estimate.tax_amount)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Total Estimate</div><h3>{formatCurrency(estimate.total_cost)}</h3></div></Card>
       </div>
 
       <Card title="Estimate Details">

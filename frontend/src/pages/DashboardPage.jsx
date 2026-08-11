@@ -4,8 +4,8 @@ import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI } from '../utils
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 function AttentionRequired({ stock, orders, pendingTasks }) {
   const navigate = useNavigate();
@@ -116,8 +116,8 @@ function DashboardPage() {
       paymentsAPI.list().then((r) => r.data).catch(() => []),
     ]).then(([purchases, payments]) => {
       const feed = [
-        ...purchases.slice(0, 4).map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${money(p.invoice_total)}`, date: p.date })),
-        ...payments.slice(0, 4).map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${money(p.amount)}`, date: p.date })),
+        ...purchases.slice(0, 4).map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${formatCurrency(p.invoice_total)}`, date: p.date })),
+        ...payments.slice(0, 4).map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
       setActivity(feed);
     });
@@ -141,15 +141,15 @@ function DashboardPage() {
       <div className="hero-metrics">
         <div className="hero-metric">
           <span className="hero-label">Revenue</span>
-          <span className="hero-value">{money(orders.total_order_value)}</span>
+          <span className="hero-value">{formatCurrency(orders.total_order_value)}</span>
         </div>
         <div className="hero-metric">
           <span className="hero-label">Outstanding</span>
-          <span className="hero-value hero-warning">{money(orders.pending_payment)}</span>
+          <span className="hero-value hero-warning">{formatCurrency(orders.pending_payment)}</span>
         </div>
         <div className="hero-metric">
           <span className="hero-label">Inventory Value</span>
-          <span className="hero-value">{money(stock.total_stock_value)}</span>
+          <span className="hero-value">{formatCurrency(stock.total_stock_value)}</span>
         </div>
         <div className="hero-metric">
           <span className="hero-label">Gross Margin</span>
@@ -159,7 +159,7 @@ function DashboardPage() {
 
       <h2 className="section-heading">Operations Snapshot</h2>
       <div className="secondary-metrics">
-        <KpiCard label="Amount Received" value={money(orders.total_received)} />
+        <KpiCard label="Amount Received" value={formatCurrency(orders.total_received)} />
         <KpiCard label="Active Orders" value={orders.active_orders} />
         <KpiCard label="Low Stock" value={stock.low_stock_items} tone={stock.low_stock_items > 0 ? 'warning' : 'success'} />
         <KpiCard label="Out of Stock" value={stock.out_of_stock_items} tone={stock.out_of_stock_items > 0 ? 'danger' : 'success'} />

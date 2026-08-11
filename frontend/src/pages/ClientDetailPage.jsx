@@ -7,8 +7,8 @@ import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 function ClientDetailPage() {
   const { clientId } = useParams();
@@ -113,9 +113,9 @@ function ClientDetailPage() {
 
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Total Orders</div><h3>{client.total_orders}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Total Sales</div><h3>{money(client.total_sales)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Total Sales</div><h3>{formatCurrency(client.total_sales)}</h3></div></Card>
         {canViewFinancials && (
-          <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{money(orders.reduce((sum, o) => sum + Number(o.balance || 0), 0))}</h3></div></Card>
+          <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(orders.reduce((sum, o) => sum + Number(o.balance || 0), 0))}</h3></div></Card>
         )}
         <Card><div className="card-body"><div className="detail-meta-label">Phone</div><h3 style={{ fontSize: '1.1rem' }}>{client.phone || '-'}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Email</div><h3 style={{ fontSize: '1.1rem' }}>{client.email || '-'}</h3></div></Card>

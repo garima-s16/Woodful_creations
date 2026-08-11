@@ -11,10 +11,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
-
-function money(v) {
-  return `Rs ${Number(v || 0).toLocaleString()}`;
-}
+import { formatCurrency } from '../utils/currency';
 
 const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Production', 'Profitability'];
 
@@ -154,9 +151,9 @@ function OrderDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Order Value</div><h3>{money(order.order_value)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{money(order.total_received)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{money(order.balance)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Order Value</div><h3>{formatCurrency(order.order_value)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{formatCurrency(order.total_received)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(order.balance)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Progress</div><h3>{order.progress_percent}%</h3></div></Card>
       </div>
 
@@ -282,11 +279,11 @@ function OrderDetailPage() {
             <Card title="Order Profitability">
               <div className="card-body">
                 <div className="detail-meta">
-                  <div className="detail-meta-item"><span className="detail-meta-label">Order Value</span><span className="detail-meta-value">{money(profitability.order_value)}</span></div>
-                  <div className="detail-meta-item"><span className="detail-meta-label">Total Received</span><span className="detail-meta-value">{money(profitability.total_received)}</span></div>
-                  <div className="detail-meta-item"><span className="detail-meta-label">Pending Payment</span><span className="detail-meta-value">{money(profitability.pending_payment)}</span></div>
-                  <div className="detail-meta-item"><span className="detail-meta-label">Project Expenses</span><span className="detail-meta-value">{money(profitability.project_expenses)}</span></div>
-                  <div className="detail-meta-item"><span className="detail-meta-label">Estimated Gross Profit</span><span className="detail-meta-value">{money(profitability.estimated_gross_profit)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Order Value</span><span className="detail-meta-value">{formatCurrency(profitability.order_value)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Total Received</span><span className="detail-meta-value">{formatCurrency(profitability.total_received)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Pending Payment</span><span className="detail-meta-value">{formatCurrency(profitability.pending_payment)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Project Expenses</span><span className="detail-meta-value">{formatCurrency(profitability.project_expenses)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Estimated Gross Profit</span><span className="detail-meta-value">{formatCurrency(profitability.estimated_gross_profit)}</span></div>
                   <div className="detail-meta-item"><span className="detail-meta-label">Gross Margin</span><span className="detail-meta-value">{(profitability.gross_margin_percent * 100).toFixed(1)}%</span></div>
                 </div>
               </div>

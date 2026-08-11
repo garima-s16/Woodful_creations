@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 function EstimatesPage() {
   const navigate = useNavigate();
@@ -67,9 +68,9 @@ function EstimatesPage() {
   const columns = [
     { key: 'estimate_code', label: 'Estimate ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
-    { key: 'material_cost', label: 'Material', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'labor_cost', label: 'Labor', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'total_cost', label: 'Total', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'material_cost', label: 'Material', render: (v) => formatCurrency(v) },
+    { key: 'labor_cost', label: 'Labor', render: (v) => formatCurrency(v) },
+    { key: 'total_cost', label: 'Total', render: (v) => formatCurrency(v) },
     { key: 'status', label: 'Status' },
     {
       key: 'quote_pdf', label: 'Quote', render: (v, row) => (

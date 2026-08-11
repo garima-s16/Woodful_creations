@@ -4,6 +4,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 function ProjectExpensesPage() {
   const [expenses, setExpenses] = useState([]);
@@ -60,7 +61,7 @@ function ProjectExpensesPage() {
     { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
     { key: 'category', label: 'Category' }, { key: 'description', label: 'Description' },
     { key: 'paid_to', label: 'Paid To' },
-    { key: 'amount', label: 'Amount', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'amount', label: 'Amount', render: (v) => formatCurrency(v) },
     {
       key: 'edit_action', label: '', render: (v, row) => (
         <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingExpense(row); }}>Edit</button>

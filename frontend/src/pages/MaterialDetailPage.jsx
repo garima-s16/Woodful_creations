@@ -4,8 +4,8 @@ import { materialsAPI, purchasesAPI, issuesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import { statusClass } from '../utils/statusColors';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 const TABS = ['Overview', 'Purchases', 'Issues'];
 
 function MaterialDetailPage() {
@@ -41,8 +41,8 @@ function MaterialDetailPage() {
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Available Stock</div><h3>{material.current_stock} {material.unit}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Reorder Level</div><h3>{material.minimum_stock} {material.unit}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Average Rate</div><h3>{money(material.average_rate)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Stock Value</div><h3>{money(material.stock_value)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Average Rate</div><h3>{formatCurrency(material.average_rate)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Stock Value</div><h3>{formatCurrency(material.stock_value)}</h3></div></Card>
       </div>
 
       <div className="tab-bar">

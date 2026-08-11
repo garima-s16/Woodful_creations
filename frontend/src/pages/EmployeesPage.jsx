@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
+import { formatCurrency } from '../utils/currency';
 
 function EmployeesPage() {
   const navigate = useNavigate();
@@ -59,8 +60,8 @@ function EmployeesPage() {
   const columns = [
     { key: 'employee_code', label: 'Employee ID' }, { key: 'name', label: 'Name' },
     { key: 'department', label: 'Department' }, { key: 'phone', label: 'Phone' },
-    { key: 'monthly_salary', label: 'Monthly Salary', render: (v) => `Rs ${Number(v).toLocaleString()}` },
-    { key: 'daily_wage', label: 'Daily Wage', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'monthly_salary', label: 'Monthly Salary', render: (v) => formatCurrency(v) },
+    { key: 'daily_wage', label: 'Daily Wage', render: (v) => formatCurrency(v) },
     { key: 'status', label: 'Status' },
     {
       key: 'edit_action', label: '', render: (v, row) => (

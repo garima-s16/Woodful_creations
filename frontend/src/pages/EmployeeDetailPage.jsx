@@ -6,8 +6,8 @@ import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 const TABS = ['Overview', 'Attendance', 'Leave', 'Tasks', 'Production'];
 
@@ -120,8 +120,8 @@ function EmployeeDetailPage() {
             <div className="detail-meta">
               <div className="detail-meta-item"><span className="detail-meta-label">Phone</span><span className="detail-meta-value">{employee.phone || '-'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Joining Date</span><span className="detail-meta-value">{employee.joining_date ? new Date(employee.joining_date).toLocaleDateString() : '-'}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{money(employee.monthly_salary)}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{money(employee.daily_wage)}</span></div>
+              <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{formatCurrency(employee.monthly_salary)}</span></div>
+              <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{formatCurrency(employee.daily_wage)}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Emergency Contact</span><span className="detail-meta-value">{employee.emergency_contact || '-'}</span></div>
             </div>
           </div>

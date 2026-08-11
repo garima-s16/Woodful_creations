@@ -4,6 +4,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { formatCurrency } from '../utils/currency';
 
 function SalarySlipsPage() {
   const [slips, setSlips] = useState([]);
@@ -40,7 +41,7 @@ function SalarySlipsPage() {
   const columns = [
     { key: 'employee_id', label: 'Employee', render: (v) => employees.find((e) => e.id === v)?.name || v },
     { key: 'month', label: 'Month' }, { key: 'year', label: 'Year' },
-    { key: 'net_salary', label: 'Net Salary', render: (v) => `Rs ${Number(v).toLocaleString()}` },
+    { key: 'net_salary', label: 'Net Salary', render: (v) => formatCurrency(v) },
     { key: 'status', label: 'Status' },
     {
       key: 'id', label: 'Payslip', render: (v) => (

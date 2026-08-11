@@ -3,8 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { suppliersAPI, purchasesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import { formatCurrency } from '../utils/currency';
 
-function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 function SupplierDetailPage() {
   const { supplierId } = useParams();
@@ -34,7 +34,7 @@ function SupplierDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Total Purchased</div><h3>{money(totalPurchased)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Total Purchased</div><h3>{formatCurrency(totalPurchased)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Purchase Count</div><h3>{purchases.length}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Unpaid/Part Paid Invoices</div><h3>{outstanding.length}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Payment Terms</div><h3 style={{ fontSize: '1.1rem' }}>{supplier.payment_terms || '-'}</h3></div></Card>
