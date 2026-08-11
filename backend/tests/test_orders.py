@@ -62,3 +62,61 @@ def test_order_profitability_reflects_expenses(client, test_user):
 def test_client_endpoint_requires_auth(client):
     resp = client.get("/api/clients/")
     assert resp.status_code == 401
+
+
+def test_payments_filtered_by_client_across_multiple_orders(client, test_user):
+    _login(client, test_user)
+    client_resp = client.post("/api/clients/", json={"name": "Multi-Order Client"})
+    client_id = client_resp.json()["id"]
+
+    order1 = client.post("/api/orders/", json={
+        "client_id": client_id, "project_type": "Wardrobe",
+        "order_date": "2026-08-01T00:00:00", "order_value": "40000.00", "advance": "0",
+    }).json()
+    order2 = client.post("/api/orders/", json={
+        "client_id": client_id, "project_type": "Bed",
+        "order_date": "2026-08-02T00:00:00", "order_value": "60000.00", "advance": "0",
+    }).json()
+
+    client.post("/api/payments/", json={
+        "date": "2026-08-05T00:00:00", "order_id": order1["id"],
+        "payment_type": "Advance", "payment_mode": "UPI", "amount": "10000.00",
+    })
+    client.post("/api/payments/", json={
+        "date": "2026-08-06T00:00:00", "order_id": order2["id"],
+        "payment_type": "Advance", "payment_mode": "Cash", "amount": "15000.00",
+    })
+
+    # A single client_id call should return both payments, across both orders,
+    # without the caller needing to fetch per-order.
+    resp = client.get("/api/payments/", params={"client_id": client_id})
+    assert resp.status_code == 200
+    amounts = sorted(float(p["amount"]) for p in resp.json())
+    assert amounts == [10000.0, 15000.0]
+
+
+def test_payments_client_filter_excludes_other_clients(client, test_user):
+    _login(client, test_user)
+    client_a = client.post("/api/clients/", json={"name": "Client A"}).json()["id"]
+    client_b = client.post("/api/clients/", json={"name": "Client B"}).json()["id"]
+
+    order_a = client.post("/api/orders/", json={
+        "client_id": client_a, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
+    }).json()
+    order_b = client.post("/api/orders/", json={
+        "client_id": client_b, "order_date": "2026-08-01T00:00:00", "order_value": "20000.00", "advance": "0",
+    }).json()
+
+    client.post("/api/payments/", json={
+        "date": "2026-08-05T00:00:00", "order_id": order_a["id"],
+        "payment_type": "Advance", "payment_mode": "UPI", "amount": "5000.00",
+    })
+    client.post("/api/payments/", json={
+        "date": "2026-08-05T00:00:00", "order_id": order_b["id"],
+        "payment_type": "Advance", "payment_mode": "UPI", "amount": "7000.00",
+    })
+
+    resp = client.get("/api/payments/", params={"client_id": client_a})
+    payments = resp.json()
+    assert len(payments) == 1
+    assert float(payments[0]["amount"]) == 5000.0

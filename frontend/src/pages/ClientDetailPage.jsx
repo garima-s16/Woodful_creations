@@ -29,13 +29,10 @@ function ClientDetailPage() {
 
   const load = useCallback(() => {
     clientsAPI.get(clientId).then((res) => setClient(res.data)).catch(() => setClient(null));
-    ordersAPI.list({ client_id: clientId }).then((res) => {
-      setOrders(res.data);
-      if (canViewFinancials && res.data.length > 0) {
-        Promise.all(res.data.map((o) => paymentsAPI.list({ order_id: o.id }).then((r) => r.data).catch(() => [])))
-          .then((results) => setPayments(results.flat()));
-      }
-    });
+    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data));
+    if (canViewFinancials) {
+      paymentsAPI.list({ client_id: clientId }).then((res) => setPayments(res.data)).catch(() => setPayments([]));
+    }
     estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data));
     clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data));
   }, [clientId, canViewFinancials]);

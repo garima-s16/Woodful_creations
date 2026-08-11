@@ -20,7 +20,7 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key}>{col.label}</th>
+              <th key={col.key} scope="col">{col.label}</th>
             ))}
           </tr>
         </thead>
@@ -29,7 +29,15 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
             <tr
               key={row.id || index}
               onClick={() => onRowClick && onRowClick(row)}
+              onKeyDown={(e) => {
+                if (onRowClick && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  onRowClick(row);
+                }
+              }}
               className={onRowClick ? 'clickable' : ''}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? 'button' : undefined}
             >
               {columns.map((col) => (
                 <td key={`${row.id}-${col.key}`}>

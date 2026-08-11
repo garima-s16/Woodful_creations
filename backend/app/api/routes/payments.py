@@ -8,6 +8,7 @@ from app.core.security import require_role
 from app.core.audit import log_action
 from fastapi import Request
 from app.models.payment import Payment
+from app.models.order import Order
 from app.schemas.payment import PaymentCreate, PaymentUpdate, PaymentResponse
 from app.services.order_service import OrderService
 
@@ -15,11 +16,15 @@ router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
 @router.get("/", response_model=List[PaymentResponse])
-def list_payments(order_id: Optional[int] = Query(None), db: Session = Depends(get_db),
-                   auth=Depends(require_role("master", "manager"))):
+def list_payments(order_id: Optional[int] = Query(None), client_id: Optional[int] = Query(None),
+                   db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
     query = db.query(Payment)
     if order_id:
         query = query.filter(Payment.order_id == order_id)
+    if client_id:
+        # One join instead of the caller fetching per-order and merging -
+        # a client with many orders would otherwise mean many round trips.
+        query = query.join(Order, Payment.order_id == Order.id).filter(Order.client_id == client_id)
     return query.order_by(Payment.date.desc()).all()
 
 
