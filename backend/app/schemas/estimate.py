@@ -34,6 +34,8 @@ class EstimateResponse(EstimateBase):
     tax_amount: Decimal
     total_cost: Decimal
     status: str
+    version: int
+    parent_estimate_id: Optional[int]
     created_at: datetime
     updated_at: datetime
 

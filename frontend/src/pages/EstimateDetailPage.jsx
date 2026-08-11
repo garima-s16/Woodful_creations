@@ -1,16 +1,21 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Card from '../components/common/Card';
+import Table from '../components/common/Table';
+import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
 
 function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
 function EstimateDetailPage() {
   const { estimateId } = useParams();
+  const navigate = useNavigate();
   const [estimate, setEstimate] = useState(null);
   const [client, setClient] = useState(null);
   const [order, setOrder] = useState(null);
+  const [versions, setVersions] = useState([]);
+  const [revising, setRevising] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
@@ -19,9 +24,23 @@ function EstimateDetailPage() {
       if (res.data.client_id) clientsAPI.get(res.data.client_id).then((r) => setClient(r.data)).catch(() => {});
       if (res.data.order_id) ordersAPI.get(res.data.order_id).then((r) => setOrder(r.data)).catch(() => {});
     }).catch(() => setError('Unable to load this estimate.'));
+    estimatesAPI.versions(estimateId).then((res) => setVersions(res.data)).catch(() => setVersions([]));
   }, [estimateId]);
 
   useEffect(load, [load]);
+
+  const handleRevise = async () => {
+    setRevising(true);
+    setError('');
+    try {
+      const res = await estimatesAPI.revise(estimateId);
+      navigate(`/estimates/${res.data.id}`);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to create a new version');
+    } finally {
+      setRevising(false);
+    }
+  };
 
   if (error) return <div className="page">{error}</div>;
   if (!estimate) return <div className="page">Loading...</div>;
@@ -33,16 +52,21 @@ function EstimateDetailPage() {
           <Link to="/estimates" className="btn-link">&larr; Back to Estimates</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{estimate.estimate_code}</h1>
           <div className="detail-subtitle">
-            {client?.name || 'Client'}
+            {client?.name || 'Client'} &middot; Version {estimate.version}
             {' '}<span className={`status-badge ${statusClass(estimate.status)}`}>{estimate.status}</span>
           </div>
         </div>
         <div className="page-actions">
+          <button className="btn-secondary" onClick={handleRevise} disabled={revising}>
+            {revising ? 'Creating...' : 'Create New Version'}
+          </button>
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`estimates/${estimate.id}/quote.pdf`)} target="_blank" rel="noreferrer">
             Download Quote PDF
           </a>
         </div>
       </div>
+
+      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Material Cost</div><h3>{money(estimate.material_cost)}</h3></div></Card>
@@ -73,6 +97,21 @@ function EstimateDetailPage() {
           )}
         </div>
       </Card>
+
+      {versions.length > 1 && (
+        <Card title="Version History">
+          <Table
+            columns={[
+              { key: 'version', label: 'Version' }, { key: 'estimate_code', label: 'Estimate Code' },
+              { key: 'total_cost', label: 'Total', render: money },
+              { key: 'status', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
+              { key: 'created_at', label: 'Created', render: (v) => new Date(v).toLocaleDateString() },
+            ]}
+            data={versions}
+            onRowClick={(row) => navigate(`/estimates/${row.id}`)}
+          />
+        </Card>
+      )}
     </div>
   );
 }

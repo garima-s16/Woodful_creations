@@ -23,5 +23,12 @@ class Estimate(BaseModel):
     valid_until = Column(DateTime, nullable=True)
     remarks = Column(Text, nullable=True)
 
+    # Versioning: revising an estimate creates a new row rather than
+    # overwriting history. version 1 has parent_estimate_id = None; every
+    # revision points back to the same root via parent_estimate_id.
+    version = Column(Integer, nullable=False, default=1)
+    parent_estimate_id = Column(Integer, ForeignKey("estimates.id"), nullable=True, index=True)
+
     client = relationship("Client")
     order = relationship("Order", back_populates="estimates")
+    parent_estimate = relationship("Estimate", remote_side="Estimate.id", backref="revisions")

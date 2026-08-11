@@ -13,6 +13,7 @@ from app.models.purchase import Purchase
 from app.models.issue import Issue
 
 from app.models.client import Client
+from app.models.client_activity import ClientActivity
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
@@ -36,7 +37,7 @@ __all__ = [
     "Department", "TaskStatus", "AttendanceStatus", "Machine",
     "ProjectStatus", "Priority", "PaymentMode", "LeadSource", "ProjectType", "ExpenseCategory",
     "Supplier", "Material", "Purchase", "Issue",
-    "Client", "Order", "Payment", "ProjectExpense", "Estimate",
+    "Client", "ClientActivity", "Order", "Payment", "ProjectExpense", "Estimate",
     "Employee", "Attendance", "Leave", "DailyTask", "ProductionJob", "SalarySlip",
     "Candidate", "Interview",
     "AuditLog",

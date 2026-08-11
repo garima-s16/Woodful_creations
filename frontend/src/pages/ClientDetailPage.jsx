@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI } from '../utils/api';
+import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI, clientActivitiesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
@@ -15,13 +15,14 @@ function ClientDetailPage() {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const canViewFinancials = user?.role === 'master' || user?.role === 'manager';
-  const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments'] : ['Overview', 'Orders', 'Estimates'];
+  const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments', 'Activity'] : ['Overview', 'Orders', 'Estimates', 'Activity'];
   const [client, setClient] = useState(null);
   const [orders, setOrders] = useState([]);
   const [estimates, setEstimates] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [tab, setTab] = useState('Overview');
-  const [activeAction, setActiveAction] = useState(null); // 'order' | 'estimate' | 'payment'
+  const [activeAction, setActiveAction] = useState(null); // 'order' | 'estimate' | 'payment' | 'activity'
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -35,6 +36,7 @@ function ClientDetailPage() {
       }
     });
     estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data));
+    clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data));
   }, [clientId, canViewFinancials]);
 
   useEffect(load, [load]);
@@ -78,6 +80,17 @@ function ClientDetailPage() {
     finally { setActionLoading(false); }
   };
 
+  const handleLogActivity = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await clientActivitiesAPI.create({
+        ...formData, client_id: Number(clientId), date: new Date(formData.date).toISOString(),
+      });
+      closeAction(); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to log activity'); }
+    finally { setActionLoading(false); }
+  };
+
   if (!client) return <div className="page">Loading...</div>;
 
   return (
@@ -94,6 +107,7 @@ function ClientDetailPage() {
           {canViewFinancials && orders.length > 0 && (
             <button className="btn-secondary" onClick={() => setActiveAction('payment')}>Record Payment</button>
           )}
+          <button className="btn-secondary" onClick={() => setActiveAction('activity')}>Log Activity</button>
         </div>
       </div>
 
@@ -170,6 +184,18 @@ function ClientDetailPage() {
         />
       )}
 
+      {tab === 'Activity' && (
+        <Table
+          columns={[
+            { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleString() },
+            { key: 'activity_type', label: 'Type' }, { key: 'summary', label: 'Summary' },
+            { key: 'logged_by', label: 'Logged By' },
+          ]}
+          data={activities}
+          emptyMessage="No activity logged for this client yet. Log calls, meetings, and site visits here."
+        />
+      )}
+
       <Modal isOpen={activeAction === 'order'} title="Create Order" onClose={closeAction}>
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
@@ -215,6 +241,22 @@ function ClientDetailPage() {
             { name: 'received_by', label: 'Received By' },
           ]}
           onSubmit={handleRecordPayment} loading={actionLoading} submitText="Record Payment"
+        />
+      </Modal>
+
+      <Modal isOpen={activeAction === 'activity'} title="Log Activity" onClose={closeAction}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        <Form
+          fields={[
+            { name: 'activity_type', label: 'Activity Type', type: 'select', required: true, options: [
+              { value: 'Call', label: 'Call' }, { value: 'Meeting', label: 'Meeting' },
+              { value: 'Email', label: 'Email' }, { value: 'Site Visit', label: 'Site Visit' }, { value: 'Note', label: 'Note' },
+            ] },
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'summary', label: 'Summary', type: 'textarea', required: true },
+            { name: 'logged_by', label: 'Logged By' },
+          ]}
+          onSubmit={handleLogActivity} loading={actionLoading} submitText="Log Activity"
         />
       </Modal>
     </div>

@@ -65,3 +65,48 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, db: Session = Depend
     db.commit()
     db.refresh(estimate)
     return estimate
+
+
+@router.post("/{estimate_id}/revise", response_model=EstimateResponse, status_code=201)
+def revise_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Create a new version of an estimate rather than overwriting it -
+    copies the source estimate's figures into a new row, incrementing the
+    version number and always pointing parent_estimate_id at the root of
+    the chain (not necessarily the immediate source), so /versions can
+    find every revision with one query."""
+    source = db.query(Estimate).filter(Estimate.id == estimate_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+
+    root_id = source.parent_estimate_id or source.id
+    latest_version = db.query(Estimate).filter(
+        (Estimate.id == root_id) | (Estimate.parent_estimate_id == root_id)
+    ).order_by(Estimate.version.desc()).first()
+    next_version = (latest_version.version if latest_version else source.version) + 1
+
+    new_code = f"{source.estimate_code.split('-v')[0]}-v{next_version}"
+    revision = Estimate(
+        estimate_code=new_code, client_id=source.client_id, order_id=source.order_id,
+        description=source.description, material_cost=source.material_cost, labor_cost=source.labor_cost,
+        tax_percent=source.tax_percent, tax_amount=source.tax_amount, total_cost=source.total_cost,
+        valid_until=source.valid_until, remarks=source.remarks,
+        version=next_version, parent_estimate_id=root_id, status="draft",
+    )
+    db.add(revision)
+    db.commit()
+    db.refresh(revision)
+    return revision
+
+
+@router.get("/{estimate_id}/versions", response_model=List[EstimateResponse])
+def list_estimate_versions(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Every version in the same chain as estimate_id, oldest first."""
+    source = db.query(Estimate).filter(Estimate.id == estimate_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+
+    root_id = source.parent_estimate_id or source.id
+    versions = db.query(Estimate).filter(
+        (Estimate.id == root_id) | (Estimate.parent_estimate_id == root_id)
+    ).order_by(Estimate.version.asc()).all()
+    return versions
