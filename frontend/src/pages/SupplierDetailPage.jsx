@@ -55,7 +55,7 @@ function SupplierDetailPage() {
           columns={[
             { key: 'purchase_code', label: 'Purchase' },
             { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
-            { key: 'quantity', label: 'Quantity' }, { key: 'invoice_total', label: 'Invoice Total', render: money },
+            { key: 'quantity', label: 'Quantity' }, { key: 'invoice_total', label: 'Invoice Total', render: formatCurrency },
             { key: 'payment_status', label: 'Payment Status' },
           ]}
           data={purchases}

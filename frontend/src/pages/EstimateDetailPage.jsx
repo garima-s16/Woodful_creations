@@ -103,7 +103,7 @@ function EstimateDetailPage() {
           <Table
             columns={[
               { key: 'version', label: 'Version' }, { key: 'estimate_code', label: 'Estimate Code' },
-              { key: 'total_cost', label: 'Total', render: money },
+              { key: 'total_cost', label: 'Total', render: formatCurrency },
               { key: 'status', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
               { key: 'created_at', label: 'Created', render: (v) => new Date(v).toLocaleDateString() },
             ]}

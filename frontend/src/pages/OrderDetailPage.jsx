@@ -208,7 +208,7 @@ function OrderDetailPage() {
                 { key: 'receipt_code', label: 'Receipt' },
                 { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
                 { key: 'payment_type', label: 'Type' }, { key: 'payment_mode', label: 'Mode' },
-                { key: 'amount', label: 'Amount', render: money },
+                { key: 'amount', label: 'Amount', render: formatCurrency },
                 { key: 'received_by', label: 'Received By' },
               ]}
               data={payments || []}
@@ -226,7 +226,7 @@ function OrderDetailPage() {
                 { key: 'expense_code', label: 'Expense' },
                 { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
                 { key: 'category', label: 'Category' }, { key: 'description', label: 'Description' },
-                { key: 'amount', label: 'Amount', render: money },
+                { key: 'amount', label: 'Amount', render: formatCurrency },
               ]}
               data={expenses || []}
               emptyMessage="No project expenses recorded yet."

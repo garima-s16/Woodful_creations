@@ -182,7 +182,7 @@ function DashboardPage() {
             <Table
               columns={[
                 { key: 'category', label: 'Category' }, { key: 'items', label: 'Items' },
-                { key: 'stock_value', label: 'Stock Value', render: money },
+                { key: 'stock_value', label: 'Stock Value', render: formatCurrency },
               ]}
               data={stock.category_summary}
             />
@@ -200,7 +200,7 @@ function DashboardPage() {
             <Table
               columns={[
                 { key: 'order_id', label: 'Order' }, { key: 'client', label: 'Client' },
-                { key: 'pending', label: 'Pending', render: money }, { key: 'status', label: 'Status' },
+                { key: 'pending', label: 'Pending', render: formatCurrency }, { key: 'status', label: 'Status' },
               ]}
               data={orders.top_orders.slice(0, 6)}
             />

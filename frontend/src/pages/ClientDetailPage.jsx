@@ -146,9 +146,9 @@ function ClientDetailPage() {
         <Table
           columns={[
             { key: 'order_code', label: 'Order' }, { key: 'project_type', label: 'Project Type' },
-            { key: 'order_value', label: 'Order Value', render: money },
-            { key: 'total_received', label: 'Received', render: money },
-            { key: 'balance', label: 'Balance', render: money },
+            { key: 'order_value', label: 'Order Value', render: formatCurrency },
+            { key: 'total_received', label: 'Received', render: formatCurrency },
+            { key: 'balance', label: 'Balance', render: formatCurrency },
             { key: 'project_status', label: 'Status' },
           ]}
           data={orders}
@@ -161,7 +161,7 @@ function ClientDetailPage() {
         <Table
           columns={[
             { key: 'estimate_code', label: 'Estimate' }, { key: 'description', label: 'Description' },
-            { key: 'total_cost', label: 'Total', render: money }, { key: 'status', label: 'Status' },
+            { key: 'total_cost', label: 'Total', render: formatCurrency }, { key: 'status', label: 'Status' },
           ]}
           data={estimates}
           emptyMessage="No estimates for this client yet."
@@ -175,7 +175,7 @@ function ClientDetailPage() {
             { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
             { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
             { key: 'payment_type', label: 'Type' }, { key: 'payment_mode', label: 'Mode' },
-            { key: 'amount', label: 'Amount', render: money },
+            { key: 'amount', label: 'Amount', render: formatCurrency },
           ]}
           data={payments}
           emptyMessage="No payments recorded for this client yet."
