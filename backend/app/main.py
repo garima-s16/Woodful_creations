@@ -43,14 +43,17 @@ for router in all_routers:
 
 @app.on_event("startup")
 def on_startup():
+    print("Checking database migrations...", flush=True)
     try:
         run_startup_migrations()
+        print("Database migrations checked - server is ready.", flush=True)
     except Exception:
         logger.exception(
             "Automatic database migration failed. The server is starting anyway, "
             "but requests that touch an out-of-date table will error until this "
             "is resolved - check the traceback above for the specific issue."
         )
+        print("Database migration check failed - see the error above.", flush=True)
 
 
 @app.get("/health")

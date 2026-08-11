@@ -14,7 +14,15 @@ from app import models  # noqa: F401 - registers every model on Base.metadata
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False matters here specifically because
+    # this env.py can now be triggered two ways: the standalone `alembic`
+    # CLI (where wiping other loggers is harmless - nothing else is
+    # running) and app.core.auto_migrate, called from inside the live
+    # FastAPI app on every startup. Without this, fileConfig()'s default
+    # behavior silently disables uvicorn's own logger as a side effect,
+    # making the app look hung - it keeps running, it just stops
+    # printing anything after the migration check runs.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Always use the live app settings, not a hardcoded url in alembic.ini -
 # this is the same DATABASE_URL the app itself connects with, whether
