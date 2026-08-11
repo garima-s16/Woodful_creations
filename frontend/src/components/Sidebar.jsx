@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import {
+  HomeIcon, MaterialIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon,
+  OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
+  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon,
+} from './icons';
 import '../styles/components/Sidebar.css';
 
 function Sidebar({ isOpen, user }) {
@@ -10,54 +15,54 @@ function Sidebar({ isOpen, user }) {
   const groups = [
     {
       name: 'Home',
-      items: [{ path: '/dashboard', label: 'Dashboard' }],
+      items: [{ path: '/dashboard', label: 'Dashboard', icon: HomeIcon }],
     },
     {
       name: 'Inventory',
       items: [
-        { path: '/materials', label: 'Materials' },
-        { path: '/purchases', label: 'Purchases' },
-        { path: '/issues', label: 'Material Issues' },
-        { path: '/suppliers', label: 'Suppliers' },
+        { path: '/materials', label: 'Materials', icon: MaterialIcon },
+        { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
+        { path: '/issues', label: 'Material Issues', icon: IssueIcon },
+        { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },
       ],
     },
     {
       name: 'Sales',
       items: [
-        { path: '/clients', label: 'Clients' },
-        { path: '/estimates', label: 'Estimates' },
-        { path: '/orders', label: 'Orders' },
-        ...(isMaster ? [{ path: '/payments', label: 'Payments' }] : []),
+        { path: '/clients', label: 'Clients', icon: ClientIcon },
+        { path: '/estimates', label: 'Estimates', icon: EstimateIcon },
+        { path: '/orders', label: 'Orders', icon: OrderIcon },
+        ...(isMaster ? [{ path: '/payments', label: 'Payments', icon: PaymentIcon }] : []),
       ],
     },
     {
       name: 'Projects & Production',
       items: [
-        { path: '/daily-tasks', label: 'Tasks' },
-        { path: '/production-jobs', label: 'Production Jobs' },
-        ...(isMaster ? [{ path: '/project-expenses', label: 'Project Expenses' }] : []),
+        { path: '/daily-tasks', label: 'Tasks', icon: TaskIcon },
+        { path: '/production-jobs', label: 'Production Jobs', icon: ProductionIcon },
+        ...(isMaster ? [{ path: '/project-expenses', label: 'Project Expenses', icon: ExpenseIcon }] : []),
       ],
     },
     {
       name: 'People',
       items: [
-        { path: '/employees', label: 'Employees' },
-        { path: '/attendance', label: 'Attendance' },
-        { path: '/leaves', label: 'Leave' },
+        { path: '/employees', label: 'Employees', icon: EmployeeIcon },
+        { path: '/attendance', label: 'Attendance', icon: AttendanceIcon },
+        { path: '/leaves', label: 'Leave', icon: LeaveIcon },
         ...(isMaster ? [
-          { path: '/salary-slips', label: 'Salary' },
-          { path: '/candidates', label: 'Candidates' },
-          { path: '/interviews', label: 'Interviews' },
+          { path: '/salary-slips', label: 'Salary', icon: SalaryIcon },
+          { path: '/candidates', label: 'Candidates', icon: CandidateIcon },
+          { path: '/interviews', label: 'Interviews', icon: InterviewIcon },
         ] : []),
       ],
     },
     ...(isMaster ? [{
       name: 'Administration',
       items: [
-        { path: '/settings', label: 'Settings' },
+        { path: '/settings', label: 'Settings', icon: SettingsIcon },
         ...(isTrueMaster ? [
-          { path: '/users', label: 'Users' },
-          { path: '/audit-logs', label: 'Audit Logs' },
+          { path: '/users', label: 'Users', icon: UserIcon },
+          { path: '/audit-logs', label: 'Audit Logs', icon: AuditIcon },
         ] : []),
       ],
     }] : []),
@@ -83,19 +88,23 @@ function Sidebar({ isOpen, user }) {
                   type="button"
                 >
                   <span>{group.name}</span>
-                  <span className={`nav-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
+                  <ChevronIcon className={`nav-chevron ${isCollapsed ? 'collapsed' : ''}`} />
                 </button>
                 {!isCollapsed && (
                   <div className="nav-group-items">
-                    {group.items.map((item) => (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                        >
+                          <Icon className="nav-item-icon" />
+                          <span>{item.label}</span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </div>

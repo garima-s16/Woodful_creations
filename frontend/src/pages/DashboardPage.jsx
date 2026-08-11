@@ -1,29 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI, dailyTasksAPI } from '../utils/api';
+import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI } from '../utils/api';
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
 
-function AttentionRequired() {
+function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
+
+function AttentionRequired({ stock, orders, pendingTasks }) {
   const navigate = useNavigate();
-  const [stock, setStock] = useState(null);
-  const [orders, setOrders] = useState(null);
-  const [pendingTasks, setPendingTasks] = useState([]);
-
-  useEffect(() => {
-    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
-    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
-    dailyTasksAPI.list({ status: 'Not Started' }).then((res) => setPendingTasks(res.data)).catch(() => {});
-  }, []);
-
   const lowStock = (stock?.low_stock_action_list || []).slice(0, 4);
   const onHoldOrders = (orders?.top_orders || []).filter((o) => o.status === 'On Hold').slice(0, 4);
   const outstandingOrders = (orders?.top_orders || []).filter((o) => o.pending > 0).slice(0, 4);
   const tasks = (pendingTasks || []).slice(0, 4);
 
   const hasAny = lowStock.length || onHoldOrders.length || outstandingOrders.length || tasks.length;
-  if (!hasAny) return null;
+  if (!hasAny) {
+    return (
+      <Card title="Attention Required">
+        <div className="card-body" style={{ color: 'var(--text-secondary)' }}>Nothing needs attention right now.</div>
+      </Card>
+    );
+  }
 
   return (
     <Card title="Attention Required">
@@ -77,152 +75,140 @@ function AttentionRequired() {
   );
 }
 
-function StockDashboard() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    dashboardAPI.stock().then((res) => setData(res.data)).catch(() => setData(null));
-  }, []);
-
-  if (!data) return <div>Loading...</div>;
-
-  return (
-    <div className="dashboard-tab">
-      <div className="kpi-row">
-        <KpiCard label="Total Stock Value" value={`Rs ${data.total_stock_value.toLocaleString()}`} />
-        <KpiCard label="Low Stock Items" value={data.low_stock_items} tone={data.low_stock_items > 0 ? 'warning' : 'success'} />
-        <KpiCard label="Out of Stock" value={data.out_of_stock_items} tone={data.out_of_stock_items > 0 ? 'danger' : 'success'} />
-        <KpiCard label="Purchase Value" value={`Rs ${data.purchase_value.toLocaleString()}`} />
-      </div>
-      <div className="dashboard-grid">
-        <Card title="Low Stock Action List">
-          <Table
-            columns={[
-              { key: 'material', label: 'Material' }, { key: 'current', label: 'Current' },
-              { key: 'minimum', label: 'Minimum' }, { key: 'status', label: 'Status' },
-              { key: 'suggested_order', label: 'Suggested Order' }, { key: 'supplier', label: 'Supplier' },
-            ]}
-            data={data.low_stock_action_list}
-          />
-        </Card>
-        <Card title="Category Summary">
-          <Table
-            columns={[
-              { key: 'category', label: 'Category' }, { key: 'items', label: 'Items' },
-              { key: 'stock_quantity', label: 'Stock Qty' },
-              { key: 'stock_value', label: 'Stock Value', render: (v) => `Rs ${v.toLocaleString()}` },
-            ]}
-            data={data.category_summary}
-          />
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function OrdersDashboard() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    dashboardAPI.orders().then((res) => setData(res.data)).catch(() => setData(null));
-  }, []);
-
-  if (!data) return <div>Loading...</div>;
-
-  return (
-    <div className="dashboard-tab">
-      <div className="kpi-row">
-        <KpiCard label="Total Order Value" value={`Rs ${data.total_order_value.toLocaleString()}`} />
-        <KpiCard label="Total Received" value={`Rs ${data.total_received.toLocaleString()}`} tone="success" />
-        <KpiCard label="Pending Payment" value={`Rs ${data.pending_payment.toLocaleString()}`} tone="warning" />
-        <KpiCard label="Active Orders" value={data.active_orders} />
-      </div>
-      <div className="dashboard-grid">
-        <Card title="Order Pipeline">
-          <Table columns={[{ key: 'status', label: 'Status' }, { key: 'orders', label: 'Orders' }]} data={data.order_pipeline} />
-        </Card>
-        <Card title="Top Orders & Payment Position">
-          <Table
-            columns={[
-              { key: 'order_id', label: 'Order ID' }, { key: 'client', label: 'Client' },
-              { key: 'order_value', label: 'Order Value', render: (v) => `Rs ${v.toLocaleString()}` },
-              { key: 'received', label: 'Received', render: (v) => `Rs ${v.toLocaleString()}` },
-              { key: 'pending', label: 'Pending', render: (v) => `Rs ${v.toLocaleString()}` },
-              { key: 'progress', label: 'Progress %' }, { key: 'status', label: 'Status' },
-            ]}
-            data={data.top_orders}
-          />
-        </Card>
-      </div>
-      <Card title="Order Profitability">
-        <Table
-          columns={[
-            { key: 'order_id', label: 'Order ID' }, { key: 'client', label: 'Client' },
-            { key: 'order_value', label: 'Sales', render: (v) => `Rs ${v.toLocaleString()}` },
-            { key: 'project_expenses', label: 'Expenses', render: (v) => `Rs ${v.toLocaleString()}` },
-            { key: 'estimated_gross_profit', label: 'Gross Profit', render: (v) => `Rs ${v.toLocaleString()}` },
-            { key: 'gross_margin_percent', label: 'Margin %', render: (v) => `${(v * 100).toFixed(1)}%` },
-            { key: 'status', label: 'Status' },
-          ]}
-          data={data.order_profitability}
-        />
+function RecentActivity({ items }) {
+  if (!items.length) {
+    return (
+      <Card title="Recent Activity">
+        <div className="card-body" style={{ color: 'var(--text-secondary)' }}>No recent activity yet.</div>
       </Card>
-    </div>
-  );
-}
-
-function StaffDashboard() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    dashboardAPI.staff().then((res) => setData(res.data)).catch(() => setData(null));
-  }, []);
-
-  if (!data) return <div>Loading...</div>;
-
+    );
+  }
   return (
-    <div className="dashboard-tab">
-      <div className="kpi-row">
-        <KpiCard label="Active Employees" value={data.active_employees} />
-        <KpiCard label="Pending Tasks" value={data.pending_tasks} tone="warning" />
-        <KpiCard label="Completed Tasks" value={data.completed_tasks} tone="success" />
-        <KpiCard label="Total Overtime (hrs)" value={data.total_overtime} />
+    <Card title="Recent Activity">
+      <div className="card-body">
+        {items.map((item, i) => (
+          <div key={i} className="activity-row">
+            <span className={`status-badge status-info`}>{item.type}</span>
+            <span className="activity-desc">{item.description}</span>
+            <span className="activity-date">{new Date(item.date).toLocaleDateString()}</span>
+          </div>
+        ))}
       </div>
-      <div className="dashboard-grid">
-        <Card title="Task Status Summary">
-          <Table columns={[{ key: 'status', label: 'Status' }, { key: 'count', label: 'Count' }]} data={data.task_status_summary} />
-        </Card>
-        <Card title="Employee Performance">
-          <Table
-            columns={[
-              { key: 'employee', label: 'Employee' }, { key: 'department', label: 'Department' },
-              { key: 'tasks', label: 'Tasks' }, { key: 'completed', label: 'Completed' },
-              { key: 'completion_percent', label: 'Completion %', render: (v) => `${(v * 100).toFixed(0)}%` },
-              { key: 'hours', label: 'Hours' }, { key: 'overtime', label: 'Overtime' },
-            ]}
-            data={data.employee_performance}
-          />
-        </Card>
-      </div>
-    </div>
+    </Card>
   );
 }
 
 function DashboardPage() {
-  const [tab, setTab] = useState('stock');
+  const [stock, setStock] = useState(null);
+  const [orders, setOrders] = useState(null);
+  const [staff, setStaff] = useState(null);
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [activity, setActivity] = useState([]);
+
+  useEffect(() => {
+    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
+    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
+    dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
+    dailyTasksAPI.list({ status: 'Not Started' }).then((res) => setPendingTasks(res.data)).catch(() => {});
+
+    Promise.all([
+      purchasesAPI.list().then((r) => r.data).catch(() => []),
+      paymentsAPI.list().then((r) => r.data).catch(() => []),
+    ]).then(([purchases, payments]) => {
+      const feed = [
+        ...purchases.slice(0, 4).map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${money(p.invoice_total)}`, date: p.date })),
+        ...payments.slice(0, 4).map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${money(p.amount)}`, date: p.date })),
+      ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
+      setActivity(feed);
+    });
+  }, []);
+
+  if (!stock || !orders || !staff) return <div className="page">Loading...</div>;
+
+  const grossMargin = orders.total_order_value
+    ? (orders.order_profitability.reduce((s, o) => s + o.estimated_gross_profit, 0) / orders.total_order_value) * 100
+    : 0;
 
   return (
-    <div className="page">
-      <h1>Dashboard</h1>
-      <AttentionRequired />
-      <div className="tab-bar">
-        <button className={tab === 'stock' ? 'tab active' : 'tab'} onClick={() => setTab('stock')}>Stock</button>
-        <button className={tab === 'orders' ? 'tab active' : 'tab'} onClick={() => setTab('orders')}>Orders & Sales</button>
-        <button className={tab === 'staff' ? 'tab active' : 'tab'} onClick={() => setTab('staff')}>Staff & Tasks</button>
+    <div className="page dashboard-page">
+      <div className="dashboard-header">
+        <span className="dashboard-eyebrow">Woodful Creations</span>
+        <h1>Business Overview</h1>
       </div>
-      {tab === 'stock' && <StockDashboard />}
-      {tab === 'orders' && <OrdersDashboard />}
-      {tab === 'staff' && <StaffDashboard />}
+
+      <div className="hero-metrics">
+        <div className="hero-metric">
+          <span className="hero-label">Revenue</span>
+          <span className="hero-value">{money(orders.total_order_value)}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="hero-label">Outstanding</span>
+          <span className="hero-value hero-warning">{money(orders.pending_payment)}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="hero-label">Inventory Value</span>
+          <span className="hero-value">{money(stock.total_stock_value)}</span>
+        </div>
+        <div className="hero-metric">
+          <span className="hero-label">Gross Margin</span>
+          <span className="hero-value">{grossMargin.toFixed(1)}%</span>
+        </div>
+      </div>
+
+      <div className="secondary-metrics">
+        <KpiCard label="Amount Received" value={money(orders.total_received)} />
+        <KpiCard label="Active Orders" value={orders.active_orders} />
+        <KpiCard label="Low Stock Items" value={stock.low_stock_items} tone={stock.low_stock_items > 0 ? 'warning' : 'success'} />
+        <KpiCard label="Out of Stock" value={stock.out_of_stock_items} tone={stock.out_of_stock_items > 0 ? 'danger' : 'success'} />
+        <KpiCard label="Active Employees" value={staff.active_employees} />
+        <KpiCard label="Pending Tasks" value={staff.pending_tasks} tone={staff.pending_tasks > 0 ? 'warning' : 'success'} />
+      </div>
+
+      <section className="dashboard-section">
+        <h2 className="section-heading">Business Activity</h2>
+        <div className="dashboard-grid">
+          <Card title="Order Pipeline">
+            <Table columns={[{ key: 'status', label: 'Status' }, { key: 'orders', label: 'Orders' }]} data={orders.order_pipeline} />
+          </Card>
+          <Card title="Category Summary">
+            <Table
+              columns={[
+                { key: 'category', label: 'Category' }, { key: 'items', label: 'Items' },
+                { key: 'stock_value', label: 'Stock Value', render: money },
+              ]}
+              data={stock.category_summary}
+            />
+          </Card>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <h2 className="section-heading">Attention Required</h2>
+        <AttentionRequired stock={stock} orders={orders} pendingTasks={pendingTasks} />
+      </section>
+
+      <section className="dashboard-section">
+        <h2 className="section-heading">Projects &amp; Production</h2>
+        <div className="dashboard-grid">
+          <Card title="Task Status">
+            <Table columns={[{ key: 'status', label: 'Status' }, { key: 'count', label: 'Count' }]} data={staff.task_status_summary} />
+          </Card>
+          <Card title="Top Orders & Payment Position">
+            <Table
+              columns={[
+                { key: 'order_id', label: 'Order' }, { key: 'client', label: 'Client' },
+                { key: 'pending', label: 'Pending', render: money }, { key: 'status', label: 'Status' },
+              ]}
+              data={orders.top_orders.slice(0, 6)}
+            />
+          </Card>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <h2 className="section-heading">Recent Activity</h2>
+        <RecentActivity items={activity} />
+      </section>
     </div>
   );
 }

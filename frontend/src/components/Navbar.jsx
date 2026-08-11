@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { MenuIcon, LogoutIcon } from './icons';
 import '../styles/Navbar.css';
 
 function Navbar({ user, onLogout, toggleSidebar }) {
@@ -16,13 +17,16 @@ function Navbar({ user, onLogout, toggleSidebar }) {
       <div className="navbar-container">
         <div className="navbar-left">
           <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
-            <span></span>
-            <span></span>
-            <span></span>
+            <MenuIcon />
           </button>
+          {/* Brand treatment: typography-led wordmark, not a designed logo -
+              swap the mark span for an <img> once a real logo asset exists. */}
           <Link to="/dashboard" className="navbar-brand">
-            <span className="brand-icon">W</span>
-            <span className="brand-text">Woodful Creations</span>
+            <span className="brand-mark">W</span>
+            <span className="brand-text">
+              <span className="brand-name">Woodful Creations</span>
+              <span className="brand-tagline">Business Management</span>
+            </span>
           </Link>
         </div>
 
@@ -40,10 +44,11 @@ function Navbar({ user, onLogout, toggleSidebar }) {
               <div className="profile-dropdown">
                 <div className="profile-header">
                   <p className="user-email">{user?.email}</p>
-                  <p className="user-role">{user?.role === 'master' ? 'Master Admin' : 'User'}</p>
+                  <p className="user-role">{user?.role === 'master' ? 'Master Admin' : user?.role === 'manager' ? 'Manager' : 'User'}</p>
                 </div>
                 <hr />
                 <button onClick={handleLogout} className="logout-button">
+                  <LogoutIcon width={16} height={16} />
                   Logout
                 </button>
               </div>
