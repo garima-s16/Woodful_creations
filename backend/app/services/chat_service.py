@@ -2,8 +2,22 @@
 querying the current domain directly - not a real LLM integration. The
 OPENAI_API_KEY setting already exists in core/config.py for a future
 upgrade to real natural-language understanding; this keyword-matching
-version is a working, testable placeholder for that."""
-from typing import List, Tuple
+version is a working, testable placeholder for that.
+
+Context-awareness: when the frontend passes a ChatContext (the record
+the user is currently viewing), "this order" / "this material" style
+questions are answered against that specific record instead of falling
+through to a generic aggregate answer.
+
+Propose-confirm actions: the assistant never modifies business data on
+its own. When it recognizes a request to record a payment, it parses
+the details into a ProposedAction and returns it alongside the reply -
+the frontend shows this for explicit confirmation, and only then calls
+the real POST /api/payments/ endpoint (which has its own RBAC and
+audit logging - this service never bypasses either)."""
+import re
+from datetime import datetime
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -12,12 +26,71 @@ from app.models.client import Client
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.employee import Employee
+from app.schemas.chat import ChatContext, ProposedAction
+
+THIS_RECORD_WORDS = ["this order", "this material", "this client", "this employee",
+                      "summarize", "summarise", "should i reorder", "reorder this"]
+PAYMENT_INTENT_WORDS = ["record a payment", "record payment", "log a payment", "log payment", "add a payment"]
+AMOUNT_PATTERN = re.compile(r"(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:rs\.?|rupees|inr)?", re.IGNORECASE)
 
 
 class ChatService:
     @staticmethod
-    def process_message(message: str, db: Session, user_role: str = "user") -> Tuple[str, List[str]]:
+    def process_message(message: str, db: Session, user_role: str = "user",
+                         context: Optional[ChatContext] = None) -> Tuple[str, List[str], Optional[ProposedAction]]:
         m = message.lower()
+
+        if any(w in m for w in PAYMENT_INTENT_WORDS) and context and context.order_id:
+            proposal = ChatService._propose_payment(m, db, user_role, context.order_id)
+            if proposal:
+                return proposal
+
+        text, suggestions = ChatService._dispatch(m, db, user_role, context)
+        return text, suggestions, None
+
+    @staticmethod
+    def _propose_payment(m: str, db: Session, user_role: str, order_id: int):
+        if user_role not in ("master", "manager"):
+            return "Recording payments requires a master or manager account.", [], None
+
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            return None
+
+        amount_match = AMOUNT_PATTERN.search(m.replace(",", ""))
+        if not amount_match:
+            return (
+                "I can help record a payment for this order, but I couldn't find an amount in your "
+                "message. Try something like \"record a payment of 15000 for this order\".",
+                [], None,
+            )
+        amount = amount_match.group(1)
+
+        payload = {
+            "order_id": order_id,
+            "date": datetime.utcnow().isoformat(),
+            "payment_type": "Progress Payment",
+            "payment_mode": "Cash",
+            "amount": amount,
+        }
+        proposal = ProposedAction(
+            action_type="record_payment",
+            summary=f"Record a payment of Rs {float(amount):,.2f} against {order.order_code}",
+            payload=payload,
+        )
+        return (
+            f"I've prepared a payment of Rs {float(amount):,.2f} against {order.order_code}. "
+            f"Review the details and confirm to record it - I won't do this without your confirmation.",
+            [],
+            proposal,
+        )
+
+    @staticmethod
+    def _dispatch(m: str, db: Session, user_role: str, context: Optional[ChatContext]) -> Tuple[str, List[str]]:
+        if context and any(w in m for w in THIS_RECORD_WORDS):
+            contextual = ChatService._answer_from_context(m, db, user_role, context)
+            if contextual:
+                return contextual
 
         if any(w in m for w in ["low stock", "reorder", "alert"]):
             return ChatService._low_stock(db)
@@ -44,6 +117,70 @@ class ChatService:
             f"I didn't quite catch that. Try asking about stock, orders, clients, payments, or staff.",
             ["Check low stock", "Show pending orders", "Show staff summary"],
         )
+
+    @staticmethod
+    def _answer_from_context(m: str, db: Session, user_role: str, context: ChatContext):
+        if context.order_id:
+            order = db.query(Order).filter(Order.id == context.order_id).first()
+            if not order:
+                return None
+            client_name = order.client.name if order.client else "Unknown client"
+            lines = [
+                f"{order.order_code} for {client_name} - {order.project_type or 'project'}.",
+                f"Stage: {order.project_status}. Progress: {order.progress_percent}%.",
+                f"Order value: Rs {float(order.order_value):,.2f}.",
+            ]
+            if user_role in ("master", "manager"):
+                lines.append(f"Received: Rs {float(order.total_received):,.2f}. Outstanding: Rs {float(order.balance):,.2f}.")
+            if order.delivery_date:
+                lines.append(f"Delivery date: {order.delivery_date.strftime('%d %b %Y')}.")
+            return " ".join(lines), ["Record Payment", "Show order pipeline"]
+
+        if context.material_id:
+            material = db.query(Material).filter(Material.id == context.material_id).first()
+            if not material:
+                return None
+            if "reorder" in m:
+                if material.current_stock <= material.minimum_stock:
+                    shortfall = material.minimum_stock - material.current_stock
+                    return (
+                        f"Yes - {material.name} is at {material.current_stock} {material.unit}, "
+                        f"at or below the reorder level of {material.minimum_stock} {material.unit}. "
+                        f"Consider ordering at least {shortfall} {material.unit}.",
+                        ["Record Purchase"],
+                    )
+                return (
+                    f"Not yet - {material.name} has {material.current_stock} {material.unit} available, "
+                    f"above the reorder level of {material.minimum_stock} {material.unit}.",
+                    [],
+                )
+            return (
+                f"{material.name} ({material.material_code}): {material.current_stock} {material.unit} available, "
+                f"reorder level {material.minimum_stock} {material.unit}, status {material.stock_status}.",
+                ["Should I reorder this?"],
+            )
+
+        if context.client_id:
+            client = db.query(Client).filter(Client.id == context.client_id).first()
+            if not client:
+                return None
+            total_sales = sum((o.order_value for o in client.orders), 0)
+            return (
+                f"{client.name} ({client.client_code}): {len(client.orders)} orders, "
+                f"Rs {float(total_sales):,.2f} in total order value.",
+                ["Create Order", "Record Payment"],
+            )
+
+        if context.employee_id:
+            employee = db.query(Employee).filter(Employee.id == context.employee_id).first()
+            if not employee:
+                return None
+            return (
+                f"{employee.name} ({employee.employee_code}), {employee.department or 'no department'}. Status: {employee.status}.",
+                ["Assign Task", "Record Attendance"],
+            )
+
+        return None
 
     @staticmethod
     def _stock_summary(db: Session):

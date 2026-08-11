@@ -1,13 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { chatAPI } from '../utils/api';
+import { useParams } from 'react-router-dom';
+import { chatAPI, paymentsAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
 import '../styles/components/ChatWidget.css';
 
+function contextualGreetingSuggestion(params) {
+  if (params.orderId) return 'Summarize this order';
+  if (params.materialId) return 'Should I reorder this?';
+  if (params.clientId) return 'Summarize this client';
+  if (params.employeeId) return 'Summarize this employee';
+  return null;
+}
+
 function ChatWidget() {
+  const params = useParams();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Hi, I\'m the Woodful Assistant. Ask me about stock, orders, clients, payments, or staff.', suggestions: ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"] },
-  ]);
+  const [messages, setMessages] = useState(() => {
+    const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
+    const contextual = contextualGreetingSuggestion(params);
+    return [{
+      role: 'assistant',
+      text: 'Hi, I\'m the Woodful Assistant. Ask me about stock, orders, clients, payments, or staff.',
+      suggestions: contextual ? [contextual, ...base] : base,
+    }];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
@@ -22,15 +38,55 @@ function ChatWidget() {
     setMessages((prev) => [...prev, { role: 'user', text: message }]);
     setInput('');
     setLoading(true);
+
+    const context = {
+      order_id: params.orderId ? Number(params.orderId) : undefined,
+      client_id: params.clientId ? Number(params.clientId) : undefined,
+      material_id: params.materialId ? Number(params.materialId) : undefined,
+      employee_id: params.employeeId ? Number(params.employeeId) : undefined,
+    };
+    const hasContext = Object.values(context).some((v) => v !== undefined);
+
     try {
-      const res = await chatAPI.send(message);
-      setMessages((prev) => [...prev, { role: 'assistant', text: res.data.response, suggestions: res.data.suggestions }]);
+      const res = await chatAPI.send(message, hasContext ? context : undefined);
+      setMessages((prev) => [...prev, {
+        role: 'assistant', text: res.data.response, suggestions: res.data.suggestions,
+        proposedAction: res.data.proposed_action || null,
+      }]);
     } catch (err) {
       const detail = err.response?.data?.detail;
       setMessages((prev) => [...prev, { role: 'assistant', text: detail || 'Unable to answer that right now. Please try again.' }]);
     } finally {
       setLoading(false);
     }
+  };
+
+  // The assistant only ever prepares this - the real payment is created
+  // here, at the moment the user explicitly clicks Confirm, via the same
+  // authenticated/RBAC'd/audited endpoint the Payments page itself uses.
+  const confirmAction = async (messageIndex, action) => {
+    setLoading(true);
+    try {
+      if (action.action_type === 'record_payment') {
+        await paymentsAPI.create(action.payload);
+      }
+      setMessages((prev) => prev.map((msg, i) => (
+        i === messageIndex
+          ? { ...msg, proposedAction: null, text: `${msg.text}\n\nDone - recorded.` }
+          : msg
+      )));
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setMessages((prev) => [...prev, { role: 'assistant', text: detail || 'That action failed. Please try again or use the page directly.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const dismissAction = (messageIndex) => {
+    setMessages((prev) => prev.map((msg, i) => (
+      i === messageIndex ? { ...msg, proposedAction: null, text: `${msg.text}\n\nOkay, not recorded.` } : msg
+    )));
   };
 
   const handleSubmit = (e) => {
@@ -56,6 +112,15 @@ function ChatWidget() {
                 {m.role === 'assistant' && <AssistantMascot size={26} />}
                 <div className={`chat-bubble chat-${m.role}`}>
                   <div className="chat-text">{m.text}</div>
+                  {m.proposedAction && (
+                    <div className="chat-proposed-action">
+                      <div className="chat-proposed-summary">{m.proposedAction.summary}</div>
+                      <div className="chat-proposed-buttons">
+                        <button className="btn-primary" onClick={() => confirmAction(i, m.proposedAction)} disabled={loading}>Confirm</button>
+                        <button className="btn-secondary" onClick={() => dismissAction(i)} disabled={loading}>Not now</button>
+                      </div>
+                    </div>
+                  )}
                   {m.suggestions?.length > 0 && (
                     <div className="chat-suggestions">
                       {m.suggestions.map((s) => (

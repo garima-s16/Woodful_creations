@@ -161,7 +161,7 @@ export const salarySlipsAPI = {
 };
 
 export const chatAPI = {
-  send: (message) => client.post('/api/chat/', { message }),
+  send: (message, context) => client.post('/api/chat/', { message, context }),
 };
 
 export const usersAPI = {
