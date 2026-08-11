@@ -16,7 +16,9 @@ function SuppliersPage() {
   const [loading, setLoading] = useState(false);
 
   const load = () => suppliersAPI.list().then((res) => setSuppliers(res.data));
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleCreate = async (formData) => {
     setLoading(true);

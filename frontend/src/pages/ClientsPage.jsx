@@ -17,7 +17,9 @@ function ClientsPage() {
   const [loading, setLoading] = useState(false);
 
   const load = (searchTerm) => clientsAPI.list(searchTerm ? { search: searchTerm } : undefined).then((res) => setClients(res.data));
-  useEffect(() => load(), []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();

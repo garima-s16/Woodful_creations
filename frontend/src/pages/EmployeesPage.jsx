@@ -16,7 +16,9 @@ function EmployeesPage() {
   const [loading, setLoading] = useState(false);
 
   const load = () => employeesAPI.list().then((res) => setEmployees(res.data));
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleCreate = async (formData) => {
     setLoading(true);

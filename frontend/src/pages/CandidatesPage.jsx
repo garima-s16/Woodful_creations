@@ -12,7 +12,9 @@ function CandidatesPage() {
   const [loading, setLoading] = useState(false);
 
   const load = () => candidatesAPI.list().then((res) => setCandidates(res.data)).catch(() => setError('You do not have permission to view candidates.'));
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleCreate = async (formData) => {
     setLoading(true);

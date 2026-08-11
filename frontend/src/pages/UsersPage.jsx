@@ -13,7 +13,9 @@ function UsersPage() {
   const [loading, setLoading] = useState(false);
 
   const load = () => usersAPI.list().then((res) => setUsers(res.data)).catch(() => setError('You do not have permission to manage users.'));
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleCreate = async (formData) => {
     setLoading(true);
