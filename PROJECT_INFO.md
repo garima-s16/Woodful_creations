@@ -205,13 +205,11 @@ Role-based permission system
 - Cannot modify user permissions
 - Cannot see other users' data outside their scope
 
-### User Credentials
+### Administrator Access
 
-| Role | Username | Password | Email | Phone | Access Level |
-|------|----------|----------|-------|-------|--------------|
-| Master Admin | garimas | Gullak*16 | garima@woodfulcreations.com | +919229083242 | Full |
-| Master Admin | nikhils | Nikhil*27 | nikhil@woodfulcreations.com | 9339555554 | Full |
-| Regular User | shwetav | Shweta*05 | shweta@woodfulcreations.com | - | Limited |
+No default accounts exist. Run `python scripts/setup_local.py` from
+`backend/` to create the first administrator - see the README or
+SETUP_GUIDE for details.
 
 ---
 
@@ -324,13 +322,14 @@ Woodful_creations/
    cp .env.example .env
    ```
 
-5. **Initialize Database**
+5. **Initialize Database and Create the First Administrator**
    ```bash
-   cd ../scripts
-   python init_db.py
-   python create_master_user.py --username garimas --password "Gullak*16" --name "Garima" --role admin
-   python create_master_user.py --username nikhils --password "Nikhil*27" --name "Nikhil" --role admin
+   cd backend
+   python scripts/setup_local.py
    ```
+   Creates all tables and prompts interactively for the administrator's
+   email, username, name, and password - nothing is passed as a
+   command-line argument.
 
 6. **Launch Application** (Open 3 terminals)
    ```bash
@@ -481,7 +480,7 @@ For detailed instructions, refer to **SETUP_GUIDE.md**
 ### Getting Help
 - Check relevant module documentation
 - Review FastAPI Swagger docs at http://localhost:8000/docs
-- Contact development team: Nikhil (9339555554) or Garima (+919229083242)
+- Contact the development team via the emails on file
 
 ---
 

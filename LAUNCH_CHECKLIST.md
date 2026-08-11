@@ -147,37 +147,18 @@ This document provides a comprehensive verification checklist to ensure your Woo
   python init_db.py
   ```
 
-- [ ] Master User 1 (Garima) Created
+- [ ] Database initialized and first administrator created
   ```bash
-  python create_master_user.py \
-    --username garimas \
-    --name "Garima" \
-    --email "garima@woodfulcreations.com" \
-    --password "Gullak*16" \
-    --phone "+919229083242" \
-    --role admin
+  cd backend
+  python scripts/setup_local.py
   ```
+  This creates all tables and, if no administrator exists yet, prompts
+  interactively for email, username, full name, and password - the
+  password is never passed as a command-line argument or written to
+  any file.
 
-- [ ] Master User 2 (Nikhil) Created
-  ```bash
-  python create_master_user.py \
-    --username nikhils \
-    --name "Nikhil" \
-    --email "nikhil@woodfulcreations.com" \
-    --password "Nikhil*27" \
-    --phone "9339555554" \
-    --role admin
-  ```
-
-- [ ] Regular User (Shweta) Created
-  ```bash
-  python create_master_user.py \
-    --username shwetav \
-    --name "Shweta" \
-    --email "shweta@woodfulcreations.com" \
-    --password "Shweta*05" \
-    --role user
-  ```
+- [ ] Additional accounts created as needed via the in-app Users page
+  (log in as the administrator, then Administration -> Users -> Add User)
 
 - [ ] User Credentials Verified in Database
   ```bash
@@ -312,10 +293,10 @@ This document provides a comprehensive verification checklist to ensure your Woo
 ### Test Master Admin Login (Garima)
 - [ ] Navigate to http://localhost:3000
 - [ ] Enter Username: `garimas`
-- [ ] Enter Password: `Gullak*16`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Redirected to dashboard
-- [ ] Verify: Session token received (check localStorage/cookies)
+- [ ] Verify: Session cookie set (check DevTools -> Application -> Cookies - it will be marked HttpOnly and won't appear in `document.cookie` or localStorage, by design)
 - [ ] Verify: Full admin controls visible
 - [ ] Verify: Can access all modules
 - [ ] Verify: Can view all user data
@@ -326,7 +307,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
   - [ ] Redirected to login page
   - [ ] Session cleared
 - [ ] Enter Username: `nikhils`
-- [ ] Enter Password: `Nikhil*27`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in as Nikhil
 - [ ] Verify: Full admin access confirmed
@@ -334,7 +315,7 @@ This document provides a comprehensive verification checklist to ensure your Woo
 ### Test Regular User Login (Shweta)
 - [ ] Logout from current session
 - [ ] Enter Username: `shwetav`
-- [ ] Enter Password: `Shweta*05`
+- [ ] Enter Password: `<password>`
 - [ ] Click Login Button
 - [ ] Verify: Successfully logged in
 - [ ] Verify: Dashboard visible with limited access
@@ -376,9 +357,9 @@ This document provides a comprehensive verification checklist to ensure your Woo
   ```bash
   curl -X POST http://localhost:8000/api/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"garimas","password":"Gullak*16"}'
+    -d '{"identifier":"your-username-or-email","password":"your-password"}'
   ```
-  Expected: 200 OK with token
+  Expected: 200 OK, sets an HttpOnly session cookie (no token in the response body - see "Session & Cookie Verification" below)
 
 - [ ] GET /api/auth/me
   ```bash
@@ -564,8 +545,8 @@ When all checks pass, complete the following:
 
 ## Support Contacts
 
-- **Nikhil (Master Admin)**: 9339555554 | nikhil@woodfulcreations.com
-- **Garima (Master Admin)**: +919229083242 | garima@woodfulcreations.com
+- **Nikhil (Master Admin)**: nikhil@woodfulcreations.com
+- **Garima (Master Admin)**: garima@woodfulcreations.com
 
 ---
 

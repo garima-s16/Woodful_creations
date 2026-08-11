@@ -31,6 +31,18 @@ Quick Start
    Copy .env.example to .env and configure:
      cp .env.example .env
 
+3.5. Initialize the Database and Create the First Administrator
+
+   From the backend/ directory, with your virtual environment active:
+
+     python scripts/setup_local.py
+
+   This creates all database tables (safe to re-run - skips tables that
+   already exist) and, if no administrator account exists yet, walks you
+   through creating one interactively. Your password is never stored in
+   this repository, a script, or any documentation - you type it once,
+   at that prompt.
+
 4. Frontend Setup
 
    cd frontend
@@ -64,10 +76,9 @@ System Requirements
 - PostgreSQL 12+
 - 8GB RAM minimum
 
-Default Admin Users
+Administrator Access
 
-- Username: nikhils / Password: Nikhil*27
-- Username: garimas / Password: Gullak*16
+No default administrator account exists. Run the bootstrap command to create the initial administrator - see "Getting Started" below.
 
 Features
 

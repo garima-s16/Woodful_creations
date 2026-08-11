@@ -219,37 +219,24 @@ psql -U woodful_user -d woodful_creations -c "\dt"
 
 ---
 
-### Step 6: Create Master Users
+### Step 6: Create the Initial Administrator
 
-Create the master administrator accounts and regular users:
+Run the bootstrap script - it creates all database tables and walks you
+through creating an administrator account interactively:
 
 ```bash
-# Create Master User 1 - Garima
-python create_master_user.py \
-  --username garimas \
-  --name "Garima" \
-  --email "garima@woodfulcreations.com" \
-  --password "Gullak*16" \
-  --phone "+919229083242" \
-  --role admin
-
-# Create Master User 2 - Nikhil
-python create_master_user.py \
-  --username nikhils \
-  --name "Nikhil" \
-  --email "nikhil@woodfulcreations.com" \
-  --password "Nikhil*27" \
-  --phone "9339555554" \
-  --role admin
-
-# Create Regular User - Shweta
-python create_master_user.py \
-  --username shwetav \
-  --name "Shweta" \
-  --email "shweta@woodfulcreations.com" \
-  --password "Shweta*05" \
-  --role user
+python scripts/setup_local.py
 ```
+
+You will be prompted for an email, username, full name, and password.
+The password is never echoed to the terminal, never passed as a
+command-line argument (which would be visible in shell history), and
+never written to this repository or any documentation.
+
+To create additional accounts later (managers, regular users), log in
+as the administrator and use the Users page in the application itself -
+`create_master_user.py` always creates a `master` role account, by
+design, and has no way to create other roles.
 
 ---
 
@@ -375,11 +362,7 @@ Once all services are running:
 
 ### Web Interface
 - **URL**: http://localhost:3000
-- **Default Master Users**:
-  - Username: `garimas`, Password: `Gullak*16`
-  - Username: `nikhils`, Password: `Nikhil*27`
-- **Regular User**:
-  - Username: `shwetav`, Password: `Shweta*05`
+- **Administrator Access**: No default accounts exist - use the account you created in Step 6
 
 ### Backend API Documentation
 - **Swagger UI**: http://localhost:8000/docs
@@ -541,7 +524,7 @@ curl http://localhost:8000/api/health
 # Test login endpoint
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"garimas","password":"Gullak*16"}'
+  -d '{"identifier":"your-username-or-email","password":"your-password"}'
 ```
 
 ### Test Frontend Connection
@@ -616,7 +599,7 @@ Before any production deployment:
 - Python Package Issues: Check requirements.txt versions
 - FastAPI Issues: https://github.com/tiangolo/fastapi
 - React Issues: https://github.com/facebook/react
-- Woodful Team: Nikhil (9339555554) or Garima (+919229083242)
+- Woodful Team: contact via the emails on file
 
 ---
 
