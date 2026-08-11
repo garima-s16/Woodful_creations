@@ -69,17 +69,17 @@ function ProjectExpensesPage() {
   ];
 
   const fields = [
-    { name: 'expense_code', label: 'Expense Code', required: true, placeholder: 'EXP-008' },
-    { name: 'date', label: 'Date', type: 'date', required: true },
-    { name: 'order_id', label: 'Order', type: 'select', required: true, options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-    { name: 'category', label: 'Category', required: true },
-    { name: 'description', label: 'Description' },
-    { name: 'paid_to', label: 'Paid To' },
-    { name: 'amount', label: 'Amount', type: 'number', required: true },
-    { name: 'approved_by', label: 'Approved By' },
+    { name: 'order_id', label: 'Order', type: 'select', required: true, section: 'Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
+    { name: 'expense_code', label: 'Expense Code', required: true, placeholder: 'EXP-008', section: 'Project' },
+    { name: 'date', label: 'Date', type: 'date', required: true, section: 'Project' },
+    { name: 'category', label: 'Category', required: true, section: 'Expense Details' },
+    { name: 'description', label: 'Description', section: 'Expense Details' },
+    { name: 'amount', label: 'Amount', type: 'number', required: true, section: 'Expense Details' },
+    { name: 'paid_to', label: 'Paid To', section: 'Approval' },
+    { name: 'approved_by', label: 'Approved By', section: 'Approval' },
   ];
 
-  const editFields = fields.filter((f) => !['expense_code', 'order_id'].includes(f.name));
+  const editFields = fields.filter((f) => !['expense_code', 'order_id'].includes(f.name)).map(({ section, ...f }) => f);
 
   return (
     <div className="page">

@@ -50,16 +50,16 @@ function SalarySlipsPage() {
   ];
 
   const fields = [
-    { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
-    { name: 'month', label: 'Month', required: true, placeholder: 'August' },
-    { name: 'year', label: 'Year', required: true, placeholder: '2026' },
-    { name: 'basic', label: 'Basic', type: 'number', required: true },
-    { name: 'da', label: 'DA (Dearness Allowance)', type: 'number' },
-    { name: 'hra', label: 'HRA (House Rent Allowance)', type: 'number' },
-    { name: 'overtime_amount', label: 'Overtime Amount', type: 'number' },
-    { name: 'pf_deduction', label: 'PF Deduction', type: 'number' },
-    { name: 'tds_deduction', label: 'TDS Deduction', type: 'number' },
-    { name: 'other_deductions', label: 'Other Deductions', type: 'number' },
+    { name: 'employee_id', label: 'Employee', type: 'select', required: true, section: 'Pay Period', options: employees.map((e) => ({ value: e.id, label: e.name })) },
+    { name: 'month', label: 'Month', required: true, placeholder: 'August', section: 'Pay Period' },
+    { name: 'year', label: 'Year', required: true, placeholder: '2026', section: 'Pay Period' },
+    { name: 'basic', label: 'Basic', type: 'number', required: true, section: 'Earnings' },
+    { name: 'da', label: 'DA (Dearness Allowance)', type: 'number', section: 'Earnings' },
+    { name: 'hra', label: 'HRA (House Rent Allowance)', type: 'number', section: 'Earnings' },
+    { name: 'overtime_amount', label: 'Overtime Amount', type: 'number', section: 'Earnings' },
+    { name: 'pf_deduction', label: 'PF Deduction', type: 'number', section: 'Deductions' },
+    { name: 'tds_deduction', label: 'TDS Deduction', type: 'number', section: 'Deductions' },
+    { name: 'other_deductions', label: 'Other Deductions', type: 'number', section: 'Deductions' },
   ];
 
   return (

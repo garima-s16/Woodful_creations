@@ -50,13 +50,13 @@ function CandidatesPage() {
   ];
 
   const fields = [
-    { name: 'name', label: 'Name', required: true },
-    { name: 'email', label: 'Email', type: 'email' },
-    { name: 'phone', label: 'Phone' },
-    { name: 'position', label: 'Position' },
-    { name: 'experience', label: 'Experience' },
-    { name: 'resume_url', label: 'Resume URL' },
-    { name: 'remarks', label: 'Remarks', type: 'textarea' },
+    { name: 'name', label: 'Name', required: true, section: 'Candidate Identity' },
+    { name: 'position', label: 'Position', section: 'Candidate Identity' },
+    { name: 'experience', label: 'Experience', section: 'Candidate Identity' },
+    { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },
+    { name: 'phone', label: 'Phone', section: 'Contact Details' },
+    { name: 'resume_url', label: 'Resume URL', section: 'Application' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Application' },
   ];
 
   return (

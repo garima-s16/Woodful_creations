@@ -78,21 +78,23 @@ function PaymentsPage() {
   ];
 
   const createFields = [
-    { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-008' },
-    { name: 'date', label: 'Date', type: 'date', required: true },
-    { name: 'order_id', label: 'Order', type: 'select', required: true, options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-    { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, options: [
+    { name: 'order_id', label: 'Order', type: 'select', required: true, section: 'Client & Order', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
+    { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-008', section: 'Client & Order' },
+    { name: 'date', label: 'Date', type: 'date', required: true, section: 'Client & Order' },
+    { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, section: 'Payment Details', options: [
       { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },
     ] },
-    { name: 'payment_mode', label: 'Payment Mode', type: 'select', required: true, options: [
+    { name: 'payment_mode', label: 'Payment Mode', type: 'select', required: true, section: 'Payment Details', options: [
       { value: 'Cash', label: 'Cash' }, { value: 'UPI', label: 'UPI' }, { value: 'Bank', label: 'Bank' }, { value: 'Credit Card', label: 'Credit Card' },
     ] },
-    { name: 'amount', label: 'Amount', type: 'number', required: true },
-    { name: 'reference_number', label: 'Reference No.' },
-    { name: 'received_by', label: 'Received By' },
+    { name: 'amount', label: 'Amount', type: 'number', required: true, section: 'Payment Details' },
+    { name: 'reference_number', label: 'Reference No.', section: 'Reference' },
+    { name: 'received_by', label: 'Received By', section: 'Reference' },
   ];
 
-  const editFields = createFields.filter((f) => !['receipt_code', 'date', 'order_id'].includes(f.name));
+  const editFields = createFields
+    .filter((f) => !['receipt_code', 'date', 'order_id'].includes(f.name))
+    .map(({ section, ...f }) => f);
 
   return (
     <div className="page">
