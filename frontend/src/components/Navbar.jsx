@@ -19,12 +19,11 @@ function Navbar({ user, onLogout, toggleSidebar }) {
           <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
             <MenuIcon />
           </button>
-          {/* Brand treatment: typography-led wordmark, not a designed logo -
-              swap the mark span for an <img> once a real logo asset exists. */}
           <Link to="/dashboard" className="navbar-brand">
-            <span className="brand-mark">W</span>
+            <span className="brand-mark">
+              <img src="/logo.png" alt="Woodful Creations" className="brand-logo-img" />
+            </span>
             <span className="brand-text">
-              <span className="brand-name">Woodful Creations</span>
               <span className="brand-tagline">Business Management</span>
             </span>
           </Link>

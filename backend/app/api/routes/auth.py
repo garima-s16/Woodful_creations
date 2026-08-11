@@ -27,9 +27,11 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 def _authenticate(request: UserLogin, db: Session) -> User:
     user = db.query(User).filter(User.email == request.email, User.is_deleted.is_(False)).first()
 
-    if not user or not verify_password(request.password, user.password_hash):
-        # Deliberately generic message - do not reveal whether the email exists.
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user:
+        raise HTTPException(status_code=401, detail="No account found with this email address")
+
+    if not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect password")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been deactivated")

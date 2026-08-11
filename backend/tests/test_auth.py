@@ -12,6 +12,18 @@ def test_login_invalid_credentials(client, test_user):
     assert response.status_code == 401
 
 
+def test_login_wrong_password_message(client, test_user):
+    response = client.post("/api/auth/login", json={"email": "test@example.com", "password": "wrong"})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect password"
+
+
+def test_login_unknown_email_message(client, test_user):
+    response = client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "whatever"})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "No account found with this email address"
+
+
 def test_mobile_login_returns_token(client, test_user):
     response = client.post("/api/auth/login/mobile", json={"email": "test@example.com", "password": "TestPass123!"})
     assert response.status_code == 200

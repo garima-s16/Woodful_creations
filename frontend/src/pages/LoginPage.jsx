@@ -5,11 +5,25 @@ import { authAPI } from '../utils/api';
 import { loginStart, loginSuccess, loginFailure } from '../redux/slices/authSlice';
 import '../styles/LoginPage.css';
 
+function EyeIcon({ visible }) {
+  return visible ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l18 18" /><path d="M10.6 10.6a3 3 0 004.2 4.2" />
+      <path d="M9.5 5.2A9.8 9.8 0 0112 5c6.5 0 10 7 10 7a13.6 13.6 0 01-3.1 3.9M6.6 6.6C4 8.3 2 12 2 12a13.6 13.6 0 004.1 4.6" />
+    </svg>
+  );
+}
+
 function LoginPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +39,11 @@ function LoginPage() {
       dispatch(loginSuccess(response.data));
       navigate('/', { replace: true });
     } catch (err) {
-      const message = err.response?.data?.detail || 'Login failed. Please try again.';
+      // The backend distinguishes "no account with this email", "incorrect
+      // password", and "account deactivated" - this just passes that
+      // message straight through. A network/server-level failure (no
+      // response at all) falls back to a distinct generic message.
+      const message = err.response?.data?.detail || 'Unable to reach the server. Please check your connection and try again.';
       setError(message);
       dispatch(loginFailure(message));
     } finally {
@@ -41,60 +59,62 @@ function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-container">
-        <div className="login-box">
-          <div className="login-header">
-            <div className="logo-circle">W</div>
-            <h1>Woodful Creations</h1>
-            <p>Business Management System</p>
+        <div className="login-brand-panel">
+          <div className="login-brand-content">
+            <img src="/logo.png" alt="Woodful Creations" className="login-logo" />
+            <p className="login-brand-tagline">Business Management System</p>
           </div>
-
-          <form onSubmit={handleLogin} className="login-form">
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-
-            <button type="submit" className="login-button" disabled={loading}>
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </form>
         </div>
 
-        <div className="login-illustration">
-          <div className="illustration-content">
-            <h2>Welcome to Woodful</h2>
-            <p>Comprehensive business management system for woodcraft and furniture design</p>
-            <ul className="features-list">
-              <li>Stock Inventory Management</li>
-              <li>Cost Estimation</li>
-              <li>Client Management</li>
-              <li>Employee Attendance</li>
-              <li>AI Assistant Chat</li>
-              <li>Advanced Analytics</li>
-            </ul>
+        <div className="login-form-panel">
+          <div className="login-form-wrap">
+            <h1>Sign In</h1>
+            <p className="login-form-subtitle">Enter your credentials to access your account.</p>
+
+            <form onSubmit={handleLogin} className="login-form">
+              <div className="form-group">
+                <label htmlFor="email">Email Address</label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password">Password</label>
+                <div className="password-input-row">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    <EyeIcon visible={showPassword} />
+                  </button>
+                </div>
+              </div>
+
+              {error && <div className="error-message">{error}</div>}
+
+              <button type="submit" className="login-button" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
           </div>
         </div>
       </div>
