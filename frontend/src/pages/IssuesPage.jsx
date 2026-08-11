@@ -71,7 +71,7 @@ function IssuesPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={issues} />
+      <Table columns={columns} data={issues} emptyMessage="No materials issued yet. Issued materials will appear here." />
       <Modal isOpen={showAdd} title="Record Issue" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Issue" />
       </Modal>

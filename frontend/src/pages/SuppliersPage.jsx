@@ -58,17 +58,17 @@ function SuppliersPage() {
   ];
 
   const fields = [
-    { name: 'supplier_code', label: 'Supplier Code', required: true, placeholder: 'SUP-006' },
-    { name: 'name', label: 'Name', required: true },
-    { name: 'category', label: 'Category' },
-    { name: 'contact_person', label: 'Contact Person' },
-    { name: 'phone', label: 'Phone' },
-    { name: 'gstin', label: 'GSTIN' },
-    { name: 'payment_terms', label: 'Payment Terms' },
-    { name: 'remarks', label: 'Remarks', type: 'textarea' },
+    { name: 'supplier_code', label: 'Supplier Code', required: true, placeholder: 'SUP-006', section: 'Supplier Identity' },
+    { name: 'name', label: 'Name', required: true, section: 'Supplier Identity' },
+    { name: 'category', label: 'Category', section: 'Supplier Identity' },
+    { name: 'contact_person', label: 'Contact Person', section: 'Contact Details' },
+    { name: 'phone', label: 'Phone', section: 'Contact Details' },
+    { name: 'gstin', label: 'GSTIN', section: 'Commercial Terms' },
+    { name: 'payment_terms', label: 'Payment Terms', section: 'Commercial Terms' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Commercial Terms' },
   ];
 
-  const editFields = fields.filter((f) => f.name !== 'supplier_code');
+  const editFields = fields.filter((f) => f.name !== 'supplier_code').map(({ section, ...f }) => f);
 
   return (
     <div className="page">

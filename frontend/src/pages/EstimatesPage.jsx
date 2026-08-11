@@ -82,15 +82,15 @@ function EstimatesPage() {
   ];
 
   const createFields = [
-    { name: 'estimate_code', label: 'Estimate Code', required: true, placeholder: 'EST-001' },
-    { name: 'client_id', label: 'Client', type: 'select', required: true, options: clients.map((c) => ({ value: c.id, label: c.name })) },
-    { name: 'order_id', label: 'Related Order (optional)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-    { name: 'description', label: 'Scope / Description', type: 'textarea' },
-    { name: 'material_cost', label: 'Material Cost', type: 'number', required: true },
-    { name: 'labor_cost', label: 'Labor Cost', type: 'number', required: true },
-    { name: 'tax_percent', label: 'Tax %', type: 'number', placeholder: '18' },
-    { name: 'valid_until', label: 'Valid Until', type: 'date' },
-    { name: 'remarks', label: 'Remarks', type: 'textarea' },
+    { name: 'estimate_code', label: 'Estimate Code', required: true, placeholder: 'EST-001', section: 'Client & Project' },
+    { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
+    { name: 'order_id', label: 'Related Order (optional)', type: 'select', section: 'Client & Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
+    { name: 'description', label: 'Scope / Description', type: 'textarea', section: 'Client & Project' },
+    { name: 'material_cost', label: 'Material Cost', type: 'number', required: true, section: 'Cost Breakdown' },
+    { name: 'labor_cost', label: 'Labor Cost', type: 'number', required: true, section: 'Cost Breakdown' },
+    { name: 'tax_percent', label: 'Tax %', type: 'number', placeholder: '18', section: 'Cost Breakdown' },
+    { name: 'valid_until', label: 'Valid Until', type: 'date', section: 'Terms' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Terms' },
   ];
 
   const editFields = [

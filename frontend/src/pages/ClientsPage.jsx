@@ -64,16 +64,16 @@ function ClientsPage() {
   ];
 
   const fields = [
-    { name: 'client_code', label: 'Client Code', required: true, placeholder: 'CL-006' },
-    { name: 'name', label: 'Name', required: true },
-    { name: 'phone', label: 'Phone' },
-    { name: 'email', label: 'Email', type: 'email' },
-    { name: 'address', label: 'Address', type: 'textarea' },
-    { name: 'lead_source', label: 'Lead Source' },
-    { name: 'remarks', label: 'Remarks', type: 'textarea' },
+    { name: 'client_code', label: 'Client Code', required: true, placeholder: 'CL-006', section: 'Client Identity' },
+    { name: 'name', label: 'Name', required: true, section: 'Client Identity' },
+    { name: 'phone', label: 'Phone', section: 'Contact Details' },
+    { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },
+    { name: 'address', label: 'Address', type: 'textarea', section: 'Address' },
+    { name: 'lead_source', label: 'Lead Source', section: 'Commercial Information' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Commercial Information' },
   ];
 
-  const editFields = fields.filter((f) => f.name !== 'client_code');
+  const editFields = fields.filter((f) => f.name !== 'client_code').map(({ section, ...f }) => f);
 
   return (
     <div className="page">

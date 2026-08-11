@@ -90,7 +90,7 @@ function SettingsPage() {
           ))}
         </div>
         <div className="settings-content">
-          <Table columns={columns} data={values} />
+          <Table columns={columns} data={values} emptyMessage="No values configured for this list yet." />
         </div>
       </div>
       <Modal isOpen={showAdd} title={`Add ${LABELS[selected] || selected}`} onClose={() => setShowAdd(false)}>

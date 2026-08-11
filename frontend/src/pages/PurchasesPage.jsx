@@ -75,7 +75,7 @@ function PurchasesPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={purchases} />
+      <Table columns={columns} data={purchases} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
       <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase" />
       </Modal>

@@ -77,7 +77,7 @@ function MaterialsPage() {
   const columns = [
     { key: 'material_code', label: 'Material ID' }, { key: 'name', label: 'Name' },
     { key: 'category', label: 'Category' }, { key: 'unit', label: 'Unit' },
-    { key: 'current_stock', label: 'Current Stock' }, { key: 'minimum_stock', label: 'Minimum' },
+    { key: 'current_stock', label: 'Available Stock' }, { key: 'minimum_stock', label: 'Reorder Level' },
     { key: 'stock_status', label: 'Status' },
     { key: 'average_rate', label: 'Avg Rate', render: (v) => `Rs ${Number(v).toLocaleString()}` },
     { key: 'stock_value', label: 'Stock Value', render: (v) => `Rs ${Number(v).toLocaleString()}` },
@@ -97,7 +97,7 @@ function MaterialsPage() {
     { name: 'thickness_size', label: 'Thickness/Size' },
     { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
     { name: 'opening_stock', label: 'Opening Stock', type: 'number' },
-    { name: 'minimum_stock', label: 'Minimum Stock', type: 'number' },
+    { name: 'minimum_stock', label: 'Reorder Level', type: 'number' },
     { name: 'average_rate', label: 'Average Rate', type: 'number' },
     { name: 'supplier_id', label: 'Primary Supplier', type: 'select', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
     { name: 'location', label: 'Location' },

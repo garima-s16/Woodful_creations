@@ -74,7 +74,7 @@ function InterviewsPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Schedule Interview</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={interviews} />
+      <Table columns={columns} data={interviews} emptyMessage="No interviews scheduled yet." />
       <Modal isOpen={showAdd} title="Schedule Interview" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Schedule" />
       </Modal>

@@ -22,7 +22,7 @@
   text-align: center; letter-spacing: 0.01em; transition: all var(--transition);
 }
 .btn-primary { background: var(--color-ink); color: var(--color-ivory); }
-.btn-primary:hover { background: var(--color-wood); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--color-charcoal); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .btn-secondary { background: transparent; color: var(--color-ink); border-color: var(--border-strong); }
 .btn-secondary:hover { background: var(--color-ivory-dim); border-color: var(--color-gold); }
 .btn-link { background: none; border: none; color: var(--color-gold); cursor: pointer; text-decoration: none; padding: 0; font-size: 0.85rem; font-weight: 600; }
@@ -71,8 +71,11 @@
   font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
 }
 .status-ok, .status-completed, .status-paid { background: var(--success-bg); color: var(--success); }
+.status-gold { background: rgba(192, 138, 69, 0.15); color: var(--color-gold); }
 .status-warning, .status-pending, .status-in-progress { background: var(--warning-bg); color: var(--warning); }
+.status-neutral { background: var(--border-color); color: var(--text-secondary); }
 .status-danger, .status-overdue, .status-out-of-stock { background: var(--danger-bg); color: var(--danger); }
+.status-muted { background: var(--color-ivory-dim); color: var(--text-secondary); opacity: 0.75; }
 .status-info { background: var(--info-bg); color: var(--info); }
 
 @media (max-width: 900px) {
@@ -98,6 +101,7 @@
 .dashboard-header { margin-bottom: var(--space-5); }
 .dashboard-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-gold); font-weight: 700; }
 .dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
+.dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
 
 .hero-metrics {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-5);

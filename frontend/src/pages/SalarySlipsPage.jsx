@@ -73,7 +73,7 @@ function SalarySlipsPage() {
         PF/TDS figures are entered manually and are not auto-calculated against statutory slabs -
         confirm with your accountant before finalizing payroll.
       </p>
-      <Table columns={columns} data={slips} />
+      <Table columns={columns} data={slips} emptyMessage="No salary slips generated yet." />
       <Modal isOpen={showAdd} title="Generate Salary Slip" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Generate" />
       </Modal>

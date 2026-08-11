@@ -21,7 +21,7 @@
   background: var(--color-ink); color: var(--color-ivory); font-weight: 600;
   font-size: 0.88rem; cursor: pointer; transition: all var(--transition);
 }
-.btn-submit:hover:not(:disabled) { background: var(--color-wood); }
+.btn-submit:hover:not(:disabled) { background: var(--color-charcoal); }
 .btn-submit:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Multi-step wizard */

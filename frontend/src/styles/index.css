@@ -6,28 +6,30 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Core palette */
-  --color-ink: #17140f;            /* near-black */
-  --color-charcoal: #2a251e;       /* charcoal */
-  --color-wood: #4a3221;           /* deep wood brown */
-  --color-tan: #b99b76;            /* muted tan */
-  --color-gold: #b8874a;           /* restrained caramel/gold accent */
-  --color-gold-soft: #d9b98a;
-  --color-ivory: #f7f3ec;          /* warm ivory */
+  /* Core palette - black + warm ivory + refined gold is the primary
+     identity. Wood-brown exists only as a rare supporting accent now,
+     never as the dominant chrome/button color. */
+  --color-ink: #11110f;            /* primary black */
+  --color-charcoal: #1a1916;       /* secondary black */
+  --color-wood: #4a3221;           /* supporting accent only - not primary */
+  --color-tan: #b99b76;            /* muted supporting tone */
+  --color-gold: #c08a45;           /* refined gold accent */
+  --color-gold-soft: #d2ad70;      /* muted gold */
+  --color-ivory: #f6f2ea;          /* warm ivory page background */
   --color-ivory-dim: #efe8db;
-  --color-white: #fffdfa;
+  --color-white: #fffcf7;          /* white/ivory surfaces */
 
-  /* Semantic surface roles */
-  --primary-color: var(--color-wood);
-  --secondary-color: var(--color-ink);
+  /* Semantic surface roles - black is the dominant brand/chrome color */
+  --primary-color: var(--color-ink);
+  --secondary-color: var(--color-charcoal);
   --accent-color: var(--color-gold);
   --dark-bg: var(--color-ink);
   --light-bg: var(--color-ivory);
   --surface: var(--color-white);
   --text-primary: var(--color-ink);
-  --text-secondary: #6b5f4f;
+  --text-secondary: #70685d;
   --text-inverse: var(--color-ivory);
-  --border-color: #e3dbca;
+  --border-color: #ded6c8;
   --border-strong: #cbbfa5;
 
   /* Status */

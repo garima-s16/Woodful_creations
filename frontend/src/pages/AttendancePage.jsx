@@ -64,7 +64,7 @@ function AttendancePage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Mark Attendance</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={records} />
+      <Table columns={columns} data={records} emptyMessage="No attendance recorded yet. Record today's attendance to get started." />
       <Modal isOpen={showAdd} title="Mark Attendance" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Mark Attendance" />
       </Modal>

@@ -28,15 +28,20 @@
 }
 
 .brand-mark {
-  height: 52px;
+  height: 44px;
+  padding: 5px 12px;
+  background: var(--color-ivory);
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .brand-logo-img { height: 100%; width: auto; display: block; }
 
 .brand-text { display: flex; flex-direction: column; line-height: 1.2; justify-content: center; }
-.brand-tagline { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.09em; color: rgba(247, 243, 236, 0.5); }
+.brand-name { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-ivory); letter-spacing: 0.01em; }
+.brand-tagline { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.09em; color: rgba(247, 243, 236, 0.5); margin-top: 2px; }
 
 .navbar-right { display: flex; align-items: center; gap: var(--space-5); }
 
@@ -51,10 +56,19 @@
 .profile-button:hover { background: rgba(255, 255, 255, 0.12); }
 
 .profile-avatar {
-  width: 30px; height: 30px; background: var(--color-gold); color: var(--color-ink);
+  width: 32px; height: 32px; background: var(--color-gold); color: var(--color-ink);
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 0.8rem;
+  font-weight: 700; font-size: 0.82rem; flex-shrink: 0;
 }
+
+.profile-info { display: flex; flex-direction: column; line-height: 1.25; text-align: left; }
+.profile-name { font-size: 0.85rem; font-weight: 600; color: var(--color-ivory); }
+.profile-role { font-size: 0.7rem; color: rgba(247, 243, 236, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.profile-chevron { color: rgba(247, 243, 236, 0.5); transition: transform var(--transition); flex-shrink: 0; }
+.profile-chevron.open { transform: rotate(180deg); }
+
+.dropdown-name { font-size: 0.92rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
 
 .profile-dropdown {
   position: absolute; top: 100%; right: 0;
@@ -85,5 +99,5 @@
   .brand-text { display: none; }
   .navbar-brand { gap: 5px; }
   .navbar-right { gap: var(--space-3); }
-  .profile-name { display: none; }
+  .profile-info { display: none; }
 }

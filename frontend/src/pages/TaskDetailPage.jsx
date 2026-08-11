@@ -4,14 +4,7 @@ import { dailyTasksAPI, employeesAPI, ordersAPI } from '../utils/api';
 import Card from '../components/common/Card';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
-
-function statusClass(status) {
-  const s = (status || '').toLowerCase();
-  if (s === 'completed') return 'status-ok';
-  if (s === 'in progress') return 'status-warning';
-  if (s === 'not started') return 'status-info';
-  return 'status-danger';
-}
+import { statusClass } from '../utils/statusColors';
 
 function TaskDetailPage() {
   const { taskId } = useParams();

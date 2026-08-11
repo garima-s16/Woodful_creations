@@ -43,7 +43,7 @@ function AttentionRequired({ stock, orders, pendingTasks }) {
             {onHoldOrders.map((o) => (
               <button key={o.order_id} className="attention-item" onClick={() => navigate(`/orders/${o.id}`)}>
                 <span>{o.order_id} - {o.client}</span>
-                <span className="status-badge status-danger">On Hold</span>
+                <span className="status-badge status-neutral">On Hold</span>
               </button>
             ))}
           </div>
@@ -134,8 +134,10 @@ function DashboardPage() {
       <div className="dashboard-header">
         <span className="dashboard-eyebrow">Woodful Creations</span>
         <h1>Business Overview</h1>
+        <p className="dashboard-subtitle">A live snapshot of inventory, sales, and operations across the business.</p>
       </div>
 
+      <h2 className="section-heading">Primary Business Metrics</h2>
       <div className="hero-metrics">
         <div className="hero-metric">
           <span className="hero-label">Revenue</span>
@@ -155,14 +157,20 @@ function DashboardPage() {
         </div>
       </div>
 
+      <h2 className="section-heading">Operations Snapshot</h2>
       <div className="secondary-metrics">
         <KpiCard label="Amount Received" value={money(orders.total_received)} />
         <KpiCard label="Active Orders" value={orders.active_orders} />
-        <KpiCard label="Low Stock Items" value={stock.low_stock_items} tone={stock.low_stock_items > 0 ? 'warning' : 'success'} />
+        <KpiCard label="Low Stock" value={stock.low_stock_items} tone={stock.low_stock_items > 0 ? 'warning' : 'success'} />
         <KpiCard label="Out of Stock" value={stock.out_of_stock_items} tone={stock.out_of_stock_items > 0 ? 'danger' : 'success'} />
         <KpiCard label="Active Employees" value={staff.active_employees} />
         <KpiCard label="Pending Tasks" value={staff.pending_tasks} tone={staff.pending_tasks > 0 ? 'warning' : 'success'} />
       </div>
+
+      <section className="dashboard-section">
+        <h2 className="section-heading">Attention Required</h2>
+        <AttentionRequired stock={stock} orders={orders} pendingTasks={pendingTasks} />
+      </section>
 
       <section className="dashboard-section">
         <h2 className="section-heading">Business Activity</h2>
@@ -180,11 +188,6 @@ function DashboardPage() {
             />
           </Card>
         </div>
-      </section>
-
-      <section className="dashboard-section">
-        <h2 className="section-heading">Attention Required</h2>
-        <AttentionRequired stock={stock} orders={orders} pendingTasks={pendingTasks} />
       </section>
 
       <section className="dashboard-section">

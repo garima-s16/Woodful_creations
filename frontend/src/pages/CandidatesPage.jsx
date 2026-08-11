@@ -66,7 +66,7 @@ function CandidatesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={candidates} />
+      <Table columns={columns} data={candidates} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />
       <Modal isOpen={showAdd} title="Add Candidate" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Candidate" />
       </Modal>

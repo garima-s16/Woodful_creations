@@ -3,16 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { materialsAPI, purchasesAPI, issuesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import { statusClass } from '../utils/statusColors';
 
 function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
-function statusClass(status) {
-  const s = (status || '').toLowerCase();
-  if (s === 'stock ok') return 'status-ok';
-  if (s === 'low stock') return 'status-warning';
-  if (s === 'out of stock') return 'status-danger';
-  return 'status-info';
-}
-
 const TABS = ['Overview', 'Purchases', 'Issues'];
 
 function MaterialDetailPage() {
@@ -46,8 +39,8 @@ function MaterialDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Current Stock</div><h3>{material.current_stock} {material.unit}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Minimum Stock</div><h3>{material.minimum_stock} {material.unit}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Available Stock</div><h3>{material.current_stock} {material.unit}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Reorder Level</div><h3>{material.minimum_stock} {material.unit}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Average Rate</div><h3>{money(material.average_rate)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Stock Value</div><h3>{money(material.stock_value)}</h3></div></Card>
       </div>

@@ -10,17 +10,10 @@ import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { statusClass } from '../utils/statusColors';
 
 function money(v) {
   return `Rs ${Number(v || 0).toLocaleString()}`;
-}
-
-function statusClass(status) {
-  const s = (status || '').toLowerCase().replace(/\s+/g, '-');
-  if (['completed', 'paid', 'in stock'].includes(s)) return 'status-ok';
-  if (['pending', 'in-progress', 'not-started'].includes(s)) return 'status-warning';
-  if (['overdue', 'out-of-stock', 'cancelled'].includes(s)) return 'status-danger';
-  return 'status-info';
 }
 
 const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Production', 'Profitability'];
