@@ -1,4 +1,12 @@
-.page { padding: var(--space-6) var(--space-6) var(--space-8); max-width: 1400px; margin: 0 auto; }
+.page {
+  padding: var(--space-6) var(--space-6) var(--space-8); max-width: 1400px; margin: 0 auto;
+  animation: pageFadeIn 220ms ease-out;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .page-header {
   display: flex; justify-content: space-between; align-items: flex-end;
   margin-bottom: var(--space-6); flex-wrap: wrap; gap: var(--space-3);
@@ -116,3 +124,5 @@
 .activity-row:last-child { border-bottom: none; }
 .activity-desc { color: var(--text-primary); }
 .activity-date { color: var(--text-secondary); font-size: 0.78rem; white-space: nowrap; }
+
+.page-summary { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }

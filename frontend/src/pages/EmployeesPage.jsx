@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import KpiCard from '../components/common/KpiCard';
 
 function EmployeesPage() {
   const navigate = useNavigate();
@@ -92,10 +93,17 @@ function EmployeesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Employees</h1>
+        <div>
+          <h1>Employees</h1>
+          <p className="page-summary">Manage your team's roles, compensation, and department assignments.</p>
+        </div>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Employee</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      <div className="kpi-row">
+        <KpiCard label="Total Employees" value={employees.length} />
+        <KpiCard label="Active" value={employees.filter((e) => e.status === 'Active').length} tone="success" />
+      </div>
       <Table columns={columns} data={employees} onRowClick={(row) => navigate(`/employees/${row.id}`)} emptyMessage="No employees yet. Add your first employee to get started." />
       <Modal isOpen={showAdd} title="Add Employee" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Employee" />

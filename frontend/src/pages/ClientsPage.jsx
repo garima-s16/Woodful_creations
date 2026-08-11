@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import KpiCard from '../components/common/KpiCard';
 
 function ClientsPage() {
   const navigate = useNavigate();
@@ -77,10 +78,16 @@ function ClientsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Clients</h1>
+        <div>
+          <h1>Clients</h1>
+          <p className="page-summary">Manage client profiles, projects, and business history in one place.</p>
+        </div>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      <div className="kpi-row">
+        <KpiCard label="Total Clients" value={clients.length} />
+      </div>
       <form className="page-search" onSubmit={handleSearch}>
         <input
           type="text" placeholder="Search by name, code, or phone..." value={search}

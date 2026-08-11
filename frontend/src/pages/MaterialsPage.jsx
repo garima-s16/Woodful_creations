@@ -5,10 +5,12 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import KpiCard from '../components/common/KpiCard';
 
 function MaterialsPage() {
   const navigate = useNavigate();
   const [materials, setMaterials] = useState([]);
+  const [allMaterials, setAllMaterials] = useState([]); // unfiltered, for the summary metrics
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
@@ -19,6 +21,7 @@ function MaterialsPage() {
 
   const load = (params) => {
     materialsAPI.list(params).then((res) => setMaterials(res.data));
+    materialsAPI.list().then((res) => setAllMaterials(res.data));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
   };
 
@@ -102,10 +105,17 @@ function MaterialsPage() {
 
   const editFields = createFields.filter((f) => !['material_code', 'opening_stock'].includes(f.name));
 
+  const inventoryValue = allMaterials.reduce((sum, m) => sum + (m.stock_value || 0), 0);
+  const lowStockCount = allMaterials.filter((m) => m.stock_status === 'LOW STOCK').length;
+  const outOfStockCount = allMaterials.filter((m) => m.stock_status === 'OUT OF STOCK').length;
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Materials</h1>
+        <div>
+          <h1>Materials</h1>
+          <p className="page-summary">Track live stock, purchases, and issues across every material.</p>
+        </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('stock-dashboard.xlsx')} target="_blank" rel="noreferrer">
             Export Stock Dashboard
@@ -114,6 +124,11 @@ function MaterialsPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      <div className="kpi-row">
+        <KpiCard label="Inventory Value" value={`Rs ${inventoryValue.toLocaleString()}`} />
+        <KpiCard label="Low Stock" value={lowStockCount} tone={lowStockCount > 0 ? 'warning' : 'success'} />
+        <KpiCard label="Out of Stock" value={outOfStockCount} tone={outOfStockCount > 0 ? 'danger' : 'success'} />
+      </div>
       <form className="page-search" onSubmit={applyFilters}>
         <input
           type="text" placeholder="Search by name or code..." value={search}

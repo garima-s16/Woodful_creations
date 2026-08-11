@@ -5,6 +5,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import KpiCard from '../components/common/KpiCard';
 
 function SuppliersPage() {
   const navigate = useNavigate();
@@ -72,10 +73,16 @@ function SuppliersPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Suppliers</h1>
+        <div>
+          <h1>Suppliers</h1>
+          <p className="page-summary">Track supplier relationships and purchase history.</p>
+        </div>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Supplier</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      <div className="kpi-row">
+        <KpiCard label="Total Suppliers" value={suppliers.length} />
+      </div>
       <Table columns={columns} data={suppliers} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No suppliers yet. Add your first supplier to get started." />
       <Modal isOpen={showAdd} title="Add Supplier" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Supplier" />
