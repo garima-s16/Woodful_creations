@@ -34,11 +34,33 @@ PAYMENT_INTENT_WORDS = ["record a payment", "record payment", "log a payment", "
 AMOUNT_PATTERN = re.compile(r"(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:rs\.?|rupees|inr)?", re.IGNORECASE)
 
 
+PAYMENT_MODE_KEYWORDS = {
+    "cash": "Cash",
+    "upi": "UPI",
+    "bank transfer": "Bank", "bank": "Bank", "neft": "Bank", "rtgs": "Bank",
+    "credit card": "Credit Card", "card": "Credit Card",
+}
+
+
+def _detect_payment_mode(m: str) -> Optional[str]:
+    for keyword, mode in PAYMENT_MODE_KEYWORDS.items():
+        if keyword in m:
+            return mode
+    return None
+
+
 class ChatService:
     @staticmethod
     def process_message(message: str, db: Session, user_role: str = "user",
-                         context: Optional[ChatContext] = None) -> Tuple[str, List[str], Optional[ProposedAction]]:
+                         context: Optional[ChatContext] = None) -> Tuple[str, List[str], Optional[ProposedAction], Optional[dict]]:
         m = message.lower()
+
+        # Continuing a payment proposal started on a previous turn (the
+        # frontend echoes back whatever `clarification` it was given).
+        if context and context.pending and context.pending.get("type") == "record_payment":
+            result = ChatService._continue_payment(m, user_role, context.pending, db)
+            if result:
+                return result
 
         if any(w in m for w in PAYMENT_INTENT_WORDS) and context and context.order_id:
             proposal = ChatService._propose_payment(m, db, user_role, context.order_id)
@@ -46,12 +68,48 @@ class ChatService:
                 return proposal
 
         text, suggestions = ChatService._dispatch(m, db, user_role, context)
-        return text, suggestions, None
+        return text, suggestions, None, None
+
+    @staticmethod
+    def _continue_payment(m: str, user_role: str, pending: dict, db: Session):
+        if user_role not in ("master", "manager"):
+            return "Recording payments requires a master or manager account.", [], None, None
+
+        order_id = pending.get("order_id")
+        amount = pending.get("amount")
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order or not amount:
+            return None  # something is inconsistent - fall through to a fresh attempt
+
+        mode = _detect_payment_mode(m)
+        if not mode:
+            return (
+                "I still need a payment mode to proceed - Cash, UPI, Bank Transfer, or Credit Card?",
+                [], None, pending,
+            )
+
+        payload = {
+            "order_id": order_id,
+            "date": datetime.utcnow().isoformat(),
+            "payment_type": "Progress Payment",
+            "payment_mode": mode,
+            "amount": amount,
+        }
+        proposal = ProposedAction(
+            action_type="record_payment",
+            summary=f"Record a {mode} payment of Rs {float(amount):,.2f} against {order.order_code}",
+            payload=payload,
+        )
+        return (
+            f"Here's what I'll record: Rs {float(amount):,.2f} via {mode} against {order.order_code}. "
+            f"Review and confirm - I won't record this without your confirmation.",
+            [], proposal, None,
+        )
 
     @staticmethod
     def _propose_payment(m: str, db: Session, user_role: str, order_id: int):
         if user_role not in ("master", "manager"):
-            return "Recording payments requires a master or manager account.", [], None
+            return "Recording payments requires a master or manager account.", [], None, None
 
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
@@ -62,27 +120,36 @@ class ChatService:
             return (
                 "I can help record a payment for this order, but I couldn't find an amount in your "
                 "message. Try something like \"record a payment of 15000 for this order\".",
-                [], None,
+                [], None, None,
             )
         amount = amount_match.group(1)
+
+        mode = _detect_payment_mode(m)
+        if not mode:
+            # Ask, per the brief - never default to Cash or any other mode.
+            pending = {"type": "record_payment", "order_id": order_id, "amount": amount}
+            return (
+                f"Got it - Rs {float(amount):,.2f} against {order.order_code}. "
+                f"What payment mode should I use - Cash, UPI, Bank Transfer, or Credit Card?",
+                [], None, pending,
+            )
 
         payload = {
             "order_id": order_id,
             "date": datetime.utcnow().isoformat(),
             "payment_type": "Progress Payment",
-            "payment_mode": "Cash",
+            "payment_mode": mode,
             "amount": amount,
         }
         proposal = ProposedAction(
             action_type="record_payment",
-            summary=f"Record a payment of Rs {float(amount):,.2f} against {order.order_code}",
+            summary=f"Record a {mode} payment of Rs {float(amount):,.2f} against {order.order_code}",
             payload=payload,
         )
         return (
-            f"I've prepared a payment of Rs {float(amount):,.2f} against {order.order_code}. "
+            f"I've prepared a {mode} payment of Rs {float(amount):,.2f} against {order.order_code}. "
             f"Review the details and confirm to record it - I won't do this without your confirmation.",
-            [],
-            proposal,
+            [], proposal, None,
         )
 
     @staticmethod

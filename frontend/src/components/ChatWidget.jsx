@@ -26,6 +26,7 @@ function ChatWidget() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState(null);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -44,11 +45,13 @@ function ChatWidget() {
       client_id: params.clientId ? Number(params.clientId) : undefined,
       material_id: params.materialId ? Number(params.materialId) : undefined,
       employee_id: params.employeeId ? Number(params.employeeId) : undefined,
+      pending: pending || undefined,
     };
     const hasContext = Object.values(context).some((v) => v !== undefined);
 
     try {
       const res = await chatAPI.send(message, hasContext ? context : undefined);
+      setPending(res.data.clarification || null);
       setMessages((prev) => [...prev, {
         role: 'assistant', text: res.data.response, suggestions: res.data.suggestions,
         proposedAction: res.data.proposed_action || null,

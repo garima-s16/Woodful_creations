@@ -68,7 +68,7 @@ def test_chat_without_context_ignores_this_order_phrasing(client, test_user):
     assert "response" in resp.json()
 
 
-def test_chat_proposes_payment_but_does_not_create_it(client, test_user):
+def test_chat_payment_with_amount_and_mode_in_one_message_proposes_immediately(client, test_user):
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "Chat Payment Client"}).json()["id"]
     order = client.post("/api/orders/", json={
@@ -76,7 +76,7 @@ def test_chat_proposes_payment_but_does_not_create_it(client, test_user):
     }).json()
 
     resp = client.post("/api/chat/", json={
-        "message": "record a payment of 15000 for this order",
+        "message": "record a payment of 15000 via bank transfer for this order",
         "context": {"order_id": order["id"]},
     })
     assert resp.status_code == 200
@@ -85,10 +85,86 @@ def test_chat_proposes_payment_but_does_not_create_it(client, test_user):
     assert body["proposed_action"]["action_type"] == "record_payment"
     assert body["proposed_action"]["payload"]["order_id"] == order["id"]
     assert body["proposed_action"]["payload"]["amount"] == "15000"
+    assert body["proposed_action"]["payload"]["payment_mode"] == "Bank"
+    assert body["clarification"] is None
 
     # The proposal must NOT have actually created a payment.
     payments = client.get("/api/payments/", params={"order_id": order["id"]}).json()
     assert len(payments) == 0
+
+
+def test_chat_payment_without_mode_asks_instead_of_defaulting_to_cash(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 4"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "40000.00", "advance": "0",
+    }).json()
+
+    resp = client.post("/api/chat/", json={
+        "message": "record a payment of 15000 for this order",
+        "context": {"order_id": order["id"]},
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    # Must NOT silently pick a mode - must ask instead.
+    assert body["proposed_action"] is None
+    assert "payment mode" in body["response"].lower()
+    assert body["clarification"] is not None
+    assert body["clarification"]["type"] == "record_payment"
+    assert body["clarification"]["amount"] == "15000"
+
+
+def test_chat_completes_payment_across_two_turns(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 5"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "60000.00", "advance": "0",
+    }).json()
+
+    first = client.post("/api/chat/", json={
+        "message": "record a payment of 20000 for this order",
+        "context": {"order_id": order["id"]},
+    }).json()
+    assert first["proposed_action"] is None
+    pending = first["clarification"]
+    assert pending is not None
+
+    # Second turn: the frontend echoes back `pending` as context.pending,
+    # the user answers with just the mode.
+    second = client.post("/api/chat/", json={
+        "message": "UPI",
+        "context": {"order_id": order["id"], "pending": pending},
+    }).json()
+    assert second["clarification"] is None
+    assert second["proposed_action"] is not None
+    assert second["proposed_action"]["payload"]["amount"] == "20000"
+    assert second["proposed_action"]["payload"]["payment_mode"] == "UPI"
+
+    # Still not created until the frontend actually calls the real endpoint.
+    payments = client.get("/api/payments/", params={"order_id": order["id"]}).json()
+    assert len(payments) == 0
+
+
+def test_chat_continues_asking_if_second_turn_still_has_no_mode(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 6"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "25000.00", "advance": "0",
+    }).json()
+
+    first = client.post("/api/chat/", json={
+        "message": "record a payment of 5000 for this order",
+        "context": {"order_id": order["id"]},
+    }).json()
+    pending = first["clarification"]
+
+    second = client.post("/api/chat/", json={
+        "message": "not sure yet",
+        "context": {"order_id": order["id"], "pending": pending},
+    }).json()
+    assert second["proposed_action"] is None
+    assert second["clarification"] is not None
+    assert "payment mode" in second["response"].lower()
 
 
 def test_chat_payment_proposal_without_amount_asks_for_one(client, test_user):

@@ -11,6 +11,11 @@ class ChatContext(BaseModel):
     client_id: Optional[int] = None
     material_id: Optional[int] = None
     employee_id: Optional[int] = None
+    # Carries a partially-collected action across turns. There is no
+    # server-side conversation table - the frontend simply echoes back
+    # whatever `clarification` the previous response contained, so a
+    # multi-turn "what payment mode?" exchange works statelessly.
+    pending: Optional[dict] = None
 
 
 class ChatRequest(BaseModel):
@@ -34,3 +39,8 @@ class ChatResponse(BaseModel):
     response: str
     suggestions: List[str] = []
     proposed_action: Optional[ProposedAction] = None
+    # What to remember for the next turn if the assistant is still
+    # collecting information (e.g. has an amount, still needs a payment
+    # mode). The frontend must send this back as context.pending on the
+    # user's next message - it is never persisted server-side.
+    clarification: Optional[dict] = None
