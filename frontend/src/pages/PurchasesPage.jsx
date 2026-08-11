@@ -5,6 +5,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 function PurchasesPage() {
   const [purchases, setPurchases] = useState([]);
@@ -77,7 +78,8 @@ function PurchasesPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={purchases} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
       <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase" />
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase"
+          initialValues={{ date: today() }} />
       </Modal>
     </div>
   );

@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 function PaymentsPage() {
   const { user } = useSelector((state) => state.auth);
@@ -108,7 +109,8 @@ function PaymentsPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={payments} emptyMessage="No payments recorded yet." />
       <Modal isOpen={showAdd} title="Record Payment" onClose={() => setShowAdd(false)}>
-        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Record Payment" />
+        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Record Payment"
+          initialValues={{ date: today(), received_by: user?.full_name || user?.username || '' }} />
       </Modal>
       <Modal isOpen={!!editingPayment} title={`Edit ${editingPayment?.receipt_code || ''}`} onClose={() => setEditingPayment(null)}>
         {editingPayment && (

@@ -6,6 +6,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { today } from '../utils/dates';
 
 const VIEWS = ['All', 'My Tasks', 'Overdue', 'In Progress', 'Completed'];
 
@@ -106,7 +107,8 @@ function DailyTasksPage() {
       </div>
       <Table columns={columns} data={filteredTasks} onRowClick={(row) => navigate(`/daily-tasks/${row.id}`)} emptyMessage="No tasks in this view." />
       <Modal isOpen={showAdd} title="Assign Task" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Assign Task" />
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Assign Task"
+          initialValues={{ date: today(), checked_by: user?.full_name || user?.username || '' }} />
       </Modal>
     </div>
   );

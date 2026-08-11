@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { projectExpensesAPI, ordersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 function ProjectExpensesPage() {
+  const { user } = useSelector((state) => state.auth);
   const [expenses, setExpenses] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -90,7 +93,8 @@ function ProjectExpensesPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={expenses} emptyMessage="No project expenses recorded yet." />
       <Modal isOpen={showAdd} title="Add Expense" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Expense" />
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Expense"
+          initialValues={{ date: today(), approved_by: user?.full_name || user?.username || '' }} />
       </Modal>
       <Modal isOpen={!!editingExpense} title={`Edit ${editingExpense?.expense_code || ''}`} onClose={() => setEditingExpense(null)}>
         {editingExpense && (

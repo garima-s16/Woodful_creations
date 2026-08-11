@@ -4,6 +4,7 @@ import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { today } from '../utils/dates';
 
 function ProductionJobsPage() {
   const [jobs, setJobs] = useState([]);
@@ -109,7 +110,8 @@ function ProductionJobsPage() {
       <Table columns={columns} data={jobs} emptyMessage="No production jobs recorded yet." />
 
       <Modal isOpen={showAdd} title="Create Production Job" onClose={() => setShowAdd(false)}>
-        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Job" />
+        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Job"
+          initialValues={{ date: today() }} />
       </Modal>
 
       <Modal isOpen={!!editingJob} title={`Update Progress - ${editingJob?.job_code || ''}`} onClose={() => setEditingJob(null)}>

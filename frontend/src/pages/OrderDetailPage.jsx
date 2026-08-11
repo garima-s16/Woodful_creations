@@ -12,6 +12,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Production', 'Profitability'];
 
@@ -307,6 +308,7 @@ function OrderDetailPage() {
             { name: 'received_by', label: 'Received By' },
           ]}
           onSubmit={handleQuickPayment} loading={actionLoading} submitText="Record Payment"
+          initialValues={{ date: today(), received_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
 
@@ -322,6 +324,7 @@ function OrderDetailPage() {
             { name: 'approved_by', label: 'Approved By' },
           ]}
           onSubmit={handleQuickExpense} loading={actionLoading} submitText="Add Expense"
+          initialValues={{ date: today(), approved_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
 
@@ -339,6 +342,7 @@ function OrderDetailPage() {
             { name: 'approved_by', label: 'Approved By' },
           ]}
           onSubmit={handleQuickIssue} loading={actionLoading} submitText="Issue Material"
+          initialValues={{ date: today(), approved_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
 
@@ -356,6 +360,7 @@ function OrderDetailPage() {
             { name: 'checked_by', label: 'Checked By' },
           ]}
           onSubmit={handleQuickTask} loading={actionLoading} submitText="Assign Task"
+          initialValues={{ date: today(), checked_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
 
@@ -371,6 +376,7 @@ function OrderDetailPage() {
             { name: 'planned_qty', label: 'Planned Quantity', type: 'number', required: true },
           ]}
           onSubmit={handleQuickProduction} loading={actionLoading} submitText="Create Production Job"
+          initialValues={{ date: today() }}
         />
       </Modal>
     </div>

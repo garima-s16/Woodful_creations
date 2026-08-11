@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI, ordersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
@@ -7,12 +8,14 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 
 const TABS = ['Overview', 'Attendance', 'Leave', 'Tasks', 'Production'];
 
 function EmployeeDetailPage() {
   const { employeeId } = useParams();
+  const { user } = useSelector((state) => state.auth);
   const [employee, setEmployee] = useState(null);
   const [attendance, setAttendance] = useState([]);
   const [leaves, setLeaves] = useState([]);
@@ -190,6 +193,7 @@ function EmployeeDetailPage() {
             { name: 'remarks', label: 'Remarks' },
           ]}
           onSubmit={handleRecordAttendance} loading={actionLoading} submitText="Record Attendance"
+          initialValues={{ date: today() }}
         />
       </Modal>
 
@@ -206,6 +210,7 @@ function EmployeeDetailPage() {
             ] },
           ]}
           onSubmit={handleAssignTask} loading={actionLoading} submitText="Assign Task"
+          initialValues={{ date: today() }}
         />
       </Modal>
 
@@ -220,6 +225,7 @@ function EmployeeDetailPage() {
             { name: 'planned_qty', label: 'Planned Quantity', type: 'number', required: true },
           ]}
           onSubmit={handleCreateProductionJob} loading={actionLoading} submitText="Create Production Job"
+          initialValues={{ date: today() }}
         />
       </Modal>
     </div>

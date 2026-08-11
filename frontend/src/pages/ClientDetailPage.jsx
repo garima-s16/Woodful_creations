@@ -8,6 +8,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 
 function ClientDetailPage() {
@@ -206,6 +207,7 @@ function ClientDetailPage() {
             { name: 'order_date', label: 'Order Date', type: 'date', required: true },
           ]}
           onSubmit={handleCreateOrder} loading={actionLoading} submitText="Create Order"
+          initialValues={{ order_date: today() }}
         />
       </Modal>
 
@@ -238,6 +240,7 @@ function ClientDetailPage() {
             { name: 'received_by', label: 'Received By' },
           ]}
           onSubmit={handleRecordPayment} loading={actionLoading} submitText="Record Payment"
+          initialValues={{ date: today(), received_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
 
@@ -254,6 +257,7 @@ function ClientDetailPage() {
             { name: 'logged_by', label: 'Logged By' },
           ]}
           onSubmit={handleLogActivity} loading={actionLoading} submitText="Log Activity"
+          initialValues={{ date: today(), logged_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
     </div>

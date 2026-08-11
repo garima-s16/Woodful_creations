@@ -5,6 +5,7 @@ import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { today } from '../utils/dates';
 
 function monthKey(dateStr) {
   const d = new Date(dateStr);
@@ -133,7 +134,8 @@ function AttendancePage() {
 
       <Table columns={columns} data={filteredRecords} emptyMessage="No attendance recorded yet. Record today's attendance to get started." />
       <Modal isOpen={showAdd} title="Mark Attendance" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Mark Attendance" />
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Mark Attendance"
+          initialValues={{ date: today() }} />
       </Modal>
     </div>
   );
