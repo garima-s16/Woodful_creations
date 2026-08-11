@@ -6,6 +6,9 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import Pagination from '../components/common/Pagination';
+
+const PAGE_SIZE = 25;
 
 const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
   'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
@@ -17,6 +20,8 @@ function OrdersPage() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [clients, setClients] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -25,16 +30,49 @@ function OrdersPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = (filter) => {
-    ordersAPI.list(filter?.status ? { status: filter.status } : undefined).then((res) => setOrders(res.data));
+  const activeFilters = () => {
+    const params = {};
+    if (statusFilter) params.status = statusFilter;
+    if (overdueOnly) params.overdue_only = true;
+    return params;
+  };
+
+  const load = (filterParams, pageNum = 1) => {
+    const offset = (pageNum - 1) * PAGE_SIZE;
+    ordersAPI.list({ ...filterParams, limit: PAGE_SIZE, offset }).then((res) => {
+      setOrders(res.data);
+      setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
+    });
     clientsAPI.list().then((res) => setClients(res.data));
   };
-  useEffect(() => load(), []);
+
+  useEffect(() => {
+    load(activeFilters());
+  }, []);
+
+  const applyFilters = (nextStatus, nextOverdue) => {
+    const params = {};
+    if (nextStatus) params.status = nextStatus;
+    if (nextOverdue) params.overdue_only = true;
+    setPage(1);
+    load(params, 1);
+  };
 
   const handleFilterChange = (e) => {
     const value = e.target.value;
     setStatusFilter(value);
-    load({ status: value });
+    applyFilters(value, overdueOnly);
+  };
+
+  const handleOverdueChange = (e) => {
+    const checked = e.target.checked;
+    setOverdueOnly(checked);
+    applyFilters(statusFilter, checked);
+  };
+
+  const goToPage = (pageNum) => {
+    setPage(pageNum);
+    load(activeFilters(), pageNum);
   };
 
   const handleCreate = async (formData) => {
@@ -50,7 +88,7 @@ function OrdersPage() {
         advance: formData.advance || '0',
       });
       setShowAdd(false);
-      load({ status: statusFilter });
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create order');
     } finally {
@@ -70,7 +108,7 @@ function OrdersPage() {
         progress_percent: Number(formData.progress_percent),
       });
       setStatusOrder(null);
-      load({ status: statusFilter });
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update status');
     } finally {
@@ -92,17 +130,13 @@ function OrdersPage() {
         remarks: formData.remarks,
       });
       setEditingOrder(null);
-      load({ status: statusFilter });
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update order');
     } finally {
       setLoading(false);
     }
   };
-
-  const displayedOrders = overdueOnly
-    ? orders.filter((o) => Number(o.balance) > 0 && (Date.now() - new Date(o.order_date).getTime()) > 30 * 24 * 60 * 60 * 1000)
-    : orders;
 
   const columns = [
     { key: 'order_code', label: 'Order ID' },
@@ -171,11 +205,18 @@ function OrdersPage() {
           {STAGE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />
+          <input type="checkbox" checked={overdueOnly} onChange={handleOverdueChange} />
           Balance outstanding 30+ days
         </label>
       </form>
-      <Table columns={columns} data={displayedOrders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
+      <Table columns={columns} data={orders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
+      {totalCount > PAGE_SIZE && (
+        <Pagination
+          currentPage={page}
+          totalPages={Math.ceil(totalCount / PAGE_SIZE)}
+          onPageChange={goToPage}
+        />
+      )}
       <Modal isOpen={showAdd} title="New Order" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
       </Modal>

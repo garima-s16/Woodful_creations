@@ -4,11 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.database import Base, engine
 from app.core.middleware import SecurityHeadersMiddleware
+from app.core.auto_migrate import run_startup_migrations
 from app.api.routes import all_routers
 
-# Ensure every model is registered on the shared Base before create_all runs.
+# Ensure every model is registered on the shared Base before migrations run.
 from app import models  # noqa: F401
 
 logging.basicConfig(level=logging.INFO if not settings.DEBUG else logging.DEBUG)
@@ -43,11 +43,14 @@ for router in all_routers:
 
 @app.on_event("startup")
 def on_startup():
-    if not settings.is_production:
-        # Convenience for local development only. In staging/production, use
-        # Alembic migrations instead of create_all.
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables ensured (development mode).")
+    try:
+        run_startup_migrations()
+    except Exception:
+        logger.exception(
+            "Automatic database migration failed. The server is starting anyway, "
+            "but requests that touch an out-of-date table will error until this "
+            "is resolved - check the traceback above for the specific issue."
+        )
 
 
 @app.get("/health")

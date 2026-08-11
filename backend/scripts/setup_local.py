@@ -1,13 +1,15 @@
 """
-One-step local setup: creates all tables, then checks whether any master
-user exists yet - if not, walks you through creating one interactively
-right here (no hardcoded credentials, ever).
+One-step local setup: applies all database migrations (self-healing even
+against a database created by an older version of this script - see
+app/core/auto_migrate.py for how), then checks whether any master user
+exists yet - if not, walks you through creating one interactively right
+here (no hardcoded credentials, ever).
 
 Usage:
     python scripts/setup_local.py
 
-Safe to re-run: skips table creation for tables that already exist, and
-skips the admin-creation prompt if a master user is already present.
+Safe to re-run: migrations are idempotent, and this skips the
+admin-creation prompt if a master user is already present.
 """
 import getpass
 import logging
@@ -16,7 +18,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.database import Base, SessionLocal, engine
+from app.core.database import SessionLocal
+from app.core.auto_migrate import run_startup_migrations
 from app import models  # noqa: F401
 from app.models.user import User
 from scripts.create_master_user import create_master_user
@@ -26,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    logger.info("Creating database tables (skips any that already exist)...")
-    Base.metadata.create_all(bind=engine)
+    logger.info("Applying database migrations...")
+    run_startup_migrations()
     logger.info("Database ready.")
 
     db = SessionLocal()
