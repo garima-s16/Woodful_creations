@@ -21,7 +21,7 @@ function Navbar({ user, onLogout, toggleSidebar }) {
           </button>
           <Link to="/dashboard" className="navbar-brand">
             <span className="brand-mark">
-              <img src="/logo.png" alt="Woodful Creations" className="brand-logo-img" />
+              <img src="/logo-transparent.png" alt="Woodful Creations" className="brand-logo-img" />
             </span>
             <span className="brand-text">
               <span className="brand-tagline">Business Management</span>
