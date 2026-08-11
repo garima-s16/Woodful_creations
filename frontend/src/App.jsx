@@ -34,7 +34,9 @@ import TaskDetailPage from './pages/TaskDetailPage';
 import ProductionJobsPage from './pages/ProductionJobsPage';
 import SettingsPage from './pages/SettingsPage';
 import EstimatesPage from './pages/EstimatesPage';
+import EstimateDetailPage from './pages/EstimateDetailPage';
 import CandidatesPage from './pages/CandidatesPage';
+import CandidateDetailPage from './pages/CandidateDetailPage';
 import InterviewsPage from './pages/InterviewsPage';
 import SalarySlipsPage from './pages/SalarySlipsPage';
 import UsersPage from './pages/UsersPage';
@@ -116,7 +118,9 @@ function AppRoutes() {
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />
       <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
+      <Route path="/estimates/:estimateId" element={<Protected><EstimateDetailPage /></Protected>} />
       <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
+      <Route path="/candidates/:candidateId" element={<Protected><CandidateDetailPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
       <Route path="/salary-slips" element={<Protected><SalarySlipsPage /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />

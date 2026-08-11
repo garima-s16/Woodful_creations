@@ -17,6 +17,7 @@ function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [clients, setClients] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [statusOrder, setStatusOrder] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
@@ -98,6 +99,10 @@ function OrdersPage() {
     }
   };
 
+  const displayedOrders = overdueOnly
+    ? orders.filter((o) => Number(o.balance) > 0 && (Date.now() - new Date(o.order_date).getTime()) > 30 * 24 * 60 * 60 * 1000)
+    : orders;
+
   const columns = [
     { key: 'order_code', label: 'Order ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
@@ -165,8 +170,12 @@ function OrdersPage() {
           <option value="">All Stages</option>
           {STAGE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />
+          Balance outstanding 30+ days
+        </label>
       </form>
-      <Table columns={columns} data={orders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
+      <Table columns={columns} data={displayedOrders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
       <Modal isOpen={showAdd} title="New Order" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
       </Modal>

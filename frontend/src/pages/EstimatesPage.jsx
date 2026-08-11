@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function EstimatesPage() {
+  const navigate = useNavigate();
   const [estimates, setEstimates] = useState([]);
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -71,12 +73,12 @@ function EstimatesPage() {
     { key: 'status', label: 'Status' },
     {
       key: 'quote_pdf', label: 'Quote', render: (v, row) => (
-        <a href={reportsAPI.downloadUrl(`estimates/${row.id}/quote.pdf`)} target="_blank" rel="noreferrer">Download PDF</a>
+        <a href={reportsAPI.downloadUrl(`estimates/${row.id}/quote.pdf`)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Download PDF</a>
       ),
     },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={() => setEditingEstimate(row)}>Edit</button>
+        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEstimate(row); }}>Edit</button>
       ),
     },
   ];
@@ -112,7 +114,7 @@ function EstimatesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>New Estimate</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={estimates} emptyMessage="No estimates yet. Create your first estimate to get started." />
+      <Table columns={columns} data={estimates} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
       <Modal isOpen={showAdd} title="New Estimate" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Estimate" />
       </Modal>

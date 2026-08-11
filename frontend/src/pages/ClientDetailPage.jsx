@@ -10,16 +10,16 @@ import Alert from '../components/common/Alert';
 
 function money(v) { return `Rs ${Number(v || 0).toLocaleString()}`; }
 
-const TABS = ['Overview', 'Orders', 'Estimates'];
-
 function ClientDetailPage() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const canViewFinancials = user?.role === 'master' || user?.role === 'manager';
+  const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments'] : ['Overview', 'Orders', 'Estimates'];
   const [client, setClient] = useState(null);
   const [orders, setOrders] = useState([]);
   const [estimates, setEstimates] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [tab, setTab] = useState('Overview');
   const [activeAction, setActiveAction] = useState(null); // 'order' | 'estimate' | 'payment'
   const [actionLoading, setActionLoading] = useState(false);
@@ -27,9 +27,15 @@ function ClientDetailPage() {
 
   const load = useCallback(() => {
     clientsAPI.get(clientId).then((res) => setClient(res.data)).catch(() => setClient(null));
-    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data));
+    ordersAPI.list({ client_id: clientId }).then((res) => {
+      setOrders(res.data);
+      if (canViewFinancials && res.data.length > 0) {
+        Promise.all(res.data.map((o) => paymentsAPI.list({ order_id: o.id }).then((r) => r.data).catch(() => [])))
+          .then((results) => setPayments(results.flat()));
+      }
+    });
     estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data));
-  }, [clientId]);
+  }, [clientId, canViewFinancials]);
 
   useEffect(load, [load]);
 
@@ -94,6 +100,9 @@ function ClientDetailPage() {
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Total Orders</div><h3>{client.total_orders}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Total Sales</div><h3>{money(client.total_sales)}</h3></div></Card>
+        {canViewFinancials && (
+          <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{money(orders.reduce((sum, o) => sum + Number(o.balance || 0), 0))}</h3></div></Card>
+        )}
         <Card><div className="card-body"><div className="detail-meta-label">Phone</div><h3 style={{ fontSize: '1.1rem' }}>{client.phone || '-'}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Email</div><h3 style={{ fontSize: '1.1rem' }}>{client.email || '-'}</h3></div></Card>
       </div>
@@ -144,6 +153,20 @@ function ClientDetailPage() {
           ]}
           data={estimates}
           emptyMessage="No estimates for this client yet."
+        />
+      )}
+
+      {tab === 'Payments' && (
+        <Table
+          columns={[
+            { key: 'receipt_code', label: 'Receipt' },
+            { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+            { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
+            { key: 'payment_type', label: 'Type' }, { key: 'payment_mode', label: 'Mode' },
+            { key: 'amount', label: 'Amount', render: money },
+          ]}
+          data={payments}
+          emptyMessage="No payments recorded for this client yet."
         />
       )}
 

@@ -129,12 +129,14 @@ export const settingsAPI = {
 
 export const estimatesAPI = {
   list: (params) => client.get('/api/estimates/', { params }),
+  get: (id) => client.get(`/api/estimates/${id}`),
   create: (data) => client.post('/api/estimates/', data),
   update: (id, data) => client.put(`/api/estimates/${id}`, data),
 };
 
 export const candidatesAPI = {
   list: (params) => client.get('/api/candidates/', { params }),
+  get: (id) => client.get(`/api/candidates/${id}`),
   create: (data) => client.post('/api/candidates/', data),
   update: (id, data) => client.put(`/api/candidates/${id}`, data),
 };

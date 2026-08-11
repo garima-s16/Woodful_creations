@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { candidatesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function CandidatesPage() {
+  const navigate = useNavigate();
   const [candidates, setCandidates] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +46,7 @@ function CandidatesPage() {
     { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'experience', label: 'Experience' },
     {
       key: 'status', label: 'Status', render: (v, row) => (
-        <select value={v} onChange={(e) => handleStatusChange(row.id, e.target.value)}>
+        <select value={v} onClick={(e) => e.stopPropagation()} onChange={(e) => handleStatusChange(row.id, e.target.value)}>
           {['Applied', 'Shortlisted', 'Selected', 'Rejected'].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       ),
@@ -68,7 +70,7 @@ function CandidatesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={candidates} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />
+      <Table columns={columns} data={candidates} onRowClick={(row) => navigate(`/candidates/${row.id}`)} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />
       <Modal isOpen={showAdd} title="Add Candidate" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Candidate" />
       </Modal>
