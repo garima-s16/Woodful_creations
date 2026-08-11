@@ -9,6 +9,7 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import ProtectedRoute from './components/ProtectedRoute';
 import ChatWidget from './components/ChatWidget';
+import Footer from './components/Footer';
 
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -63,6 +64,7 @@ function AppLayout({ children }) {
         <Sidebar isOpen={isSidebarOpen} user={user} />
         <main className="app-content">{children}</main>
       </div>
+      <Footer />
       <ChatWidget />
     </div>
   );

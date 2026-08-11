@@ -25,10 +25,13 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 
 
 def _authenticate(request: UserLogin, db: Session) -> User:
-    user = db.query(User).filter(User.email == request.email, User.is_deleted.is_(False)).first()
+    user = db.query(User).filter(
+        (User.email == request.identifier) | (User.username == request.identifier),
+        User.is_deleted.is_(False),
+    ).first()
 
     if not user:
-        raise HTTPException(status_code=401, detail="No account found with this email address")
+        raise HTTPException(status_code=401, detail="No account found with that email or username")
 
     if not verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect password")

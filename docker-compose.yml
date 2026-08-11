@@ -6,7 +6,7 @@ services:
     container_name: woodful_postgres
     environment:
       POSTGRES_USER: woodful_user
-      POSTGRES_PASSWORD: woodful_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
       POSTGRES_DB: woodful_creations
     ports:
       - "5432:5432"
@@ -35,7 +35,7 @@ services:
       dockerfile: Dockerfile
     container_name: woodful_backend
     environment:
-      DATABASE_URL: postgresql://woodful_user:woodful_password@database:5432/woodful_creations
+      DATABASE_URL: postgresql://woodful_user:${POSTGRES_PASSWORD}@database:5432/woodful_creations
       REDIS_URL: redis://redis:6379
       ENVIRONMENT: production
       DEBUG: "False"
@@ -57,9 +57,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
     container_name: woodful_frontend
-    environment:
-      REACT_APP_API_URL: http://localhost:8000/api
     ports:
       - "3000:3000"
     depends_on:

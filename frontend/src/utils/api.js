@@ -21,7 +21,7 @@ client.interceptors.response.use(
 );
 
 export const authAPI = {
-  login: (email, password) => client.post('/api/auth/login', { email, password }),
+  login: (identifier, password) => client.post('/api/auth/login', { identifier, password }),
   logout: () => client.post('/api/auth/logout'),
   me: () => client.get('/api/auth/me'),
 };

@@ -1,0 +1,40 @@
+.app-footer {
+  background: var(--color-ink);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: var(--space-5) var(--space-6);
+  margin-top: auto;
+}
+
+.app-footer-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.app-footer-logo {
+  height: 22px;
+  width: auto;
+  background: var(--color-ivory);
+  border-radius: 3px;
+  padding: 3px 7px;
+  display: block;
+  opacity: 0.9;
+}
+
+.app-footer-meta {
+  text-align: right;
+  font-size: 0.78rem;
+  color: rgba(247, 243, 236, 0.5);
+  line-height: 1.6;
+}
+
+.app-footer-meta p { margin: 0; }
+
+@media (max-width: 600px) {
+  .app-footer-inner { flex-direction: column; text-align: center; }
+  .app-footer-meta { text-align: center; }
+}

@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authAPI } from '../utils/api';
 import { loginStart, loginSuccess, loginFailure } from '../redux/slices/authSlice';
+import BrandBackdrop from '../components/BrandBackdrop';
+import Footer from '../components/Footer';
 import '../styles/LoginPage.css';
+
+const TAGLINES = [
+  { title: 'Precision Crafted,', subtitle: 'Order by Order.' },
+  { title: 'From Timber to', subtitle: 'Finished Furniture.' },
+  { title: 'Every Cut', subtitle: 'Accounted For.' },
+];
 
 function EyeIcon({ visible }) {
   return visible ? (
@@ -21,25 +29,33 @@ function EyeIcon({ visible }) {
 function LoginPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [slide, setSlide] = useState(0);
 
-  const performLogin = async (loginEmail, loginPassword) => {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSlide((s) => (s + 1) % TAGLINES.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const performLogin = async (loginIdentifier, loginPassword) => {
     setError('');
     setLoading(true);
     dispatch(loginStart());
 
     try {
-      const response = await authAPI.login(loginEmail, loginPassword);
+      const response = await authAPI.login(loginIdentifier, loginPassword);
       // The auth token itself lives in an HttpOnly cookie the browser now
       // holds automatically - we never touch it here or store it ourselves.
       dispatch(loginSuccess(response.data));
       navigate('/', { replace: true });
     } catch (err) {
-      // The backend distinguishes "no account with this email", "incorrect
+      // The backend distinguishes "no account with that email/username", "incorrect
       // password", and "account deactivated" - this just passes that
       // message straight through. A network/server-level failure (no
       // response at all) falls back to a distinct generic message.
@@ -53,16 +69,32 @@ function LoginPage() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    performLogin(email, password);
+    performLogin(identifier, password);
   };
 
   return (
     <div className="login-page">
       <div className="login-container">
         <div className="login-brand-panel">
+          <BrandBackdrop />
+          <div className="login-brand-top">
+            <img src="/logo.png" alt="Woodful Creations" className="login-logo-small" />
+          </div>
           <div className="login-brand-content">
-            <img src="/logo.png" alt="Woodful Creations" className="login-logo" />
+            <h2 className="login-headline">
+              {TAGLINES[slide].title}<br />{TAGLINES[slide].subtitle}
+            </h2>
             <p className="login-brand-tagline">Business Management System</p>
+            <div className="login-dots">
+              {TAGLINES.map((t, i) => (
+                <button
+                  key={t.title}
+                  className={`login-dot ${i === slide ? 'active' : ''}`}
+                  onClick={() => setSlide(i)}
+                  aria-label={`Show tagline ${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -73,15 +105,16 @@ function LoginPage() {
 
             <form onSubmit={handleLogin} className="login-form">
               <div className="form-group">
-                <label htmlFor="email">Email Address</label>
+                <label htmlFor="identifier">Email or Username</label>
                 <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
+                  id="identifier"
+                  type="text"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="your@email.com or username"
                   required
                   disabled={loading}
+                  autoComplete="username"
                 />
               </div>
 
@@ -118,6 +151,7 @@ function LoginPage() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

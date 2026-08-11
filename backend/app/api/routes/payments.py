@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.security import require_role
 from app.core.audit import log_action
 from fastapi import Request
 from app.models.payment import Payment
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 @router.get("/", response_model=List[PaymentResponse])
 def list_payments(order_id: Optional[int] = Query(None), db: Session = Depends(get_db),
-                   auth=Depends(get_current_user)):
+                   auth=Depends(require_role("master", "manager"))):
     query = db.query(Payment)
     if order_id:
         query = query.filter(Payment.order_id == order_id)

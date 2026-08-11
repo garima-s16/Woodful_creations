@@ -1,5 +1,5 @@
 def _login(client, test_user):
-    resp = client.post("/api/auth/login", json={"email": "test@example.com", "password": "TestPass123!"})
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
     assert resp.status_code == 200
 
 

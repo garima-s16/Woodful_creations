@@ -1,7 +1,7 @@
 .login-page {
   min-height: 100vh;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   background: var(--color-ink);
 }
 
@@ -9,44 +9,87 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   width: 100%;
-  min-height: 100vh;
+  flex: 1;
 }
 
 /* Left panel: brand */
 .login-brand-panel {
+  position: relative;
+  overflow: hidden;
   background: var(--color-ink);
-  background-image:
-    radial-gradient(circle at 20% 20%, rgba(184, 135, 74, 0.08), transparent 45%),
-    radial-gradient(circle at 80% 80%, rgba(184, 135, 74, 0.05), transparent 50%);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-7);
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-6) var(--space-7);
+}
+
+.brand-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.login-brand-top {
+  position: absolute;
+  top: var(--space-6);
+  left: var(--space-7);
+  z-index: 1;
+}
+
+.login-logo-small {
+  height: 34px;
+  width: auto;
+  background: var(--color-ivory);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  display: block;
 }
 
 .login-brand-content {
-  text-align: center;
-  max-width: 420px;
+  position: relative;
+  z-index: 1;
+  max-width: 460px;
 }
 
-.login-logo {
-  width: 100%;
-  max-width: 380px;
-  height: auto;
-  /* The logo asset has a white background - a light rounded card keeps it
-     from clashing with the dark panel behind it. */
-  background: var(--color-ivory);
-  border-radius: var(--radius-md);
-  padding: var(--space-5) var(--space-6);
-  box-shadow: var(--shadow-md);
+.login-headline {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--color-ivory);
+  margin-bottom: var(--space-4);
+  min-height: 2.4em;
 }
 
 .login-brand-tagline {
-  margin-top: var(--space-5);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(247, 243, 236, 0.55);
+  margin-bottom: var(--space-5);
+}
+
+.login-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.login-dot {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  border: none;
+  background: rgba(247, 243, 236, 0.25);
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--transition);
+}
+
+.login-dot.active {
+  background: var(--color-gold);
+  width: 34px;
 }
 
 /* Right panel: form */
@@ -171,9 +214,10 @@
 
   .login-brand-panel {
     padding: var(--space-6) var(--space-5);
+    min-height: 320px;
   }
 
-  .login-logo {
-    max-width: 260px;
+  .login-headline {
+    font-size: 1.9rem;
   }
 }
