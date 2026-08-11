@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -14,19 +14,33 @@ router = APIRouter(prefix="/api/materials", tags=["materials"])
 
 
 @router.get("/", response_model=List[MaterialResponse])
-def list_materials(category: Optional[str] = Query(None), search: Optional[str] = Query(None),
-                    low_stock_only: bool = Query(False), db: Session = Depends(get_db),
-                    auth=Depends(get_current_user)):
+def list_materials(response: Response, category: Optional[str] = Query(None), search: Optional[str] = Query(None),
+                    low_stock_only: bool = Query(False),
+                    limit: Optional[int] = Query(None, ge=1, le=500),
+                    offset: int = Query(0, ge=0),
+                    db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(Material)
     if category:
         query = query.filter(Material.category == category)
     if search:
         like = f"%{search}%"
         query = query.filter((Material.name.ilike(like)) | (Material.material_code.ilike(like)))
-    materials = query.order_by(Material.name).all()
     if low_stock_only:
-        materials = [m for m in materials if m.current_stock <= m.minimum_stock]
-    return materials
+        # Was previously filtered in Python after fetching everything -
+        # moved into SQL so it composes correctly with pagination below
+        # (filtering after paginating would silently return wrong pages).
+        query = query.filter(Material.current_stock <= Material.minimum_stock)
+
+    query = query.order_by(Material.name)
+    total = query.count()
+    response.headers["X-Total-Count"] = str(total)
+
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+        # Existing callers that never pass limit/offset get exactly the
+        # same response shape as before this change - a plain array with
+        # every matching row, no pagination applied.
+    return query.all()
 
 
 @router.post("/", response_model=MaterialResponse, status_code=201)

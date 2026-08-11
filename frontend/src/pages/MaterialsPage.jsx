@@ -6,7 +6,10 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
+import Pagination from '../components/common/Pagination';
 import { formatCurrency } from '../utils/currency';
+
+const PAGE_SIZE = 25;
 
 function MaterialsPage() {
   const navigate = useNavigate();
@@ -19,21 +22,37 @@ function MaterialsPage() {
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const load = (params) => {
-    materialsAPI.list(params).then((res) => setMaterials(res.data));
+  const load = (params, pageNum = 1) => {
+    const offset = (pageNum - 1) * PAGE_SIZE;
+    materialsAPI.list({ ...params, limit: PAGE_SIZE, offset }).then((res) => {
+      setMaterials(res.data);
+      setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
+    });
     materialsAPI.list().then((res) => setAllMaterials(res.data));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
   };
 
   useEffect(() => load(), []);
 
-  const applyFilters = (e) => {
-    e?.preventDefault();
+  const activeFilters = () => {
     const params = {};
     if (search) params.search = search;
     if (lowStockOnly) params.low_stock_only = true;
-    load(params);
+    return params;
+  };
+
+  const applyFilters = (e) => {
+    e?.preventDefault();
+    setPage(1);
+    load(activeFilters(), 1);
+  };
+
+  const goToPage = (pageNum) => {
+    setPage(pageNum);
+    load(activeFilters(), pageNum);
   };
 
   const handleCreate = async (formData) => {
@@ -141,6 +160,13 @@ function MaterialsPage() {
         <button type="submit" className="btn-secondary">Filter</button>
       </form>
       <Table columns={columns} data={materials} onRowClick={(row) => navigate(`/materials/${row.id}`)} emptyMessage="No materials yet. Add your first material to begin tracking inventory." />
+      {totalCount > PAGE_SIZE && (
+        <Pagination
+          currentPage={page}
+          totalPages={Math.ceil(totalCount / PAGE_SIZE)}
+          onPageChange={goToPage}
+        />
+      )}
 
       <Modal isOpen={showAdd} title="Add Material" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
