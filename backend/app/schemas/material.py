@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class MaterialBase(BaseModel):
-    material_code: str
+    material_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
     category: Optional[str] = None
     brand_grade: Optional[str] = None

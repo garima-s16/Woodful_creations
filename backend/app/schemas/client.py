@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class ClientBase(BaseModel):
-    client_code: str
+    client_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None

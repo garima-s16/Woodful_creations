@@ -4,7 +4,7 @@ from datetime import datetime, time
 
 
 class ProductionJobBase(BaseModel):
-    job_code: str
+    job_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     machine: Optional[str] = None
     employee_id: Optional[int] = None

@@ -298,7 +298,6 @@ function OrderDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, options: [
               { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },
@@ -318,7 +317,6 @@ function OrderDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'expense_code', label: 'Expense Code', required: true, placeholder: 'EXP-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'category', label: 'Category', required: true },
             { name: 'description', label: 'Description' },
@@ -334,7 +332,6 @@ function OrderDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'issue_code', label: 'Issue Code', required: true, placeholder: 'ISS-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'material_id', label: 'Material', type: 'select', required: true, options: materials.map((m) => ({ value: m.id, label: `${m.name} (${m.current_stock} in stock)` })) },
             { name: 'quantity_issued', label: 'Quantity Issued', type: 'number', required: true },
@@ -352,7 +349,6 @@ function OrderDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'task_code', label: 'Task Code', required: true, placeholder: 'TSK-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
             { name: 'task_description', label: 'Task Description', required: true, type: 'textarea' },
@@ -370,7 +366,6 @@ function OrderDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'job_code', label: 'Job Code', required: true, placeholder: 'JOB-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'machine', label: 'Machine' },
             { name: 'operation', label: 'Operation' },

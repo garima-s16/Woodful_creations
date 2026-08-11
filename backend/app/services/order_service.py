@@ -9,6 +9,7 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
 from app.schemas.payment import PaymentCreate
+from app.utils.id_generator import generate_unique_code
 
 
 class OrderService:
@@ -19,12 +20,10 @@ class OrderService:
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
 
-        existing = db.query(Payment).filter(Payment.receipt_code == data.receipt_code).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Receipt code already exists")
+        receipt_code = generate_unique_code(db, Payment, "receipt_code", "RCPT-")
 
         payment = Payment(
-            receipt_code=data.receipt_code, date=data.date, order_id=data.order_id,
+            receipt_code=receipt_code, date=data.date, order_id=data.order_id,
             payment_type=data.payment_type, payment_mode=data.payment_mode, amount=data.amount,
             reference_number=data.reference_number, received_by=data.received_by, remarks=data.remarks,
         )

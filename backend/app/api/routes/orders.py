@@ -2,12 +2,15 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.order import Order
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
 from app.services.order_service import OrderService
+from app.utils.id_generator import generate_unique_code
+from datetime import datetime
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -26,15 +29,21 @@ def list_orders(status: Optional[str] = Query(None), client_id: Optional[int] = 
 @router.post("/", response_model=OrderResponse, status_code=201)
 def create_order(data: OrderCreate, db: Session = Depends(get_db),
                   auth=Depends(require_role("master", "manager"))):
-    if db.query(Order).filter(Order.order_code == data.order_code).first():
-        raise HTTPException(status_code=400, detail="Order code already exists")
-    payload = data.dict()
+    payload = data.dict(exclude={"order_code"})
     advance = payload.pop("advance")
-    order = Order(**payload, advance=advance, total_received=advance, balance=data.order_value - advance)
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    return order
+    year = datetime.utcnow().year
+    for _ in range(5):
+        code = generate_unique_code(db, Order, "order_code", f"WC-{year}-")
+        order = Order(**payload, order_code=code, advance=advance, total_received=advance, balance=data.order_value - advance)
+        db.add(order)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(order)
+        return order
+    raise HTTPException(status_code=500, detail="Unable to generate a unique order code, please try again")
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

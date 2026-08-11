@@ -132,7 +132,6 @@ function OrdersPage() {
 
   const createFields = [
     { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
-    { name: 'order_code', label: 'Order Code', required: true, placeholder: 'WC-2026-006', section: 'Client & Project' },
     { name: 'project_type', label: 'Project Type', section: 'Client & Project' },
     { name: 'order_value', label: 'Order Value', type: 'number', required: true, section: 'Commercial' },
     { name: 'advance', label: 'Advance', type: 'number', section: 'Commercial' },

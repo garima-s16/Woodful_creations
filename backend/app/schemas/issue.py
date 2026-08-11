@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class IssueBase(BaseModel):
-    issue_code: str
+    issue_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     order_id: Optional[int] = None
     material_id: int

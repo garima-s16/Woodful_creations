@@ -200,7 +200,6 @@ function ClientDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'order_code', label: 'Order Code', required: true, placeholder: 'WC-2026-011' },
             { name: 'project_type', label: 'Project Type' },
             { name: 'order_value', label: 'Order Value', type: 'number', required: true },
             { name: 'advance', label: 'Advance', type: 'number' },
@@ -214,7 +213,6 @@ function ClientDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'estimate_code', label: 'Estimate Code', required: true, placeholder: 'EST-011' },
             { name: 'description', label: 'Scope / Description', type: 'textarea' },
             { name: 'material_cost', label: 'Material Cost', type: 'number', required: true },
             { name: 'labor_cost', label: 'Labor Cost', type: 'number', required: true },
@@ -229,7 +227,6 @@ function ClientDetailPage() {
         <Form
           fields={[
             { name: 'order_id', label: 'Order', type: 'select', required: true, options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-            { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, options: [
               { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },

@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class PurchaseBase(BaseModel):
-    purchase_code: str
+    purchase_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     supplier_id: int
     material_id: int

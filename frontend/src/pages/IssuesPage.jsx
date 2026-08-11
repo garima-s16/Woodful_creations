@@ -49,7 +49,6 @@ function IssuesPage() {
   ];
 
   const fields = [
-    { name: 'issue_code', label: 'Issue Code', required: true, placeholder: 'ISS-010' },
     { name: 'date', label: 'Date', type: 'date', required: true },
     { name: 'material_id', label: 'Material', type: 'select', required: true, options: materials.map((m) => ({ value: m.id, label: `${m.name} (${m.current_stock} in stock)` })) },
     { name: 'order_id', label: 'Order (Project)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },

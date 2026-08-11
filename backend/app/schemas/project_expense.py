@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class ProjectExpenseBase(BaseModel):
-    expense_code: str
+    expense_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     order_id: int
     category: str

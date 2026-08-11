@@ -2,11 +2,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.material import Material
 from app.schemas.material import MaterialCreate, MaterialUpdate, MaterialResponse
+from app.utils.id_generator import generate_unique_code
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
 
@@ -30,15 +32,20 @@ def list_materials(category: Optional[str] = Query(None), search: Optional[str] 
 @router.post("/", response_model=MaterialResponse, status_code=201)
 def create_material(data: MaterialCreate, db: Session = Depends(get_db),
                      auth=Depends(require_role("master", "manager"))):
-    if db.query(Material).filter(Material.material_code == data.material_code).first():
-        raise HTTPException(status_code=400, detail="Material code already exists")
-    payload = data.dict()
+    payload = data.dict(exclude={"material_code"})
     payload["current_stock"] = payload["opening_stock"]
-    material = Material(**payload)
-    db.add(material)
-    db.commit()
-    db.refresh(material)
-    return material
+    for _ in range(5):
+        code = generate_unique_code(db, Material, "material_code", "MAT-")
+        material = Material(**payload, material_code=code)
+        db.add(material)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(material)
+        return material
+    raise HTTPException(status_code=500, detail="Unable to generate a unique material code, please try again")
 
 
 @router.get("/{material_id}", response_model=MaterialResponse)

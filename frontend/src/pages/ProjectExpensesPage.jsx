@@ -70,7 +70,6 @@ function ProjectExpensesPage() {
 
   const fields = [
     { name: 'order_id', label: 'Order', type: 'select', required: true, section: 'Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-    { name: 'expense_code', label: 'Expense Code', required: true, placeholder: 'EXP-008', section: 'Project' },
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Project' },
     { name: 'category', label: 'Category', required: true, section: 'Expense Details' },
     { name: 'description', label: 'Description', section: 'Expense Details' },

@@ -60,7 +60,6 @@ function SuppliersPage() {
   ];
 
   const fields = [
-    { name: 'supplier_code', label: 'Supplier Code', required: true, placeholder: 'SUP-006', section: 'Supplier Identity' },
     { name: 'name', label: 'Name', required: true, section: 'Supplier Identity' },
     { name: 'category', label: 'Category', section: 'Supplier Identity' },
     { name: 'contact_person', label: 'Contact Person', section: 'Contact Details' },

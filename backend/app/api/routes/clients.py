@@ -4,10 +4,13 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.client import Client
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientWithStats
+from app.utils.id_generator import generate_unique_code
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -24,13 +27,19 @@ def list_clients(search: Optional[str] = Query(None), db: Session = Depends(get_
 
 @router.post("/", response_model=ClientResponse, status_code=201)
 def create_client(data: ClientCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    if db.query(Client).filter(Client.client_code == data.client_code).first():
-        raise HTTPException(status_code=400, detail="Client code already exists")
-    client = Client(**data.dict())
-    db.add(client)
-    db.commit()
-    db.refresh(client)
-    return client
+    payload = data.dict(exclude={"client_code"})
+    for _ in range(5):
+        code = generate_unique_code(db, Client, "client_code", "CL-")
+        client = Client(**payload, client_code=code)
+        db.add(client)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(client)
+        return client
+    raise HTTPException(status_code=500, detail="Unable to generate a unique client code, please try again")
 
 
 @router.get("/{client_id}", response_model=ClientWithStats)

@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class PaymentBase(BaseModel):
-    receipt_code: str
+    receipt_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     order_id: int
     payment_type: str

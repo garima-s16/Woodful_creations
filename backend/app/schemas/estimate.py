@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class EstimateBase(BaseModel):
-    estimate_code: str
+    estimate_code: Optional[str] = None  # server-generated on create, ignored if supplied
     client_id: int
     order_id: Optional[int] = None
     description: Optional[str] = None

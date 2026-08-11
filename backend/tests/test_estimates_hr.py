@@ -5,12 +5,11 @@ def _login(client, test_user):
 
 def test_estimate_computes_tax_and_total(client, test_user):
     _login(client, test_user)
-    client.post("/api/clients/", json={"client_code": "CL-EST", "name": "Estimate Client"})
-    clients = client.get("/api/clients/").json()
-    client_id = next(c["id"] for c in clients if c["client_code"] == "CL-EST")
+    create_resp = client.post("/api/clients/", json={"name": "Estimate Client"})
+    client_id = create_resp.json()["id"]
 
     resp = client.post("/api/estimates/", json={
-        "estimate_code": "EST-TEST-001", "client_id": client_id,
+        "client_id": client_id,
         "material_cost": "50000.00", "labor_cost": "20000.00", "tax_percent": "18",
     })
     assert resp.status_code == 201

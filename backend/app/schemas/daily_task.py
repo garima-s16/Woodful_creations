@@ -4,7 +4,7 @@ from datetime import datetime, time
 
 
 class DailyTaskBase(BaseModel):
-    task_code: str
+    task_code: Optional[str] = None  # server-generated on create, ignored if supplied
     date: datetime
     employee_id: int
     order_id: Optional[int] = None

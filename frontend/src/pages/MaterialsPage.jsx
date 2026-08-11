@@ -90,7 +90,6 @@ function MaterialsPage() {
   ];
 
   const createFields = [
-    { name: 'material_code', label: 'Material Code', required: true, placeholder: 'MAT-011' },
     { name: 'name', label: 'Name', required: true },
     { name: 'category', label: 'Category' },
     { name: 'brand_grade', label: 'Brand/Grade' },

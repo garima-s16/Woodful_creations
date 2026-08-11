@@ -3,11 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.production_job import ProductionJob
 from app.schemas.production_job import ProductionJobCreate, ProductionJobUpdate, ProductionJobResponse
+from app.utils.id_generator import generate_unique_code
 
 router = APIRouter(prefix="/api/production-jobs", tags=["production-jobs"])
 
@@ -28,13 +30,19 @@ def list_production_jobs(order_id: Optional[int] = Query(None), machine: Optiona
 
 @router.post("/", response_model=ProductionJobResponse, status_code=201)
 def create_production_job(data: ProductionJobCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    if db.query(ProductionJob).filter(ProductionJob.job_code == data.job_code).first():
-        raise HTTPException(status_code=400, detail="Job code already exists")
-    job = ProductionJob(**data.dict())
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-    return job
+    payload = data.dict(exclude={"job_code"})
+    for _ in range(5):
+        code = generate_unique_code(db, ProductionJob, "job_code", "JOB-")
+        job = ProductionJob(**payload, job_code=code)
+        db.add(job)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(job)
+        return job
+    raise HTTPException(status_code=500, detail="Unable to generate a unique job code, please try again")
 
 
 @router.put("/{job_id}", response_model=ProductionJobResponse)

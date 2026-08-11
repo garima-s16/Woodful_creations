@@ -3,11 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.daily_task import DailyTask
 from app.schemas.daily_task import DailyTaskCreate, DailyTaskUpdate, DailyTaskResponse
+from app.utils.id_generator import generate_unique_code
 
 router = APIRouter(prefix="/api/daily-tasks", tags=["daily-tasks"])
 
@@ -30,13 +32,19 @@ def list_daily_tasks(employee_id: Optional[int] = Query(None), order_id: Optiona
 
 @router.post("/", response_model=DailyTaskResponse, status_code=201)
 def create_daily_task(data: DailyTaskCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    if db.query(DailyTask).filter(DailyTask.task_code == data.task_code).first():
-        raise HTTPException(status_code=400, detail="Task code already exists")
-    task = DailyTask(**data.dict())
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return task
+    payload = data.dict(exclude={"task_code"})
+    for _ in range(5):
+        code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
+        task = DailyTask(**payload, task_code=code)
+        db.add(task)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(task)
+        return task
+    raise HTTPException(status_code=500, detail="Unable to generate a unique task code, please try again")
 
 
 @router.get("/{task_id}", response_model=DailyTaskResponse)

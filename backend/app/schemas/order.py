@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class OrderBase(BaseModel):
-    order_code: str
+    order_code: Optional[str] = None  # server-generated on create, ignored if supplied
     client_id: int
     project_type: Optional[str] = None
     order_date: datetime

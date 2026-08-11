@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class SupplierBase(BaseModel):
-    supplier_code: str
+    supplier_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
     category: Optional[str] = None
     contact_person: Optional[str] = None

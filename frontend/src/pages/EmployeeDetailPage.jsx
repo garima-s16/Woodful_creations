@@ -197,7 +197,6 @@ function EmployeeDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'task_code', label: 'Task Code', required: true, placeholder: 'TSK-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'order_id', label: 'Project (Order)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
             { name: 'task_description', label: 'Task Description', required: true, type: 'textarea' },
@@ -214,7 +213,6 @@ function EmployeeDetailPage() {
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
           fields={[
-            { name: 'job_code', label: 'Job Code', required: true, placeholder: 'JOB-011' },
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'order_id', label: 'Project (Order)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
             { name: 'machine', label: 'Machine' },

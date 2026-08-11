@@ -70,7 +70,6 @@ function EmployeesPage() {
   ];
 
   const createFields = [
-    { name: 'employee_code', label: 'Employee Code', required: true, placeholder: 'EMP-006', section: 'Personal' },
     { name: 'name', label: 'Name', required: true, section: 'Personal' },
     { name: 'phone', label: 'Phone', section: 'Personal' },
     { name: 'department', label: 'Department', section: 'Employment' },

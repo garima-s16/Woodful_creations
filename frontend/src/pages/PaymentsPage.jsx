@@ -79,7 +79,6 @@ function PaymentsPage() {
 
   const createFields = [
     { name: 'order_id', label: 'Order', type: 'select', required: true, section: 'Client & Order', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
-    { name: 'receipt_code', label: 'Receipt Code', required: true, placeholder: 'RCPT-008', section: 'Client & Order' },
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Client & Order' },
     { name: 'payment_type', label: 'Payment Type', type: 'select', required: true, section: 'Payment Details', options: [
       { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },

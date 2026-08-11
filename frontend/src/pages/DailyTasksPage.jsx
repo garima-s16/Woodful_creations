@@ -81,7 +81,6 @@ function DailyTasksPage() {
   ];
 
   const fields = [
-    { name: 'task_code', label: 'Task Code', required: true, placeholder: 'TSK-011', section: 'Project' },
     { name: 'order_id', label: 'Project (Order)', type: 'select', section: 'Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'employee_id', label: 'Employee', type: 'select', required: true, section: 'Assignment', options: employees.map((e) => ({ value: e.id, label: e.name })) },
     { name: 'checked_by', label: 'Checked By', section: 'Assignment' },

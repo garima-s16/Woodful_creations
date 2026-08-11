@@ -53,7 +53,6 @@ function PurchasesPage() {
 
   const fields = [
     { name: 'supplier_id', label: 'Supplier', type: 'select', required: true, section: 'Supplier & Invoice', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
-    { name: 'purchase_code', label: 'Purchase Code', required: true, placeholder: 'PUR-008', section: 'Supplier & Invoice' },
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Supplier & Invoice' },
     { name: 'material_id', label: 'Material', type: 'select', required: true, section: 'Material', options: materials.map((m) => ({ value: m.id, label: m.name })) },
     { name: 'quantity', label: 'Quantity', type: 'number', required: true, section: 'Quantity & Cost' },

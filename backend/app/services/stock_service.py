@@ -12,6 +12,7 @@ from app.models.purchase import Purchase
 from app.models.issue import Issue
 from app.schemas.purchase import PurchaseCreate
 from app.schemas.issue import IssueCreate
+from app.utils.id_generator import generate_unique_code
 
 
 class StockService:
@@ -22,16 +23,14 @@ class StockService:
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
 
-        existing = db.query(Purchase).filter(Purchase.purchase_code == data.purchase_code).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Purchase code already exists")
+        purchase_code = generate_unique_code(db, Purchase, "purchase_code", "PUR-")
 
         taxable_value = (data.quantity * data.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         gst_amount = (taxable_value * data.gst_percent / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         invoice_total = taxable_value + gst_amount
 
         purchase = Purchase(
-            purchase_code=data.purchase_code, date=data.date, supplier_id=data.supplier_id,
+            purchase_code=purchase_code, date=data.date, supplier_id=data.supplier_id,
             material_id=data.material_id, quantity=data.quantity, unit=data.unit, rate=data.rate,
             taxable_value=taxable_value, gst_percent=data.gst_percent, gst_amount=gst_amount,
             invoice_total=invoice_total, payment_status=data.payment_status,
@@ -58,9 +57,7 @@ class StockService:
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
 
-        existing = db.query(Issue).filter(Issue.issue_code == data.issue_code).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Issue code already exists")
+        issue_code = generate_unique_code(db, Issue, "issue_code", "ISS-")
 
         qty_int = int(data.quantity_issued)
         if qty_int > (material.current_stock or 0):
@@ -70,7 +67,7 @@ class StockService:
             )
 
         issue = Issue(
-            issue_code=data.issue_code, date=data.date, order_id=data.order_id,
+            issue_code=issue_code, date=data.date, order_id=data.order_id,
             material_id=data.material_id, quantity_issued=data.quantity_issued, unit=data.unit,
             issued_to=data.issued_to, department=data.department, purpose=data.purpose,
             approved_by=data.approved_by, remarks=data.remarks,

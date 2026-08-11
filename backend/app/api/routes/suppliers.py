@@ -2,11 +2,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse
+from app.utils.id_generator import generate_unique_code
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -23,13 +25,19 @@ def list_suppliers(category: Optional[str] = Query(None), db: Session = Depends(
 @router.post("/", response_model=SupplierResponse, status_code=201)
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db),
                      auth=Depends(require_role("master", "manager"))):
-    if db.query(Supplier).filter(Supplier.supplier_code == data.supplier_code).first():
-        raise HTTPException(status_code=400, detail="Supplier code already exists")
-    supplier = Supplier(**data.dict())
-    db.add(supplier)
-    db.commit()
-    db.refresh(supplier)
-    return supplier
+    payload = data.dict(exclude={"supplier_code"})
+    for _ in range(5):
+        code = generate_unique_code(db, Supplier, "supplier_code", "SUP-")
+        supplier = Supplier(**payload, supplier_code=code)
+        db.add(supplier)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(supplier)
+        return supplier
+    raise HTTPException(status_code=500, detail="Unable to generate a unique supplier code, please try again")
 
 
 @router.get("/{supplier_id}", response_model=SupplierResponse)

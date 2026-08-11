@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class EmployeeBase(BaseModel):
-    employee_code: str
+    employee_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
     department: Optional[str] = None
     phone: Optional[str] = None

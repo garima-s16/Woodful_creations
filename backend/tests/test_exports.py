@@ -11,12 +11,11 @@ def _login(client, test_user):
 
 
 def _seed_minimal_order(client):
-    client.post("/api/clients/", json={"client_code": "CL-EXP", "name": "Export Test Client"})
-    clients = client.get("/api/clients/").json()
-    client_id = next(c["id"] for c in clients if c["client_code"] == "CL-EXP")
+    create_resp = client.post("/api/clients/", json={"name": "Export Test Client"})
+    client_id = create_resp.json()["id"]
 
     resp = client.post("/api/orders/", json={
-        "order_code": "WC-EXP-001", "client_id": client_id, "project_type": "TV Unit",
+        "client_id": client_id, "project_type": "TV Unit",
         "order_date": "2026-08-01T00:00:00", "order_value": "50000.00", "advance": "10000.00",
     })
     return resp.json()

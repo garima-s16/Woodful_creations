@@ -66,7 +66,6 @@ function ClientsPage() {
   ];
 
   const fields = [
-    { name: 'client_code', label: 'Client Code', required: true, placeholder: 'CL-006', section: 'Client Identity' },
     { name: 'name', label: 'Name', required: true, section: 'Client Identity' },
     { name: 'phone', label: 'Phone', section: 'Contact Details' },
     { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },

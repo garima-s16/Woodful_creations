@@ -80,7 +80,6 @@ function ProductionJobsPage() {
   ];
 
   const createFields = [
-    { name: 'job_code', label: 'Job Code', required: true, placeholder: 'JOB-011', section: 'Job & Machine' },
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Job & Machine' },
     { name: 'machine', label: 'Machine', section: 'Job & Machine' },
     { name: 'operation', label: 'Operation', section: 'Job & Machine' },
