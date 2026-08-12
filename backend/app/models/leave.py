@@ -8,6 +8,7 @@ class Leave(BaseModel):
     Leave), SL (Sick Leave), matching standard Indian HR leave categories."""
     __tablename__ = "leaves"
 
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     leave_type = Column(String(20), nullable=False)  # PL / CL / SL
     start_date = Column(DateTime, nullable=False, index=True)

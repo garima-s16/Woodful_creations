@@ -16,11 +16,52 @@ def test_leave_request_and_default_status(client, test_user):
 
     resp = client.post("/api/leaves/", json={
         "employee_id": employee_id, "leave_type": "CL",
-        "start_date": "2026-08-20T00:00:00", "end_date": "2026-08-21T00:00:00", "days": "2",
+        "start_date": "2026-08-20T00:00:00", "end_date": "2026-08-21T00:00:00",
         "reason": "Family function",
     })
     assert resp.status_code == 201
     assert resp.json()["status"] == "Pending"
+    assert resp.json()["days"] == "2"
+
+
+def test_leave_days_is_1_when_from_equals_to(client, test_user):
+    _login(client, test_user)
+    employee_id = _create_employee(client)
+
+    resp = client.post("/api/leaves/", json={
+        "employee_id": employee_id, "leave_type": "SL",
+        "start_date": "2026-08-11T00:00:00", "end_date": "2026-08-11T00:00:00",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["days"] == "1"
+
+
+def test_leave_days_inclusive_multi_day(client, test_user):
+    _login(client, test_user)
+    employee_id = _create_employee(client)
+
+    resp = client.post("/api/leaves/", json={
+        "employee_id": employee_id, "leave_type": "PL",
+        "start_date": "2026-08-11T00:00:00", "end_date": "2026-08-13T00:00:00",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["days"] == "3"
+
+
+def test_leave_days_from_client_is_ignored(client, test_user):
+    """Even if a caller (or a stale frontend build) sends a garbage `days`
+    value, the server must compute its own - never trust the client for a
+    number that must never be 0/negative/NaN."""
+    _login(client, test_user)
+    employee_id = _create_employee(client)
+
+    resp = client.post("/api/leaves/", json={
+        "employee_id": employee_id, "leave_type": "CL",
+        "start_date": "2026-08-11T00:00:00", "end_date": "2026-08-11T00:00:00",
+        "days": "-1",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["days"] == "1"
 
 
 def test_leave_rejects_end_before_start(client, test_user):
@@ -29,7 +70,7 @@ def test_leave_rejects_end_before_start(client, test_user):
 
     resp = client.post("/api/leaves/", json={
         "employee_id": employee_id, "leave_type": "SL",
-        "start_date": "2026-08-20T00:00:00", "end_date": "2026-08-18T00:00:00", "days": "1",
+        "start_date": "2026-08-20T00:00:00", "end_date": "2026-08-18T00:00:00",
     })
     assert resp.status_code == 400
 
@@ -40,7 +81,7 @@ def test_leave_approval_updates_status(client, test_user):
 
     create = client.post("/api/leaves/", json={
         "employee_id": employee_id, "leave_type": "PL",
-        "start_date": "2026-09-01T00:00:00", "end_date": "2026-09-02T00:00:00", "days": "2",
+        "start_date": "2026-09-01T00:00:00", "end_date": "2026-09-02T00:00:00",
     })
     leave_id = create.json()["id"]
 

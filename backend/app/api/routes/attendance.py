@@ -3,11 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.attendance import Attendance
 from app.schemas.attendance import AttendanceCreate, AttendanceUpdate, AttendanceResponse
+from app.utils.id_generator import generate_short_id
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -25,11 +27,17 @@ def list_attendance(employee_id: Optional[int] = Query(None), date: Optional[dat
 
 @router.post("/", response_model=AttendanceResponse, status_code=201)
 def mark_attendance(data: AttendanceCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    record = Attendance(**data.dict())
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-    return record
+    for _ in range(5):
+        record = Attendance(**data.dict(), business_id=generate_short_id())
+        db.add(record)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(record)
+        return record
+    raise HTTPException(status_code=500, detail="Unable to generate a unique business ID, please try again")
 
 
 @router.put("/{attendance_id}", response_model=AttendanceResponse)

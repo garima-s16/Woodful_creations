@@ -1,7 +1,20 @@
 import React from 'react';
 import './Form.css';
 
-function FieldInput({ field, value, error, onChange }) {
+function FieldInput({ field, value, error, onChange, formData }) {
+  if (field.type === 'computed') {
+    // Read-only, derived from other field values (e.g. leave days from
+    // start/end date) - never user-editable, so it can never end up
+    // 0/negative/out of sync with the dates it's computed from.
+    return (
+      <input
+        type="text" id={field.name} name={field.name}
+        value={field.compute ? field.compute(formData) : (value || '')}
+        readOnly disabled
+        className="form-input form-input-readonly"
+      />
+    );
+  }
   if (field.type === 'textarea') {
     return (
       <textarea
@@ -39,7 +52,7 @@ function FieldGroup({ field, formData, errors, handleChange }) {
       <label htmlFor={field.name} className="form-label">
         {field.label} {field.required && <span className="required">*</span>}
       </label>
-      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} />
+      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} formData={formData} />
       {field.hint && <span className="form-hint">{field.hint}</span>}
       {errors[field.name] && <span className="error-message">{errors[field.name]}</span>}
     </div>

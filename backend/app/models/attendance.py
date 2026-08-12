@@ -8,6 +8,7 @@ class Attendance(BaseModel):
     """Employee Attendance & Overtime."""
     __tablename__ = "attendance"
 
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     date = Column(DateTime, nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     in_time = Column(DateTime, nullable=True)
