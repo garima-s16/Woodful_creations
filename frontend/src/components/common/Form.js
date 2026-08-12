@@ -30,7 +30,7 @@ function FieldInput({ field, value, error, onChange, formData }) {
         id={field.name} name={field.name} value={value || ''} onChange={onChange}
         className={`form-input ${error ? 'error' : ''}`}
       >
-        <option value="">Select {field.label}</option>
+        <option value="">Select {resolveLabel(field, formData)}</option>
         {field.options?.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
@@ -40,17 +40,23 @@ function FieldInput({ field, value, error, onChange, formData }) {
   return (
     <input
       type={field.type || 'text'} id={field.name} name={field.name} value={value || ''}
-      onChange={onChange} placeholder={field.placeholder}
+      onChange={onChange} placeholder={field.placeholder} maxLength={field.maxLength}
       className={`form-input ${error ? 'error' : ''}`}
     />
   );
 }
 
+function resolveLabel(field, formData) {
+  return typeof field.label === 'function' ? field.label(formData) : field.label;
+}
+
 function FieldGroup({ field, formData, errors, handleChange }) {
+  if (field.showIf && !field.showIf(formData)) return null;
+  const label = resolveLabel(field, formData);
   return (
     <div className="form-group">
       <label htmlFor={field.name} className="form-label">
-        {field.label} {field.required && <span className="required">*</span>}
+        {label} {field.required && <span className="required">*</span>}
       </label>
       <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} formData={formData} />
       {field.hint && <span className="form-hint">{field.hint}</span>}
@@ -99,8 +105,9 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
   const validate = (fieldsToCheck) => {
     const newErrors = {};
     fieldsToCheck.forEach((field) => {
+      if (field.showIf && !field.showIf(formData)) return;
       if (field.required && !formData[field.name]) {
-        newErrors[field.name] = `${field.label} is required`;
+        newErrors[field.name] = `${resolveLabel(field, formData)} is required`;
       }
     });
     return newErrors;
@@ -169,9 +176,9 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
           {sections.map((s) => (
             <div key={s.name} className="review-section">
               <h4>{s.name}</h4>
-              {s.fields.map((f) => (
+              {s.fields.filter((f) => !f.showIf || f.showIf(formData)).map((f) => (
                 <div key={f.name} className="review-row">
-                  <span className="review-label">{f.label}</span>
+                  <span className="review-label">{resolveLabel(f, formData)}</span>
                   <span className="review-value">
                     {f.type === 'select'
                       ? (f.options?.find((o) => String(o.value) === String(formData[f.name]))?.label || formData[f.name] || '-')

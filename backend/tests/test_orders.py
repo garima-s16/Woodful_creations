@@ -1,3 +1,4 @@
+import re
 def _login(client, test_user):
     resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
     assert resp.status_code == 200
@@ -148,3 +149,64 @@ def test_advance_is_not_lost_when_a_payment_is_recorded_afterward(client, test_u
     # The advance (30000) must still be reflected, not just the new payment (20000).
     assert order_after["total_received"] == "50000.00"
     assert order_after["balance"] == "50000.00"
+
+
+def test_cash_payment_gets_auto_generated_reference(client, test_user):
+    """Cash payments have no external transaction to reference, so the
+    user must not have to invent one - the backend generates it, per
+    the specified CASH-YYYYMMDD-NNN format."""
+    _login2(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Cash Reference Client"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
+    }).json()
+
+    resp = client.post("/api/payments/", json={
+        "date": "2026-08-12T00:00:00", "order_id": order["id"],
+        "payment_type": "Advance", "payment_mode": "Cash", "amount": "5000.00",
+    })
+    assert resp.status_code == 201
+    reference = resp.json()["reference_number"]
+    assert reference == "CASH-20260812-001"
+
+    # Receipt ID (business_id) must be the real 10-char ID, and distinct
+    # from the cash reference - these are two different identifiers.
+    assert re.match(r"^[A-Z0-9]{10}$", resp.json()["business_id"])
+    assert resp.json()["business_id"] != reference
+
+
+def test_cash_payment_reference_increments_per_day(client, test_user):
+    _login2(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Cash Increment Client"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
+    }).json()
+
+    refs = []
+    for i in range(3):
+        resp = client.post("/api/payments/", json={
+            "date": "2026-08-12T00:00:00", "order_id": order["id"],
+            "payment_type": "Advance", "payment_mode": "Cash", "amount": "1000.00",
+        })
+        refs.append(resp.json()["reference_number"])
+
+    assert refs == ["CASH-20260812-001", "CASH-20260812-002", "CASH-20260812-003"]
+
+
+def test_non_cash_payment_keeps_user_supplied_reference(client, test_user):
+    """UPI/Bank/Card modes have a real external transaction reference the
+    system cannot know on its own - the user-supplied value must be
+    preserved exactly, not overwritten."""
+    _login2(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "UPI Reference Client"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
+    }).json()
+
+    resp = client.post("/api/payments/", json={
+        "date": "2026-08-12T00:00:00", "order_id": order["id"],
+        "payment_type": "Advance", "payment_mode": "UPI", "amount": "2000.00",
+        "reference_number": "UPI-TXN-88213347",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["reference_number"] == "UPI-TXN-88213347"

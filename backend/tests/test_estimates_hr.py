@@ -58,3 +58,30 @@ def test_chat_endpoint_answers_stock_question(client, test_user):
     resp = client.post("/api/chat/", json={"message": "how is my stock looking"})
     assert resp.status_code == 200
     assert "materials" in resp.json()["response"].lower()
+
+
+def test_salary_slip_accepts_blank_optional_numeric_fields(client, test_user):
+    """Regression test for a real bug traced through the frontend: the
+    create form only defaulted 5 of 7 numeric fields to '0' before
+    sending, leaving overtime_amount and other_deductions able to reach
+    the API as an empty string if a user clicked into those fields and
+    left them blank - which Pydantic rejects as an invalid Decimal
+    (unlike an absent key, which correctly uses the schema default).
+    This sends the exact payload shape a blanked number input produces."""
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+
+    employee_id = client.post("/api/employees/", json={
+        "name": "Blank Fields Salary Employee", "monthly_salary": "18000.00",
+    }).json()["id"]
+
+    resp = client.post("/api/salary-slips/", json={
+        "employee_id": employee_id, "month": "September", "year": "2026",
+        "basic": "15000.00", "da": "2000.00", "hra": "3000.00",
+        "overtime_amount": "",  # exactly what a blanked number input sends
+        "pf_deduction": "1800.00", "tds_deduction": "0.00", "other_deductions": "",
+    })
+    assert resp.status_code == 201
+    assert float(resp.json()["overtime_amount"]) == 0.0
+    assert float(resp.json()["other_deductions"]) == 0.0
+    assert float(resp.json()["net_salary"]) == 18200.0
