@@ -1,6 +1,6 @@
 # Setup
 
-Two ways to run this: local dev scripts (fastest for day-to-day work) or Docker Compose (closer to production). See `REQUIREMENTS.md` for versions.
+Two ways to run this: local dev scripts (fastest for day-to-day work) or Docker Compose (closer to production).
 
 ## Option A — Local dev scripts
 

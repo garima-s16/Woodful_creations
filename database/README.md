@@ -32,6 +32,6 @@ sqlite3 woodful.db .schema > /tmp/current_schema.sql
 
 ## Setting up the database
 
-See the root `README.md` or `SETUP_GUIDE.md` for the full setup
+See the root `README.md` or `SETUP.md` for the full setup
 sequence: migrations, then bootstrapping the first administrator via
 `backend/scripts/setup_local.py`.

@@ -15,7 +15,7 @@ Quick version: `./setup.sh && ./start_all.sh` (or the `.bat` equivalents on Wind
 
 ## Full project docs
 
-See [`PROJECT_DOCUMENTATION.md`](PROJECT_DOCUMENTATION.md) for the complete feature list, tech stack, and a full code tree with notes on where to fix what.
+See [`PROJECT_DOCUMENTATION.md`](PROJECT_DOCUMENTATION.md) for the business context, how the core workflow is modeled, where the project currently stands, and a full code tree with notes on where to fix what. Start there if you're new to the team.
 
 ## Database
 
