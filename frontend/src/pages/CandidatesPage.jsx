@@ -60,13 +60,9 @@ function CandidatesPage() {
   const fields = [
     { name: 'name', label: 'Name', required: true, section: 'Candidate Identity' },
     { name: 'position', label: 'Position', section: 'Candidate Identity' },
-    { name: 'experience', label: 'Experience', type: 'select', section: 'Candidate Identity', options: [
-      { value: 'Fresher', label: 'Fresher' }, { value: '< 1 year', label: '< 1 year' },
-      { value: '1-2 years', label: '1-2 years' }, { value: '2-5 years', label: '2-5 years' },
-      { value: '5-10 years', label: '5-10 years' }, { value: '10+ years', label: '10+ years' },
-    ] },
+    { name: 'experience', label: 'Experience', section: 'Candidate Identity' },
     { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },
-    { name: 'phone', label: 'Phone', section: 'Contact Details', placeholder: '10-digit mobile number', maxLength: 10 },
+    { name: 'phone', label: 'Phone', section: 'Contact Details' },
     { name: 'resume_url', label: 'Resume URL', section: 'Application' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Application' },
   ];

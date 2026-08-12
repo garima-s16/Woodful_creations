@@ -12,7 +12,6 @@
 }
 .form-input:focus { outline: none; border-color: var(--color-gold); box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15); }
 .form-input.error { border-color: var(--danger); }
-.form-input-readonly { background: var(--light-bg, #f5f5f5); color: var(--text-secondary, #666); cursor: not-allowed; }
 
 .form-hint { font-size: 0.75rem; color: var(--text-secondary); }
 .error-message { font-size: 0.78rem; color: var(--danger); }

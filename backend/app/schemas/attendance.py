@@ -27,7 +27,6 @@ class AttendanceUpdate(BaseModel):
 
 class AttendanceResponse(AttendanceBase):
     id: int
-    business_id: str
     working_hours: float
     overtime_hours: float
     created_at: datetime

@@ -7,7 +7,6 @@ from app.models.base import BaseModel
 class Interview(BaseModel):
     __tablename__ = "interviews"
 
-    business_id = Column(String(10), unique=True, index=True, nullable=True)
     candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=False, index=True)
     round = Column(String(50), nullable=True)
     scheduled_date = Column(DateTime, nullable=False, index=True)

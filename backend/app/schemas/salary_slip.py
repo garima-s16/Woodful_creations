@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
@@ -15,19 +15,6 @@ class SalarySlipBase(BaseModel):
     pf_deduction: Decimal = Decimal("0")
     tds_deduction: Decimal = Decimal("0")
     other_deductions: Decimal = Decimal("0")
-
-    @field_validator("basic", "da", "hra", "overtime_amount", "pf_deduction", "tds_deduction",
-                      "other_deductions", mode="before")
-    @classmethod
-    def blank_string_means_zero(cls, v):
-        # An absent key already falls back to the Decimal("0") default
-        # above - this handles the other real case, where the key IS
-        # present but empty (e.g. a number input the user clicked into
-        # and left blank), which Pydantic would otherwise reject as an
-        # invalid Decimal rather than silently use the default.
-        if v == "" or v is None:
-            return "0"
-        return v
 
 
 class SalarySlipCreate(SalarySlipBase):

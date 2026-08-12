@@ -2,13 +2,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import require_role
 from app.models.interview import Interview
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse
-from app.utils.id_generator import generate_short_id
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -25,17 +23,11 @@ def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Dep
 @router.post("/", response_model=InterviewResponse, status_code=201)
 def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db),
                         auth=Depends(require_role("master", "manager"))):
-    for _ in range(5):
-        interview = Interview(**data.dict(), business_id=generate_short_id())
-        db.add(interview)
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
-            continue
-        db.refresh(interview)
-        return interview
-    raise HTTPException(status_code=500, detail="Unable to generate a unique business ID, please try again")
+    interview = Interview(**data.dict())
+    db.add(interview)
+    db.commit()
+    db.refresh(interview)
+    return interview
 
 
 @router.put("/{interview_id}", response_model=InterviewResponse)

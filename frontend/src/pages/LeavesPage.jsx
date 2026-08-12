@@ -32,19 +32,13 @@ function LeavesPage() {
   const handleCreate = async (formData) => {
     setLoading(true);
     setError('');
-    const start = new Date(formData.start_date);
-    const end = new Date(formData.end_date);
-    if (end < start) {
-      setError('To date cannot be before From date');
-      setLoading(false);
-      return;
-    }
     try {
       await leavesAPI.create({
         ...formData,
         employee_id: Number(formData.employee_id),
         start_date: new Date(formData.start_date).toISOString(),
         end_date: new Date(formData.end_date).toISOString(),
+        days: formData.days || '1',
       });
       setShowAdd(false);
       load(statusFilter);
@@ -90,20 +84,7 @@ function LeavesPage() {
     ] },
     { name: 'start_date', label: 'From', type: 'date', required: true },
     { name: 'end_date', label: 'To', type: 'date', required: true },
-    {
-      name: 'days', label: 'Number of Days', type: 'computed',
-      hint: 'Calculated automatically from From/To (inclusive)',
-      compute: (formData) => {
-        if (!formData.start_date || !formData.end_date) return '';
-        const start = new Date(formData.start_date);
-        const end = new Date(formData.end_date);
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
-        if (end < start) return 'Invalid: To is before From';
-        const msPerDay = 24 * 60 * 60 * 1000;
-        const days = Math.round((end - start) / msPerDay) + 1;
-        return String(days);
-      },
-    },
+    { name: 'days', label: 'Number of Days', type: 'number', required: true },
     { name: 'reason', label: 'Reason', type: 'textarea' },
   ];
 

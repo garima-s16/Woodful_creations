@@ -66,7 +66,6 @@ function PaymentsPage() {
 
   const columns = [
     { key: 'receipt_code', label: 'Receipt ID' },
-    { key: 'business_id', label: 'Business ID' },
     { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
     { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
     { key: 'payment_type', label: 'Payment Type' }, { key: 'payment_mode', label: 'Payment Mode' },
@@ -94,19 +93,7 @@ function PaymentsPage() {
       { value: 'Cash', label: 'Cash' }, { value: 'UPI', label: 'UPI' }, { value: 'Bank', label: 'Bank' }, { value: 'Credit Card', label: 'Credit Card' },
     ] },
     { name: 'amount', label: 'Amount', type: 'number', required: true, section: 'Payment Details' },
-    {
-      name: 'reference_number', section: 'Reference',
-      label: (formData) => (
-        { UPI: 'UPI Transaction ID', Bank: 'Bank Transaction Reference', 'Credit Card': 'Card Transaction Reference' }[formData?.payment_mode] || 'Reference No.'
-      ),
-      showIf: (formData) => formData.payment_mode && formData.payment_mode !== 'Cash',
-    },
-    {
-      name: 'cash_reference_note', type: 'computed', section: 'Reference',
-      label: 'Cash Reference', hint: 'Generated automatically once this payment is recorded.',
-      compute: () => 'Auto-generated on save',
-      showIf: (formData) => formData.payment_mode === 'Cash',
-    },
+    { name: 'reference_number', label: 'Reference No.', section: 'Reference' },
     { name: 'received_by', label: 'Received By', section: 'Reference' },
   ];
 

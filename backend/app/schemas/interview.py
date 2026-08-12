@@ -22,7 +22,6 @@ class InterviewUpdate(BaseModel):
 
 class InterviewResponse(InterviewBase):
     id: int
-    business_id: str
     status: str
     feedback: Optional[str]
     created_at: datetime

@@ -22,34 +22,10 @@ class OrderService:
 
         receipt_code = generate_unique_code(db, Payment, "receipt_code", "RCPT-")
 
-        # Receipt ID (business_id) and the payment's own reference number
-        # are two different things - the receipt ID identifies the
-        # payment record itself; the reference is what the money moved
-        # through. For Cash there is no external transaction reference
-        # to capture, so the user must not have to invent one - generate
-        # a real, unique, dated one instead of leaving it blank or
-        # accepting whatever text was typed. Other modes keep whatever
-        # real transaction/UPI/cheque reference the user supplied - the
-        # system has no way to know that value on its own.
-        reference_number = data.reference_number
-        if data.payment_mode == "Cash":
-            date_str = data.date.strftime("%Y%m%d")
-            day_count = db.query(Payment).filter(
-                Payment.reference_number.like(f"CASH-{date_str}-%")
-            ).count()
-            reference_number = None
-            for attempt in range(10):
-                candidate = f"CASH-{date_str}-{day_count + 1 + attempt:03d}"
-                if not db.query(Payment).filter(Payment.reference_number == candidate).first():
-                    reference_number = candidate
-                    break
-            if reference_number is None:
-                reference_number = f"CASH-{date_str}-{generate_short_id()[:6]}"
-
         payment = Payment(
             receipt_code=receipt_code, business_id=generate_short_id(), date=data.date, order_id=data.order_id,
             payment_type=data.payment_type, payment_mode=data.payment_mode, amount=data.amount,
-            reference_number=reference_number, received_by=data.received_by, remarks=data.remarks,
+            reference_number=data.reference_number, received_by=data.received_by, remarks=data.remarks,
         )
         db.add(payment)
         db.flush()  # so order.payments includes this new row before recompute

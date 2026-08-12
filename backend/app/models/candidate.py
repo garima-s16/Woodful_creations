@@ -6,7 +6,6 @@ from app.models.base import BaseModel
 class Candidate(BaseModel):
     __tablename__ = "candidates"
 
-    business_id = Column(String(10), unique=True, index=True, nullable=True)
     name = Column(String(255), nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=True)
     phone = Column(String(20), nullable=True)

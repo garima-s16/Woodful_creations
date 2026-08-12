@@ -1,20 +1,7 @@
 import React from 'react';
 import './Form.css';
 
-function FieldInput({ field, value, error, onChange, formData }) {
-  if (field.type === 'computed') {
-    // Read-only, derived from other field values (e.g. leave days from
-    // start/end date) - never user-editable, so it can never end up
-    // 0/negative/out of sync with the dates it's computed from.
-    return (
-      <input
-        type="text" id={field.name} name={field.name}
-        value={field.compute ? field.compute(formData) : (value || '')}
-        readOnly disabled
-        className="form-input form-input-readonly"
-      />
-    );
-  }
+function FieldInput({ field, value, error, onChange }) {
   if (field.type === 'textarea') {
     return (
       <textarea
@@ -30,7 +17,7 @@ function FieldInput({ field, value, error, onChange, formData }) {
         id={field.name} name={field.name} value={value || ''} onChange={onChange}
         className={`form-input ${error ? 'error' : ''}`}
       >
-        <option value="">Select {resolveLabel(field, formData)}</option>
+        <option value="">Select {field.label}</option>
         {field.options?.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
@@ -40,25 +27,19 @@ function FieldInput({ field, value, error, onChange, formData }) {
   return (
     <input
       type={field.type || 'text'} id={field.name} name={field.name} value={value || ''}
-      onChange={onChange} placeholder={field.placeholder} maxLength={field.maxLength}
+      onChange={onChange} placeholder={field.placeholder}
       className={`form-input ${error ? 'error' : ''}`}
     />
   );
 }
 
-function resolveLabel(field, formData) {
-  return typeof field.label === 'function' ? field.label(formData) : field.label;
-}
-
 function FieldGroup({ field, formData, errors, handleChange }) {
-  if (field.showIf && !field.showIf(formData)) return null;
-  const label = resolveLabel(field, formData);
   return (
     <div className="form-group">
       <label htmlFor={field.name} className="form-label">
-        {label} {field.required && <span className="required">*</span>}
+        {field.label} {field.required && <span className="required">*</span>}
       </label>
-      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} formData={formData} />
+      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} />
       {field.hint && <span className="form-hint">{field.hint}</span>}
       {errors[field.name] && <span className="error-message">{errors[field.name]}</span>}
     </div>
@@ -105,9 +86,8 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
   const validate = (fieldsToCheck) => {
     const newErrors = {};
     fieldsToCheck.forEach((field) => {
-      if (field.showIf && !field.showIf(formData)) return;
       if (field.required && !formData[field.name]) {
-        newErrors[field.name] = `${resolveLabel(field, formData)} is required`;
+        newErrors[field.name] = `${field.label} is required`;
       }
     });
     return newErrors;
@@ -176,9 +156,9 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
           {sections.map((s) => (
             <div key={s.name} className="review-section">
               <h4>{s.name}</h4>
-              {s.fields.filter((f) => !f.showIf || f.showIf(formData)).map((f) => (
+              {s.fields.map((f) => (
                 <div key={f.name} className="review-row">
-                  <span className="review-label">{resolveLabel(f, formData)}</span>
+                  <span className="review-label">{f.label}</span>
                   <span className="review-value">
                     {f.type === 'select'
                       ? (f.options?.find((o) => String(o.value) === String(formData[f.name]))?.label || formData[f.name] || '-')

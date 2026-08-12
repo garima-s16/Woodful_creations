@@ -29,9 +29,7 @@ function SalarySlipsPage() {
         ...formData,
         employee_id: Number(formData.employee_id),
         basic: formData.basic || '0', da: formData.da || '0', hra: formData.hra || '0',
-        overtime_amount: formData.overtime_amount || '0',
         pf_deduction: formData.pf_deduction || '0', tds_deduction: formData.tds_deduction || '0',
-        other_deductions: formData.other_deductions || '0',
       });
       setShowAdd(false);
       load();
