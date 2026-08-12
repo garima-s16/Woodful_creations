@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.material import Material
 from app.models.purchase import Purchase
 from app.models.issue import Issue
+from app.models.supplier_material import SupplierMaterial
 from app.schemas.purchase import PurchaseCreate
 from app.schemas.issue import IssueCreate
 from app.utils.id_generator import generate_unique_code, generate_short_id
@@ -46,6 +47,18 @@ class StockService:
         if material.current_stock:
             material.average_rate = (new_value / Decimal(str(material.current_stock))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         db.add(material)
+
+        # If this supplier is already linked to this material via
+        # SupplierMaterial, keep its last_purchase_price current - this
+        # is what makes that field real, not a value the user has to
+        # remember to update by hand. Doesn't create a new link if one
+        # doesn't exist yet, since that's a separate, deliberate action.
+        link = db.query(SupplierMaterial).filter(
+            SupplierMaterial.supplier_id == data.supplier_id, SupplierMaterial.material_id == data.material_id
+        ).first()
+        if link:
+            link.last_purchase_price = data.rate
+            db.add(link)
 
         db.commit()
         db.refresh(purchase)

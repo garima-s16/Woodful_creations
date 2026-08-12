@@ -20,3 +20,4 @@ class Supplier(BaseModel):
 
     materials = relationship("Material", back_populates="primary_supplier")
     purchases = relationship("Purchase", back_populates="supplier")
+    supplier_materials = relationship("SupplierMaterial", back_populates="supplier", cascade="all, delete-orphan")

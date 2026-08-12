@@ -8,7 +8,11 @@ from app.models.setting import (
 )
 
 from app.models.supplier import Supplier
+from app.models.location import Location
+from app.models.material_category import MaterialCategory, MaterialSubcategory
+from app.models.material_attribute import MaterialAttributeDefinition, MaterialAttributeValue
 from app.models.material import Material
+from app.models.supplier_material import SupplierMaterial
 from app.models.purchase import Purchase
 from app.models.issue import Issue
 
@@ -38,7 +42,8 @@ __all__ = [
     "Unit", "MaterialCategory", "StockStatus", "StockPaymentStatus", "Location", "SupplierTerm",
     "Department", "TaskStatus", "AttendanceStatus", "Machine",
     "ProjectStatus", "Priority", "PaymentMode", "LeadSource", "ProjectType", "ExpenseCategory",
-    "Supplier", "Material", "Purchase", "Issue",
+    "Supplier", "Material", "MaterialCategory", "MaterialSubcategory", "SupplierMaterial", "Location",
+    "MaterialAttributeDefinition", "MaterialAttributeValue", "Purchase", "Issue",
     "Client", "ClientActivity", "Order", "OrderItem", "Payment", "ProjectExpense", "Estimate", "EstimateLineItem",
     "Employee", "Attendance", "Leave", "DailyTask", "ProductionJob", "SalarySlip",
     "Candidate", "Interview",

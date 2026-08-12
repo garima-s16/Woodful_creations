@@ -2,6 +2,9 @@ from app.api.routes import auth
 from app.api.routes import settings
 from app.api.routes import suppliers
 from app.api.routes import materials
+from app.api.routes import material_categories
+from app.api.routes import supplier_materials
+from app.api.routes import locations
 from app.api.routes import purchases
 from app.api.routes import issues
 from app.api.routes import clients
@@ -30,6 +33,9 @@ all_routers = [
     settings.router,
     suppliers.router,
     materials.router,
+    material_categories.router,
+    supplier_materials.router,
+    locations.router,
     purchases.router,
     issues.router,
     clients.router,
