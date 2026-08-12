@@ -20,15 +20,17 @@ function ClientsPage() {
   const [editingClient, setEditingClient] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = (searchTerm, pageNum = 1) => {
     const offset = (pageNum - 1) * PAGE_SIZE;
     const params = { limit: PAGE_SIZE, offset };
     if (searchTerm) params.search = searchTerm;
+    setPageLoading(true);
     clientsAPI.list(params).then((res) => {
       setClients(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    });
+    }).finally(() => setPageLoading(false));
   };
 
   useEffect(() => {
@@ -116,7 +118,7 @@ function ClientsPage() {
         />
         <button type="submit" className="btn-secondary">Search</button>
       </form>
-      <Table columns={columns} data={clients} onRowClick={(row) => navigate(`/clients/${row.id}`)} emptyMessage="No clients yet. Add your first client to get started." />
+      <Table columns={columns} data={clients} loading={pageLoading} onRowClick={(row) => navigate(`/clients/${row.id}`)} emptyMessage="No clients yet. Add your first client to get started." />
       {totalCount > PAGE_SIZE && (
         <Pagination
           currentPage={page}

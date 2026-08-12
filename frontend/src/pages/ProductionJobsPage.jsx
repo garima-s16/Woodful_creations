@@ -15,9 +15,11 @@ function ProductionJobsPage() {
   const [editingJob, setEditingJob] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    productionJobsAPI.list().then((res) => setJobs(res.data));
+    setPageLoading(true);
+    productionJobsAPI.list().then((res) => setJobs(res.data)).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
     materialsAPI.list().then((res) => setMaterials(res.data));
@@ -107,7 +109,7 @@ function ProductionJobsPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Create Production Job</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={jobs} emptyMessage="No production jobs recorded yet." />
+      <Table columns={columns} data={jobs} loading={pageLoading} emptyMessage="No production jobs recorded yet." />
 
       <Modal isOpen={showAdd} title="Create Production Job" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Job"

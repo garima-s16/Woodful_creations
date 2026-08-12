@@ -12,8 +12,12 @@ function CandidatesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
-  const load = () => candidatesAPI.list().then((res) => setCandidates(res.data)).catch(() => setError('You do not have permission to view candidates.'));
+  const load = () => {
+    setPageLoading(true);
+    candidatesAPI.list().then((res) => setCandidates(res.data)).catch(() => setError('You do not have permission to view candidates.')).finally(() => setPageLoading(false));
+  };
   useEffect(() => {
     load();
   }, []);
@@ -70,7 +74,7 @@ function CandidatesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={candidates} onRowClick={(row) => navigate(`/candidates/${row.id}`)} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />
+      <Table columns={columns} data={candidates} loading={pageLoading} onRowClick={(row) => navigate(`/candidates/${row.id}`)} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />
       <Modal isOpen={showAdd} title="Add Candidate" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Candidate" />
       </Modal>

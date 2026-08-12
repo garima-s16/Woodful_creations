@@ -12,9 +12,11 @@ function IssuesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    issuesAPI.list().then((res) => setIssues(res.data));
+    setPageLoading(true);
+    issuesAPI.list().then((res) => setIssues(res.data)).finally(() => setPageLoading(false));
     materialsAPI.list().then((res) => setMaterials(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
   };
@@ -70,7 +72,7 @@ function IssuesPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={issues} emptyMessage="No materials issued yet. Issued materials will appear here." />
+      <Table columns={columns} data={issues} loading={pageLoading} emptyMessage="No materials issued yet. Issued materials will appear here." />
       <Modal isOpen={showAdd} title="Record Issue" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Issue" />
       </Modal>

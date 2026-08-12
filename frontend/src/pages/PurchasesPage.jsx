@@ -14,9 +14,11 @@ function PurchasesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    purchasesAPI.list().then((res) => setPurchases(res.data));
+    setPageLoading(true);
+    purchasesAPI.list().then((res) => setPurchases(res.data)).finally(() => setPageLoading(false));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
     materialsAPI.list().then((res) => setMaterials(res.data));
   };
@@ -76,7 +78,7 @@ function PurchasesPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={purchases} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
+      <Table columns={columns} data={purchases} loading={pageLoading} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
       <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase"
           initialValues={{ date: today() }} />

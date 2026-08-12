@@ -52,7 +52,6 @@
   outline-offset: -2px;
 }
 
-.table-loading,
 .table-error,
 .table-empty {
   padding: var(--space-6);
@@ -63,6 +62,22 @@
   margin: var(--space-4) 0;
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.skeleton-row td { padding: 14px 16px; }
+
+.skeleton-bar {
+  display: block;
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--color-ivory-dim) 50%, var(--border-color) 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .table-error {

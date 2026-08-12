@@ -25,9 +25,11 @@ function AttendancePage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    attendanceAPI.list().then((res) => setRecords(res.data));
+    setPageLoading(true);
+    attendanceAPI.list().then((res) => setRecords(res.data)).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
   };
   useEffect(() => {
@@ -132,7 +134,7 @@ function AttendancePage() {
         </Card>
       )}
 
-      <Table columns={columns} data={filteredRecords} emptyMessage="No attendance recorded yet. Record today's attendance to get started." />
+      <Table columns={columns} data={filteredRecords} loading={pageLoading} emptyMessage="No attendance recorded yet. Record today's attendance to get started." />
       <Modal isOpen={showAdd} title="Mark Attendance" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Mark Attendance"
           initialValues={{ date: today() }} />

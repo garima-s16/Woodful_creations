@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MenuIcon, LogoutIcon, ChevronIcon } from './icons';
+import GlobalSearch from './GlobalSearch';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = { master: 'Master Admin', manager: 'Manager', user: 'Team Member' };
@@ -44,6 +45,8 @@ function Navbar({ user, onLogout, toggleSidebar }) {
             </span>
           </Link>
         </div>
+
+        <GlobalSearch />
 
         <div className="navbar-right">
           <div className="user-menu" ref={menuRef}>

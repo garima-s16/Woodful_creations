@@ -3,7 +3,28 @@ import './Table.css';
 
 const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No records yet.' }) => {
   if (loading) {
-    return <div className="table-loading">Loading...</div>;
+    return (
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.key} scope="col">{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, rowIdx) => (
+              <tr key={rowIdx} className="skeleton-row">
+                {columns.map((col) => (
+                  <td key={col.key}><span className="skeleton-bar" /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   if (error) {

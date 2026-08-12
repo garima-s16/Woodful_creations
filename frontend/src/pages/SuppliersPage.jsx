@@ -14,8 +14,12 @@ function SuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
-  const load = () => suppliersAPI.list().then((res) => setSuppliers(res.data));
+  const load = () => {
+    setPageLoading(true);
+    suppliersAPI.list().then((res) => setSuppliers(res.data)).finally(() => setPageLoading(false));
+  };
   useEffect(() => {
     load();
   }, []);
@@ -84,7 +88,7 @@ function SuppliersPage() {
       <div className="kpi-row">
         <KpiCard label="Total Suppliers" value={suppliers.length} />
       </div>
-      <Table columns={columns} data={suppliers} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No suppliers yet. Add your first supplier to get started." />
+      <Table columns={columns} data={suppliers} loading={pageLoading} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No suppliers yet. Add your first supplier to get started." />
       <Modal isOpen={showAdd} title="Add Supplier" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Supplier" />
       </Modal>

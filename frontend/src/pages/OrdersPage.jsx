@@ -29,6 +29,7 @@ function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const activeFilters = () => {
     const params = {};
@@ -39,10 +40,11 @@ function OrdersPage() {
 
   const load = (filterParams, pageNum = 1) => {
     const offset = (pageNum - 1) * PAGE_SIZE;
+    setPageLoading(true);
     ordersAPI.list({ ...filterParams, limit: PAGE_SIZE, offset }).then((res) => {
       setOrders(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    });
+    }).finally(() => setPageLoading(false));
     clientsAPI.list().then((res) => setClients(res.data));
   };
 
@@ -209,7 +211,7 @@ function OrdersPage() {
           Balance outstanding 30+ days
         </label>
       </form>
-      <Table columns={columns} data={orders} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
+      <Table columns={columns} data={orders} loading={pageLoading} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." />
       {totalCount > PAGE_SIZE && (
         <Pagination
           currentPage={page}

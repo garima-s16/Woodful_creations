@@ -5,18 +5,39 @@ in - so cells hold computed values directly rather than live formulas.
 That also keeps report generation fast and dependency-free at request time
 (no LibreOffice recalculation step needed for a web API response).
 """
+import os
 from io import BytesIO
 from typing import Any, Iterable, Sequence
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as XLImage
+
+INK = "11110F"
+GOLD = "C08A45"
+IVORY = "F6F2EA"
+BORDER_COLOR = "DED6C8"
 
 HEADER_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=11)
-HEADER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+HEADER_FILL = PatternFill(start_color=INK, end_color=INK, fill_type="solid")
+TITLE_FONT = Font(name="Arial", bold=True, size=15, color=INK)
+SUBTITLE_FONT = Font(name="Arial", size=9, color="70685D")
 BODY_FONT = Font(name="Arial", size=10)
-TITLE_FONT = Font(name="Arial", bold=True, size=14)
-CURRENCY_FORMAT = "#,##0.00;(#,##0.00);-"
+ZEBRA_FILL = PatternFill(start_color=IVORY, end_color=IVORY, fill_type="solid")
+GOLD_UNDERLINE = Border(bottom=Side(style="medium", color=GOLD))
+
+# Excel's number format mini-language doesn't have a portable built-in for
+# Indian digit grouping (1,25,000 not 125,000) that renders correctly
+# regardless of the viewer's locale settings - locale-code formats like
+# [$-4009] depend on the reader's OS/Excel locale and can silently fall
+# back to Western grouping. This conditional format instead encodes the
+# lakh/crore comma positions directly, so it looks the same everywhere.
+CURRENCY_FORMAT = (
+    '[>=10000000]"Rs "##\\,##\\,##\\,##0.00;'
+    '[>=100000]"Rs "##\\,##\\,##0.00;'
+    '"Rs "#,##0.00'
+)
 INTEGER_FORMAT = "#,##0;(#,##0);-"
 PERCENT_FORMAT = "0.0%"
 
@@ -27,6 +48,8 @@ CURRENCY_COLUMNS = {
     "total_stock_value", "purchase_value", "pending_payment", "project_expenses",
 }
 PERCENT_COLUMNS = {"gross_margin_percent", "margin_percent", "completion_percent"}
+
+LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png")
 
 
 def _column_format(col_name: str) -> str:
@@ -39,15 +62,27 @@ def _column_format(col_name: str) -> str:
 
 def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str],
                  rows: Iterable[dict], headers: Sequence[str] = None):
-    """Writes one formatted sheet: a title row, a styled header row, then
-    one row per dict in `rows` (keyed by `columns`)."""
+    """Writes one formatted sheet: logo + title row, a styled header row,
+    then one row per dict in `rows` (keyed by `columns`)."""
     ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet name limit
     headers = headers or columns
+    last_col = max(len(columns), 1)
 
-    ws.cell(row=1, column=1, value=title).font = TITLE_FONT
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(len(columns), 1))
+    title_row = 1
+    if os.path.exists(LOGO_PATH):
+        img = XLImage(LOGO_PATH)
+        img.width, img.height = 130, 33  # matches the logo's real aspect ratio
+        ws.add_image(img, "A1")
+        ws.row_dimensions[1].height = 28
+        title_row = 2
 
-    header_row = 3
+    ws.cell(row=title_row, column=1, value=title).font = TITLE_FONT
+    ws.merge_cells(start_row=title_row, start_column=1, end_row=title_row, end_column=last_col)
+    ws.cell(row=title_row, column=1).border = GOLD_UNDERLINE
+    for c in range(2, last_col + 1):
+        ws.cell(row=title_row, column=c).border = GOLD_UNDERLINE
+
+    header_row = title_row + 2
     for idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=header_row, column=idx, value=header)
         cell.font = HEADER_FONT
@@ -55,11 +90,13 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     row_num = header_row + 1
-    for row in rows:
+    for i, row in enumerate(rows):
         for idx, col in enumerate(columns, start=1):
             cell = ws.cell(row=row_num, column=idx, value=row.get(col))
             cell.font = BODY_FONT
             cell.number_format = _column_format(col)
+            if i % 2 == 1:
+                cell.fill = ZEBRA_FILL
         row_num += 1
 
     for idx, col in enumerate(columns, start=1):

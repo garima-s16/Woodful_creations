@@ -14,9 +14,11 @@ function LeavesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = (status) => {
-    leavesAPI.list(status ? { status } : undefined).then((res) => setLeaves(res.data));
+    setPageLoading(true);
+    leavesAPI.list(status ? { status } : undefined).then((res) => setLeaves(res.data)).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
   };
   useEffect(() => load(), []);
@@ -101,7 +103,7 @@ function LeavesPage() {
           <option value="Rejected">Rejected</option>
         </select>
       </form>
-      <Table columns={columns} data={leaves} emptyMessage="No leave requests yet." />
+      <Table columns={columns} data={leaves} loading={pageLoading} emptyMessage="No leave requests yet." />
       <Modal isOpen={showAdd} title="Request Leave" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Submit Request" />
       </Modal>

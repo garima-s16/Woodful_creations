@@ -160,6 +160,10 @@ export const salarySlipsAPI = {
   update: (id, data) => client.put(`/api/salary-slips/${id}`, data),
 };
 
+export const searchAPI = {
+  query: (q) => client.get('/api/search/', { params: { q } }),
+};
+
 export const chatAPI = {
   send: (message, context) => client.post('/api/chat/', { message, context }),
 };

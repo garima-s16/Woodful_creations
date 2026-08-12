@@ -15,8 +15,12 @@ function EmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
-  const load = () => employeesAPI.list().then((res) => setEmployees(res.data));
+  const load = () => {
+    setPageLoading(true);
+    employeesAPI.list().then((res) => setEmployees(res.data)).finally(() => setPageLoading(false));
+  };
   useEffect(() => {
     load();
   }, []);
@@ -106,7 +110,7 @@ function EmployeesPage() {
         <KpiCard label="Total Employees" value={employees.length} />
         <KpiCard label="Active" value={employees.filter((e) => e.status === 'Active').length} tone="success" />
       </div>
-      <Table columns={columns} data={employees} onRowClick={(row) => navigate(`/employees/${row.id}`)} emptyMessage="No employees yet. Add your first employee to get started." />
+      <Table columns={columns} data={employees} loading={pageLoading} onRowClick={(row) => navigate(`/employees/${row.id}`)} emptyMessage="No employees yet. Add your first employee to get started." />
       <Modal isOpen={showAdd} title="Add Employee" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Employee" />
       </Modal>

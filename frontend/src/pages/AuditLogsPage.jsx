@@ -7,9 +7,11 @@ function AuditLogsPage() {
   const [logs, setLogs] = useState([]);
   const [moduleFilter, setModuleFilter] = useState('');
   const [error, setError] = useState('');
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = (params) => {
-    auditLogsAPI.list(params).then((res) => setLogs(res.data)).catch(() => setError('You do not have permission to view audit logs.'));
+    setPageLoading(true);
+    auditLogsAPI.list(params).then((res) => setLogs(res.data)).catch(() => setError('You do not have permission to view audit logs.')).finally(() => setPageLoading(false));
   };
   useEffect(() => load(), []);
 
@@ -38,7 +40,7 @@ function AuditLogsPage() {
         />
         <button type="submit" className="btn-secondary">Filter</button>
       </form>
-      <Table columns={columns} data={logs} emptyMessage="No audit log entries found." />
+      <Table columns={columns} data={logs} loading={pageLoading} emptyMessage="No audit log entries found." />
     </div>
   );
 }

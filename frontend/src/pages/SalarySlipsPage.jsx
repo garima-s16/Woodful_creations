@@ -12,9 +12,11 @@ function SalarySlipsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    salarySlipsAPI.list().then((res) => setSlips(res.data)).catch(() => setError('You do not have permission to view salary slips.'));
+    setPageLoading(true);
+    salarySlipsAPI.list().then((res) => setSlips(res.data)).catch(() => setError('You do not have permission to view salary slips.')).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
   };
   useEffect(load, []);
@@ -74,7 +76,7 @@ function SalarySlipsPage() {
         PF/TDS figures are entered manually and are not auto-calculated against statutory slabs -
         confirm with your accountant before finalizing payroll.
       </p>
-      <Table columns={columns} data={slips} emptyMessage="No salary slips generated yet." />
+      <Table columns={columns} data={slips} loading={pageLoading} emptyMessage="No salary slips generated yet." />
       <Modal isOpen={showAdd} title="Generate Salary Slip" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Generate" />
       </Modal>

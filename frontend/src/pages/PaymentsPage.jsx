@@ -17,9 +17,11 @@ function PaymentsPage() {
   const [editingPayment, setEditingPayment] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    paymentsAPI.list().then((res) => setPayments(res.data)).catch(() => setError('You do not have permission to view payments.'));
+    setPageLoading(true);
+    paymentsAPI.list().then((res) => setPayments(res.data)).catch(() => setError('You do not have permission to view payments.')).finally(() => setPageLoading(false));
     ordersAPI.list().then((res) => setOrders(res.data));
   };
   useEffect(load, []);
@@ -107,7 +109,7 @@ function PaymentsPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={payments} emptyMessage="No payments recorded yet." />
+      <Table columns={columns} data={payments} loading={pageLoading} emptyMessage="No payments recorded yet." />
       <Modal isOpen={showAdd} title="Record Payment" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Record Payment"
           initialValues={{ date: today(), received_by: user?.full_name || user?.username || '' }} />

@@ -22,15 +22,17 @@ function MaterialsPage() {
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
   const load = (params, pageNum = 1) => {
     const offset = (pageNum - 1) * PAGE_SIZE;
+    setPageLoading(true);
     materialsAPI.list({ ...params, limit: PAGE_SIZE, offset }).then((res) => {
       setMaterials(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    });
+    }).finally(() => setPageLoading(false));
     materialsAPI.list().then((res) => setAllMaterials(res.data));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
   };
@@ -159,7 +161,7 @@ function MaterialsPage() {
         </label>
         <button type="submit" className="btn-secondary">Filter</button>
       </form>
-      <Table columns={columns} data={materials} onRowClick={(row) => navigate(`/materials/${row.id}`)} emptyMessage="No materials yet. Add your first material to begin tracking inventory." />
+      <Table columns={columns} data={materials} loading={pageLoading} onRowClick={(row) => navigate(`/materials/${row.id}`)} emptyMessage="No materials yet. Add your first material to begin tracking inventory." />
       {totalCount > PAGE_SIZE && (
         <Pagination
           currentPage={page}

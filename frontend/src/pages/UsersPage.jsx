@@ -11,8 +11,12 @@ function UsersPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
-  const load = () => usersAPI.list().then((res) => setUsers(res.data)).catch(() => setError('You do not have permission to manage users.'));
+  const load = () => {
+    setPageLoading(true);
+    usersAPI.list().then((res) => setUsers(res.data)).catch(() => setError('You do not have permission to manage users.')).finally(() => setPageLoading(false));
+  };
   useEffect(() => {
     load();
   }, []);
@@ -105,7 +109,7 @@ function UsersPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Add User</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={users} emptyMessage="No users found." />
+      <Table columns={columns} data={users} loading={pageLoading} emptyMessage="No users found." />
 
       <Modal isOpen={showAdd} title="Add User" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create User" />

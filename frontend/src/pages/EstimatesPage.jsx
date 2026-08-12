@@ -16,9 +16,11 @@ function EstimatesPage() {
   const [editingEstimate, setEditingEstimate] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    estimatesAPI.list().then((res) => setEstimates(res.data));
+    setPageLoading(true);
+    estimatesAPI.list().then((res) => setEstimates(res.data)).finally(() => setPageLoading(false));
     clientsAPI.list().then((res) => setClients(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
   };
@@ -114,7 +116,7 @@ function EstimatesPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>New Estimate</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={estimates} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
+      <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
       <Modal isOpen={showAdd} title="New Estimate" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Estimate" />
       </Modal>

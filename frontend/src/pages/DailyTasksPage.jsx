@@ -20,9 +20,11 @@ function DailyTasksPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    dailyTasksAPI.list().then((res) => setTasks(res.data));
+    setPageLoading(true);
+    dailyTasksAPI.list().then((res) => setTasks(res.data)).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
   };
@@ -105,7 +107,7 @@ function DailyTasksPage() {
           <button key={v} className={view === v ? 'tab active' : 'tab'} onClick={() => setView(v)}>{v}</button>
         ))}
       </div>
-      <Table columns={columns} data={filteredTasks} onRowClick={(row) => navigate(`/daily-tasks/${row.id}`)} emptyMessage="No tasks in this view." />
+      <Table columns={columns} data={filteredTasks} loading={pageLoading} onRowClick={(row) => navigate(`/daily-tasks/${row.id}`)} emptyMessage="No tasks in this view." />
       <Modal isOpen={showAdd} title="Assign Task" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Assign Task"
           initialValues={{ date: today(), checked_by: user?.full_name || user?.username || '' }} />

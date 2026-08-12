@@ -6,6 +6,7 @@ from app.api.routes import purchases
 from app.api.routes import issues
 from app.api.routes import clients
 from app.api.routes import client_activities
+from app.api.routes import search
 from app.api.routes import orders
 from app.api.routes import payments
 from app.api.routes import project_expenses
@@ -33,6 +34,7 @@ all_routers = [
     issues.router,
     clients.router,
     client_activities.router,
+    search.router,
     orders.router,
     payments.router,
     project_expenses.router,

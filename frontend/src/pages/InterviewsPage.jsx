@@ -11,9 +11,11 @@ function InterviewsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const load = () => {
-    interviewsAPI.list().then((res) => setInterviews(res.data)).catch(() => setError('You do not have permission to view interviews.'));
+    setPageLoading(true);
+    interviewsAPI.list().then((res) => setInterviews(res.data)).catch(() => setError('You do not have permission to view interviews.')).finally(() => setPageLoading(false));
     candidatesAPI.list().then((res) => setCandidates(res.data)).catch(() => {});
   };
   useEffect(load, []);
@@ -74,7 +76,7 @@ function InterviewsPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Schedule Interview</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={interviews} emptyMessage="No interviews scheduled yet." />
+      <Table columns={columns} data={interviews} loading={pageLoading} emptyMessage="No interviews scheduled yet." />
       <Modal isOpen={showAdd} title="Schedule Interview" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Schedule" />
       </Modal>
