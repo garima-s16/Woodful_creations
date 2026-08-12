@@ -1,7 +1,45 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, field_validator
+from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
+
+# Reuses the same category vocabulary as estimate line items, since an
+# order's items are frequently copied straight from an estimate's.
+LINE_ITEM_CATEGORIES = [
+    "Material", "Labor", "Furniture", "Hardware", "Installation", "Transportation", "Design", "Service", "Other",
+]
+
+
+class OrderItemBase(BaseModel):
+    description: str
+    category: Optional[str] = None
+    quantity: Decimal = Decimal("1")
+    unit: Optional[str] = None
+    rate: Decimal = Decimal("0")
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v):
+        if v is None or v == "":
+            return v
+        if v not in LINE_ITEM_CATEGORIES:
+            raise ValueError(f"Category must be one of: {', '.join(LINE_ITEM_CATEGORIES)}")
+        return v
+
+
+class OrderItemCreate(OrderItemBase):
+    pass
+
+
+class OrderItemResponse(OrderItemBase):
+    id: int
+    order_id: int
+    amount: Decimal
+    source_estimate_item_id: Optional[int] = None
+    sort_order: int
+
+    class Config:
+        from_attributes = True
 
 
 class OrderBase(BaseModel):
@@ -19,6 +57,12 @@ class OrderBase(BaseModel):
 
 class OrderCreate(OrderBase):
     advance: Decimal = Decimal("0")
+    items: List[OrderItemCreate] = []
+    # When set, the new order's items are copied from that estimate's
+    # line items (not re-entered by hand), and the estimate is linked
+    # back to the new order. Not a stored column on Order itself - it's
+    # only used at creation time to drive the copy.
+    from_estimate_id: Optional[int] = None
 
 
 class OrderUpdate(BaseModel):
@@ -34,6 +78,7 @@ class OrderUpdate(BaseModel):
     supervisor: Optional[str] = None
     site_address: Optional[str] = None
     remarks: Optional[str] = None
+    items: Optional[List[OrderItemCreate]] = None
 
 
 class OrderResponse(OrderBase):
@@ -43,11 +88,14 @@ class OrderResponse(OrderBase):
     other_received: Decimal
     total_received: Decimal
     balance: Decimal
+    items_subtotal: Optional[Decimal] = None
+    payment_status: str
     project_status: str
     design_status: str
     execution_status: str
     delivery_status: str
     progress_percent: int
+    items: List[OrderItemResponse] = []
     created_at: datetime
     updated_at: datetime
 

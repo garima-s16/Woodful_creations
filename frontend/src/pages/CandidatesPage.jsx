@@ -63,7 +63,7 @@ function CandidatesPage() {
     { name: 'experience', label: 'Experience', section: 'Candidate Identity' },
     { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },
     { name: 'phone', label: 'Phone', section: 'Contact Details' },
-    { name: 'resume_url', label: 'Resume URL', section: 'Application' },
+    { name: 'resume_url', label: 'Resume Link (optional - or upload a file after creating)', section: 'Application' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Application' },
   ];
 

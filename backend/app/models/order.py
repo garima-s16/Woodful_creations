@@ -40,6 +40,31 @@ class Order(BaseModel):
     daily_tasks = relationship("DailyTask", back_populates="order")
     production_jobs = relationship("ProductionJob", back_populates="order")
     estimates = relationship("Estimate", back_populates="order")
+    items = relationship("OrderItem", back_populates="order",
+                          cascade="all, delete-orphan", order_by="OrderItem.sort_order")
+
+    @property
+    def items_subtotal(self):
+        """Sum of item amounts if any exist; None when there are no
+        items, so callers can tell "no scope entered" apart from a
+        genuine zero-value order."""
+        from decimal import Decimal
+        if not self.items:
+            return None
+        return sum((item.amount or Decimal("0") for item in self.items), Decimal("0"))
+
+    @property
+    def payment_status(self):
+        """Derived from balance/total_received - computed once here so
+        every consumer (dashboard, PDF, Excel, chatbot, frontend) reads
+        the same value rather than each working it out independently."""
+        if not self.order_value:
+            return "N/A"
+        if self.total_received and self.total_received >= self.order_value:
+            return "Paid"
+        if self.total_received and self.total_received > 0:
+            return "Partially Paid"
+        return "Unpaid"
 
     def recompute_totals(self):
         """Call after adding/editing a Payment - keeps total_received and

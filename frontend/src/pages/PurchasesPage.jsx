@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -9,6 +9,7 @@ import { formatCurrency } from '../utils/currency';
 import { today } from '../utils/dates';
 
 function PurchasesPage() {
+  const navigate = useNavigate();
   const [purchases, setPurchases] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -80,7 +81,7 @@ function PurchasesPage() {
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={purchases} loading={pageLoading} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
+      <Table columns={columns} data={purchases} loading={pageLoading} onRowClick={(row) => navigate(`/purchases/${row.id}`)} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
       <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase"
           initialValues={{ date: today() }} />

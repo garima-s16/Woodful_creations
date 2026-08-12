@@ -49,6 +49,7 @@ def _user_payload(user: User) -> dict:
         "username": user.username,
         "full_name": user.full_name,
         "role": user.role,
+        "employee_id": user.employee_id,
         "is_active": user.is_active,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
@@ -60,7 +61,7 @@ def login(request: UserLogin, response: Response, http_request: Request, db: Ses
     present in this JSON response, so page JavaScript can never read it."""
     user = _authenticate(request, db)
 
-    token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
+    token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role, "employee_id": user.employee_id})
     _set_auth_cookie(response, token)
     log_action(db, http_request, user_id=user.id, action="login", module_name="auth")
 
@@ -75,7 +76,7 @@ def login_mobile(request: UserLogin, http_request: Request, db: Session = Depend
     browser cookie handling the same way."""
     user = _authenticate(request, db)
 
-    token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
+    token = create_access_token({"user_id": user.id, "email": user.email, "role": user.role, "employee_id": user.employee_id})
     log_action(db, http_request, user_id=user.id, action="login", module_name="auth")
 
     return MobileLoginResponse(token=token, user=_user_payload(user))
@@ -99,5 +100,6 @@ def me(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
         "username": db_user.username,
         "full_name": db_user.full_name,
         "role": db_user.role,
+        "employee_id": db_user.employee_id,
         "is_active": db_user.is_active,
     }

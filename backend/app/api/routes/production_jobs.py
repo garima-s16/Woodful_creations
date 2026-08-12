@@ -45,6 +45,14 @@ def create_production_job(data: ProductionJobCreate, db: Session = Depends(get_d
     raise HTTPException(status_code=500, detail="Unable to generate a unique job code, please try again")
 
 
+@router.get("/{job_id}", response_model=ProductionJobResponse)
+def get_production_job(job_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    job = db.query(ProductionJob).filter(ProductionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Production job not found")
+    return job
+
+
 @router.put("/{job_id}", response_model=ProductionJobResponse)
 def update_production_job(job_id: int, data: ProductionJobUpdate, db: Session = Depends(get_db),
                            auth=Depends(get_current_user)):

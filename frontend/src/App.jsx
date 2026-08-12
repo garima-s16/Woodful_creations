@@ -18,6 +18,7 @@ import MaterialDetailPage from './pages/MaterialDetailPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
 import PurchasesPage from './pages/PurchasesPage';
+import PurchaseDetailPage from './pages/PurchaseDetailPage';
 import IssuesPage from './pages/IssuesPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
@@ -32,6 +33,7 @@ import LeavesPage from './pages/LeavesPage';
 import DailyTasksPage from './pages/DailyTasksPage';
 import TaskDetailPage from './pages/TaskDetailPage';
 import ProductionJobsPage from './pages/ProductionJobsPage';
+import ProductionJobDetailPage from './pages/ProductionJobDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import EstimatesPage from './pages/EstimatesPage';
 import EstimateDetailPage from './pages/EstimateDetailPage';
@@ -100,6 +102,7 @@ function AppRoutes() {
       <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
       <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />
+      <Route path="/purchases/:purchaseId" element={<Protected><PurchaseDetailPage /></Protected>} />
       <Route path="/issues" element={<Protected><IssuesPage /></Protected>} />
       <Route path="/clients" element={<Protected><ClientsPage /></Protected>} />
       <Route path="/clients/:clientId" element={<Protected><ClientDetailPage /></Protected>} />
@@ -114,6 +117,7 @@ function AppRoutes() {
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
       <Route path="/daily-tasks/:taskId" element={<Protected><TaskDetailPage /></Protected>} />
       <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
+      <Route path="/production-jobs/:jobId" element={<Protected><ProductionJobDetailPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />

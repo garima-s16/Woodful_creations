@@ -8,16 +8,37 @@ from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.estimate import Estimate
+from app.models.estimate_line_item import EstimateLineItem
 from app.schemas.estimate import EstimateCreate, EstimateUpdate, EstimateResponse
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
 
-def _compute_totals(material_cost: Decimal, labor_cost: Decimal, tax_percent: Decimal):
-    subtotal = material_cost + labor_cost
-    tax_amount = (subtotal * tax_percent / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return tax_amount, subtotal + tax_amount
+def _compute_totals(subtotal: Decimal, discount: Decimal, tax_percent: Decimal):
+    """Backend is the sole authority for these figures - the frontend
+    may preview a running total for UX, but this is what gets stored
+    and returned. taxable = subtotal - discount; tax is applied to the
+    taxable amount, not the raw subtotal."""
+    taxable = subtotal - discount
+    if taxable < 0:
+        taxable = Decimal("0")
+    tax_amount = (taxable * tax_percent / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return tax_amount, taxable + tax_amount
+
+
+def _build_line_items(line_items_data, estimate_id: int = None):
+    """Computes amount = quantity * rate server-side for each line item -
+    the frontend may show a running total for UX, but the stored amount
+    is never taken from client input directly."""
+    items = []
+    for idx, item in enumerate(line_items_data):
+        amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        items.append(EstimateLineItem(
+            estimate_id=estimate_id, description=item.description, category=item.category,
+            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
+        ))
+    return items
 
 
 @router.get("/", response_model=List[EstimateResponse])
@@ -33,17 +54,39 @@ def list_estimates(client_id: Optional[int] = Query(None), status: Optional[str]
 
 @router.post("/", response_model=EstimateResponse, status_code=201)
 def create_estimate(data: EstimateCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    payload = data.dict(exclude={"estimate_code"})
-    tax_amount, total_cost = _compute_totals(data.material_cost, data.labor_cost, data.tax_percent)
+    payload = data.dict(exclude={"estimate_code", "line_items"})
+
+    if data.line_items:
+        line_items = _build_line_items(data.line_items)
+        subtotal = sum((item.amount for item in line_items), Decimal("0"))
+        # material_cost/labor_cost are legacy summary fields - when real
+        # line items are supplied, keep them in sync by category rather
+        # than let them silently go stale for any report still reading
+        # them directly.
+        payload["material_cost"] = sum(
+            (i.amount for i in line_items if i.category == "Material"), Decimal("0"))
+        payload["labor_cost"] = sum(
+            (i.amount for i in line_items if i.category == "Labor"), Decimal("0"))
+    else:
+        line_items = []
+        subtotal = data.material_cost + data.labor_cost
+
+    tax_amount, total_cost = _compute_totals(subtotal, data.discount, data.tax_percent)
+
     for _ in range(5):
         code = generate_unique_code(db, Estimate, "estimate_code", "EST-")
-        estimate = Estimate(**payload, estimate_code=code, business_id=generate_short_id(), tax_amount=tax_amount, total_cost=total_cost)
+        estimate = Estimate(**payload, estimate_code=code, business_id=generate_short_id(),
+                             tax_amount=tax_amount, total_cost=total_cost)
         db.add(estimate)
         try:
-            db.commit()
+            db.flush()
         except IntegrityError:
             db.rollback()
             continue
+        for item in line_items:
+            item.estimate_id = estimate.id
+            db.add(item)
+        db.commit()
         db.refresh(estimate)
         return estimate
     raise HTTPException(status_code=500, detail="Unable to generate a unique estimate code, please try again")
@@ -63,12 +106,32 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, db: Session = Depend
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
-    for field, value in data.dict(exclude_unset=True).items():
+
+    update_fields = data.dict(exclude_unset=True, exclude={"line_items"})
+    for field, value in update_fields.items():
         setattr(estimate, field, value)
-    if any(f in data.dict(exclude_unset=True) for f in ("material_cost", "labor_cost", "tax_percent")):
-        estimate.tax_amount, estimate.total_cost = _compute_totals(
-            estimate.material_cost, estimate.labor_cost, estimate.tax_percent
-        )
+
+    if data.line_items is not None:
+        # Replace the whole set - editing an estimate's line items is a
+        # "these are the current items" operation, not an incremental
+        # patch, matching how the frontend's item editor works (it
+        # submits the full current list, not a diff).
+        for existing in list(estimate.line_items):
+            db.delete(existing)
+        db.flush()
+        new_items = _build_line_items(data.line_items, estimate_id=estimate.id)
+        for item in new_items:
+            db.add(item)
+        db.flush()
+        subtotal = sum((item.amount for item in new_items), Decimal("0"))
+        estimate.material_cost = sum((i.amount for i in new_items if i.category == "Material"), Decimal("0"))
+        estimate.labor_cost = sum((i.amount for i in new_items if i.category == "Labor"), Decimal("0"))
+    else:
+        subtotal = estimate.subtotal
+
+    if data.line_items is not None or any(f in update_fields for f in ("material_cost", "labor_cost", "discount", "tax_percent")):
+        estimate.tax_amount, estimate.total_cost = _compute_totals(subtotal, estimate.discount, estimate.tax_percent)
+
     db.add(estimate)
     db.commit()
     db.refresh(estimate)
@@ -78,10 +141,11 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, db: Session = Depend
 @router.post("/{estimate_id}/revise", response_model=EstimateResponse, status_code=201)
 def revise_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """Create a new version of an estimate rather than overwriting it -
-    copies the source estimate's figures into a new row, incrementing the
-    version number and always pointing parent_estimate_id at the root of
-    the chain (not necessarily the immediate source), so /versions can
-    find every revision with one query."""
+    copies the source estimate's figures (including its line items) into
+    a new row, incrementing the version number and always pointing
+    parent_estimate_id at the root of the chain (not necessarily the
+    immediate source), so /versions can find every revision with one
+    query."""
     source = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Estimate not found")
@@ -94,13 +158,20 @@ def revise_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depend
 
     new_code = f"{source.estimate_code.split('-v')[0]}-v{next_version}"
     revision = Estimate(
-        estimate_code=new_code, client_id=source.client_id, order_id=source.order_id,
+        estimate_code=new_code, business_id=generate_short_id(),
+        client_id=source.client_id, order_id=source.order_id,
         description=source.description, material_cost=source.material_cost, labor_cost=source.labor_cost,
-        tax_percent=source.tax_percent, tax_amount=source.tax_amount, total_cost=source.total_cost,
-        valid_until=source.valid_until, remarks=source.remarks,
+        discount=source.discount, tax_percent=source.tax_percent, tax_amount=source.tax_amount,
+        total_cost=source.total_cost, valid_until=source.valid_until, remarks=source.remarks,
         version=next_version, parent_estimate_id=root_id, status="draft",
     )
     db.add(revision)
+    db.flush()
+    for idx, item in enumerate(source.line_items):
+        db.add(EstimateLineItem(
+            estimate_id=revision.id, description=item.description, category=item.category,
+            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=item.amount, sort_order=idx,
+        ))
     db.commit()
     db.refresh(revision)
     return revision

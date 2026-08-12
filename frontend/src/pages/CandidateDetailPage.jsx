@@ -14,6 +14,7 @@ function CandidateDetailPage() {
   const [interviews, setInterviews] = useState([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
@@ -22,6 +23,31 @@ function CandidateDetailPage() {
   }, [candidateId]);
 
   useEffect(load, [load]);
+
+  const handleResumeFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingResume(true);
+    setError('');
+    try {
+      await candidatesAPI.uploadResume(candidateId, file);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to upload resume');
+    } finally {
+      setUploadingResume(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    try {
+      await candidatesAPI.deleteResume(candidateId);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to remove resume');
+    }
+  };
 
   const handleSchedule = async (formData) => {
     setLoading(true); setError('');
@@ -76,7 +102,30 @@ function CandidateDetailPage() {
               <div className="detail-meta-item"><span className="detail-meta-label">Email</span><span className="detail-meta-value">{candidate.email || '-'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Phone</span><span className="detail-meta-value">{candidate.phone || '-'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Experience</span><span className="detail-meta-value">{candidate.experience || '-'}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Resume</span><span className="detail-meta-value">{candidate.resume_url ? <a href={candidate.resume_url} target="_blank" rel="noreferrer">View Resume</a> : '-'}</span></div>
+              <div className="detail-meta-item">
+                <span className="detail-meta-label">Resume</span>
+                <span className="detail-meta-value">
+                  {candidate.resume_original_filename ? (
+                    <>
+                      <a href={candidatesAPI.resumeDownloadUrl(candidateId)} target="_blank" rel="noreferrer">
+                        {candidate.resume_original_filename}
+                      </a>
+                      {' '}
+                      <button className="btn-link" onClick={handleDeleteResume}>Remove</button>
+                    </>
+                  ) : candidate.resume_url ? (
+                    <a href={candidate.resume_url} target="_blank" rel="noreferrer">View Resume</a>
+                  ) : '-'}
+                  <br />
+                  <label className="btn-link" style={{ cursor: 'pointer' }}>
+                    {uploadingResume ? 'Uploading...' : (candidate.resume_original_filename ? 'Replace Resume' : 'Upload Resume')}
+                    <input
+                      type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }}
+                      onChange={handleResumeFileChange} disabled={uploadingResume}
+                    />
+                  </label>
+                </span>
+              </div>
             </div>
             {candidate.remarks && (
               <div style={{ marginTop: 16 }}>

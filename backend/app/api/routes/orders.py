@@ -7,6 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.order import Order
+from app.models.order_item import OrderItem
+from app.models.estimate import Estimate
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
 from app.services.order_service import OrderService
 from app.utils.id_generator import generate_unique_code, generate_short_id
@@ -43,21 +45,77 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
     return query.all()
 
 
+def _build_order_items(items_data, order_id: int = None):
+    """Computes amount = quantity * rate server-side for each item -
+    never trusted from client input directly, matching the estimate
+    line items pattern (including ROUND_HALF_UP - Python's default
+    quantize rounding is banker's rounding, which would silently
+    disagree with how estimate amounts are computed for the exact same
+    calculation)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    result = []
+    for idx, item in enumerate(items_data):
+        amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        result.append(OrderItem(
+            order_id=order_id, description=item.description, category=item.category,
+            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
+        ))
+    return result
+
+
 @router.post("/", response_model=OrderResponse, status_code=201)
 def create_order(data: OrderCreate, db: Session = Depends(get_db),
                   auth=Depends(require_role("master", "manager"))):
-    payload = data.dict(exclude={"order_code"})
-    advance = payload.pop("advance")
+    from decimal import Decimal
+
+    payload = data.dict(exclude={"order_code", "advance", "items", "from_estimate_id"})
+    advance = data.advance
+
+    source_estimate = None
+    if data.from_estimate_id:
+        source_estimate = db.query(Estimate).filter(Estimate.id == data.from_estimate_id).first()
+        if not source_estimate:
+            raise HTTPException(status_code=404, detail="Source estimate not found")
+
+    if source_estimate and source_estimate.line_items:
+        # Copy items from the estimate's line items rather than re-enter
+        # them - each new OrderItem stays traceable back to the
+        # estimate line it came from via source_estimate_item_id.
+        order_items = [
+            OrderItem(
+                description=li.description, category=li.category, quantity=li.quantity,
+                unit=li.unit, rate=li.rate, amount=li.amount,
+                source_estimate_item_id=li.id, sort_order=idx,
+            )
+            for idx, li in enumerate(source_estimate.line_items)
+        ]
+    elif data.items:
+        order_items = _build_order_items(data.items)
+    else:
+        order_items = []
+
+    if order_items:
+        items_total = sum((i.amount for i in order_items), Decimal("0"))
+        payload["order_value"] = items_total
+
     year = datetime.utcnow().year
     for _ in range(5):
         code = generate_unique_code(db, Order, "order_code", f"WC-{year}-")
-        order = Order(**payload, order_code=code, business_id=generate_short_id(), advance=advance, total_received=advance, balance=data.order_value - advance)
+        order = Order(**payload, order_code=code, business_id=generate_short_id(),
+                      advance=advance, total_received=advance, balance=payload["order_value"] - advance)
         db.add(order)
         try:
-            db.commit()
+            db.flush()
         except IntegrityError:
             db.rollback()
             continue
+        for item in order_items:
+            item.order_id = order.id
+            db.add(item)
+        if source_estimate:
+            source_estimate.order_id = order.id
+            db.add(source_estimate)
+        db.commit()
         db.refresh(order)
         return order
     raise HTTPException(status_code=500, detail="Unable to generate a unique order code, please try again")
@@ -74,13 +132,29 @@ def get_order(order_id: int, db: Session = Depends(get_db), auth=Depends(get_cur
 @router.put("/{order_id}", response_model=OrderResponse)
 def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db),
                   auth=Depends(require_role("master", "manager"))):
+    from decimal import Decimal
+
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    for field, value in data.dict(exclude_unset=True).items():
+
+    update_fields = data.dict(exclude_unset=True, exclude={"items"})
+    for field, value in update_fields.items():
         setattr(order, field, value)
-    if "order_value" in data.dict(exclude_unset=True):
-        order.balance = (order.order_value or 0) - (order.total_received or 0)
+
+    if data.items is not None:
+        for existing in list(order.items):
+            db.delete(existing)
+        db.flush()
+        new_items = _build_order_items(data.items, order_id=order.id)
+        for item in new_items:
+            db.add(item)
+        db.flush()
+        order.order_value = sum((i.amount for i in new_items), Decimal("0"))
+
+    if "order_value" in update_fields or data.items is not None:
+        order.balance = (order.order_value or Decimal("0")) - (order.total_received or Decimal("0"))
+
     db.add(order)
     db.commit()
     db.refresh(order)

@@ -15,9 +15,11 @@ from app.models.issue import Issue
 from app.models.client import Client
 from app.models.client_activity import ClientActivity
 from app.models.order import Order
+from app.models.order_item import OrderItem
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
 from app.models.estimate import Estimate
+from app.models.estimate_line_item import EstimateLineItem
 
 from app.models.employee import Employee
 from app.models.attendance import Attendance
@@ -37,7 +39,7 @@ __all__ = [
     "Department", "TaskStatus", "AttendanceStatus", "Machine",
     "ProjectStatus", "Priority", "PaymentMode", "LeadSource", "ProjectType", "ExpenseCategory",
     "Supplier", "Material", "Purchase", "Issue",
-    "Client", "ClientActivity", "Order", "Payment", "ProjectExpense", "Estimate",
+    "Client", "ClientActivity", "Order", "OrderItem", "Payment", "ProjectExpense", "Estimate", "EstimateLineItem",
     "Employee", "Attendance", "Leave", "DailyTask", "ProductionJob", "SalarySlip",
     "Candidate", "Interview",
     "AuditLog",

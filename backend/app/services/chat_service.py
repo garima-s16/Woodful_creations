@@ -34,6 +34,7 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.purchase import Purchase
 from app.models.employee import Employee
+from app.models.daily_task import DailyTask
 from app.schemas.chat import ChatContext, ProposedAction
 
 THIS_RECORD_WORDS = ["this order", "this material", "this client", "this employee",
@@ -59,7 +60,7 @@ def _detect_payment_mode(m: str) -> Optional[str]:
 class ChatService:
     @staticmethod
     def process_message(message: str, db: Session, user_role: str = "user",
-                         context: Optional[ChatContext] = None
+                         context: Optional[ChatContext] = None, current_employee_id: Optional[int] = None
                          ) -> Tuple[str, List[str], Optional[ProposedAction], Optional[dict], List[dict]]:
         m = message.lower()
 
@@ -75,7 +76,7 @@ class ChatService:
             if proposal:
                 return proposal
 
-        text, suggestions, records = ChatService._dispatch(m, db, user_role, context)
+        text, suggestions, records = ChatService._dispatch(m, db, user_role, context, current_employee_id)
         return text, suggestions, None, None, records
 
     @staticmethod
@@ -161,12 +162,17 @@ class ChatService:
         )
 
     @staticmethod
-    def _dispatch(m: str, db: Session, user_role: str, context: Optional[ChatContext]) -> Tuple[str, List[str], List[dict]]:
+    def _dispatch(m: str, db: Session, user_role: str, context: Optional[ChatContext],
+                  current_employee_id: Optional[int] = None) -> Tuple[str, List[str], List[dict]]:
         if context and any(w in m for w in THIS_RECORD_WORDS):
             contextual = ChatService._answer_from_context(m, db, user_role, context)
             if contextual:
                 text, suggestions = contextual
                 return text, suggestions, []
+
+        task_result = ChatService._route_task_query(m, db, current_employee_id)
+        if task_result:
+            return task_result
 
         if any(w in m for w in ["low stock", "reorder", "alert"]):
             return ChatService._low_stock(db)
@@ -227,7 +233,7 @@ class ChatService:
                         f"Yes - {material.name} is at {material.current_stock} {material.unit}, "
                         f"at or below the reorder level of {material.minimum_stock} {material.unit}. "
                         f"Consider ordering at least {shortfall} {material.unit}.",
-                        ["Record Purchase"],
+                        [],
                     )
                 return (
                     f"Not yet - {material.name} has {material.current_stock} {material.unit} available, "
@@ -248,7 +254,7 @@ class ChatService:
             return (
                 f"{client.name} ({client.client_code}): {len(client.orders)} orders, "
                 f"Rs {float(total_sales):,.2f} in total order value.",
-                ["Create Order", "Record Payment"],
+                [],
             )
 
         if context.employee_id:
@@ -257,7 +263,7 @@ class ChatService:
                 return None
             return (
                 f"{employee.name} ({employee.employee_code}), {employee.department or 'no department'}. Status: {employee.status}.",
-                ["Assign Task", "Record Attendance"],
+                [f"Show {employee.name.split()[0]}'s tasks"],
             )
 
         return None
@@ -272,6 +278,87 @@ class ChatService:
         )
 
     @staticmethod
+    def _route_task_query(m: str, db: Session, current_employee_id: Optional[int]):
+        """Handles every task-related question the assistant supports:
+        "show my tasks", "show Pankaj's tasks", "what is Pankaj working
+        on", "which of Pankaj's tasks are overdue", "which tasks are
+        blocked". Employee names are resolved with a live query against
+        Employee.name - never hard-coded, never a separate dataset -
+        exactly the same table every other page reads from. Returns
+        None (not a task query) so _dispatch falls through to its other
+        branches."""
+        is_task_query = any(w in m for w in ["task", "working on", "assigned"])
+        if not is_task_query:
+            return None
+
+        wants_overdue = "overdue" in m
+        wants_blocked = "blocked" in m
+
+        is_mine = any(w in m for w in ["my task", "my tasks", "assigned to me", "i need to complete", "i need to do"])
+        if is_mine:
+            if current_employee_id is None:
+                return ("Your account isn't linked to an employee record, so I can't look up "
+                        "your tasks. Ask a master/manager to link your account to your employee "
+                        "profile."), [], []
+            employee = db.query(Employee).filter(Employee.id == current_employee_id).first()
+            return ChatService._tasks_for_employee(db, employee, overdue_only=wants_overdue)
+
+        name = ChatService._extract_employee_name(m)
+        if name:
+            employee = db.query(Employee).filter(Employee.name.ilike(f"%{name}%")).first()
+            if not employee:
+                return f"I couldn't find an employee matching \"{name}\".", [], []
+            return ChatService._tasks_for_employee(db, employee, overdue_only=wants_overdue)
+
+        if wants_blocked:
+            tasks = db.query(DailyTask).filter(DailyTask.status == "Blocked").all()
+            return ChatService._format_task_results(tasks, f"{len(tasks)} tasks are currently blocked.")
+
+        return None
+
+    @staticmethod
+    def _extract_employee_name(m: str) -> Optional[str]:
+        """Regex only, no hard-coded names - just recognizes the shape of
+        a possessive or prepositional reference to a person and pulls out
+        whatever word is in that position."""
+        patterns = [
+            r"([a-z]+)'s\s+tasks?",
+            r"tasks?\s+(?:are\s+|is\s+)?(?:for|assigned to)\s+([a-z]+)",
+            r"what\s+is\s+([a-z]+)\s+working",
+            r"overdue\s+for\s+([a-z]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, m)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _tasks_for_employee(db: Session, employee, overdue_only: bool = False):
+        if not employee:
+            return "I couldn't find that employee.", [], []
+        query = db.query(DailyTask).filter(DailyTask.employee_id == employee.id)
+        tasks = query.all()
+        if overdue_only:
+            today = datetime.utcnow().date()
+            # Same definition of overdue used everywhere else this
+            # applies (due date passed, not yet completed) - one
+            # authoritative rule, not a chat-specific reinterpretation.
+            tasks = [t for t in tasks if t.date.date() < today and t.status != "Completed"]
+        label = f"{employee.name}'s {'overdue ' if overdue_only else ''}tasks"
+        return ChatService._format_task_results(tasks, f"{len(tasks)} {label} found.")
+
+    @staticmethod
+    def _format_task_results(tasks, summary_text: str):
+        records = [{
+            "type": "Task", "label": t.task_description,
+            "sublabel": f"{t.status} - {t.completion_percent}% complete"
+                        + (f" - Priority: {t.priority}" if t.priority else ""),
+            "path": f"/daily-tasks/{t.id}",
+        } for t in tasks[:10]]
+        return summary_text, [], records
+
+    @staticmethod
     def _low_stock(db: Session):
         materials = db.query(Material).all()
         low = [m for m in materials if m.current_stock <= m.minimum_stock]
@@ -282,7 +369,7 @@ class ChatService:
             "sublabel": f"{m.current_stock}/{m.minimum_stock} {m.unit}",
             "path": f"/materials/{m.id}",
         } for m in low[:10]]
-        return f"{len(low)} materials at or below minimum stock.", ["Export stock dashboard"], records
+        return f"{len(low)} materials at or below minimum stock.", [], records
 
     @staticmethod
     def _orders_summary(db: Session):
@@ -312,7 +399,7 @@ class ChatService:
         } for o in orders[:10]]
         return (
             f"{len(orders)} orders have outstanding payments, totaling Rs {total_pending:,.2f}.",
-            ["Export payments"], records,
+            [], records,
         )
 
     @staticmethod

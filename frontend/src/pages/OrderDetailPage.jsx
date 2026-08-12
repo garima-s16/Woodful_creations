@@ -156,6 +156,7 @@ function OrderDetailPage() {
         <Card><div className="card-body"><div className="detail-meta-label">Order Value</div><h3>{formatCurrency(order.order_value)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{formatCurrency(order.total_received)}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(order.balance)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Payment Status</div><h3><span className={`status-badge ${statusClass(order.payment_status)}`}>{order.payment_status}</span></h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Progress</div><h3>{order.progress_percent}%</h3></div></Card>
       </div>
 
@@ -197,6 +198,25 @@ function OrderDetailPage() {
               </div>
             )}
           </div>
+        </Card>
+      )}
+
+      {tab === 'Overview' && order.items?.length > 0 && (
+        <Card title="Order Scope">
+          <table className="data-table">
+            <thead>
+              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              {order.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.description}</td><td>{item.category || '-'}</td>
+                  <td>{Number(item.quantity)}</td><td>{item.unit || '-'}</td>
+                  <td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       )}
 

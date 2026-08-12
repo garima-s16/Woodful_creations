@@ -1,1 +1,4 @@
 backend/.env
+
+# Uploaded files (resumes, etc.) - never commit real user uploads
+uploads/

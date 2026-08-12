@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import { statusClass } from '../utils/statusColors';
 import Pagination from '../components/common/Pagination';
 
 const PAGE_SIZE = 25;
@@ -148,6 +149,7 @@ function OrdersPage() {
     { key: 'order_value', label: 'Order Value', render: (v) => formatCurrency(v) },
     { key: 'total_received', label: 'Received', render: (v) => formatCurrency(v) },
     { key: 'balance', label: 'Balance', render: (v) => formatCurrency(v) },
+    { key: 'payment_status', label: 'Payment Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
     { key: 'project_status', label: 'Stage' }, { key: 'progress_percent', label: 'Progress %' },
     { key: 'design_status', label: 'Design' }, { key: 'execution_status', label: 'Execution' },
     { key: 'delivery_status', label: 'Delivery' },

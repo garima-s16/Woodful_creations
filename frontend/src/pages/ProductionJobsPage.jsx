@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { productionJobsAPI, employeesAPI, ordersAPI, materialsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -8,6 +8,7 @@ import Alert from '../components/common/Alert';
 import { today } from '../utils/dates';
 
 function ProductionJobsPage() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -111,7 +112,7 @@ function ProductionJobsPage() {
         <button className="btn-primary" onClick={() => setShowAdd(true)}>Create Production Job</button>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={jobs} loading={pageLoading} emptyMessage="No production jobs recorded yet." />
+      <Table columns={columns} data={jobs} loading={pageLoading} onRowClick={(row) => navigate(`/production-jobs/${row.id}`)} emptyMessage="No production jobs recorded yet." />
 
       <Modal isOpen={showAdd} title="Create Production Job" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Job"

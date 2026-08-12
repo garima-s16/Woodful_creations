@@ -87,7 +87,7 @@ function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pe
           <div className="attention-column">
             <h4>Purchases Pending Payment</h4>
             {pendingPurchases.map((p) => (
-              <button key={p.id} className="attention-item" onClick={() => navigate('/purchases')}>
+              <button key={p.id} className="attention-item" onClick={() => navigate(`/purchases/${p.id}`)}>
                 <span>{p.purchase_code} - {p.supplier?.name || 'Supplier'}</span>
                 <span className="status-badge status-warning">{p.payment_status}</span>
               </button>
@@ -98,7 +98,7 @@ function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pe
           <div className="attention-column">
             <h4>Production Jobs Open 7+ Days</h4>
             {delayedProduction.map((j) => (
-              <button key={j.id} className="attention-item" onClick={() => navigate('/production-jobs')}>
+              <button key={j.id} className="attention-item" onClick={() => navigate(`/production-jobs/${j.id}`)}>
                 <span>{j.job_code} - {j.operation || 'Job'}</span>
                 <span className="status-badge status-warning">{j.status}</span>
               </button>

@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
+import LineItemEditor, { emptyRow } from '../components/LineItemEditor';
 
 function EstimatesPage() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ function EstimatesPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const [lineItems, setLineItems] = useState([emptyRow()]);
 
   const load = () => {
     setPageLoading(true);
@@ -30,6 +32,12 @@ function EstimatesPage() {
   const handleCreate = async (formData) => {
     setLoading(true);
     setError('');
+    const validItems = lineItems
+      .filter((row) => row.description.trim())
+      .map((row) => ({
+        description: row.description, category: row.category || null,
+        quantity: row.quantity || '1', unit: row.unit || null, rate: row.rate || '0',
+      }));
     try {
       await estimatesAPI.create({
         ...formData,
@@ -37,10 +45,13 @@ function EstimatesPage() {
         order_id: formData.order_id ? Number(formData.order_id) : null,
         material_cost: formData.material_cost || '0',
         labor_cost: formData.labor_cost || '0',
+        discount: formData.discount || '0',
         tax_percent: formData.tax_percent || '18',
         valid_until: formData.valid_until ? new Date(formData.valid_until).toISOString() : null,
+        line_items: validItems,
       });
       setShowAdd(false);
+      setLineItems([emptyRow()]);
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create estimate');
@@ -71,8 +82,7 @@ function EstimatesPage() {
   const columns = [
     { key: 'estimate_code', label: 'Estimate ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
-    { key: 'material_cost', label: 'Material', render: (v) => formatCurrency(v) },
-    { key: 'labor_cost', label: 'Labor', render: (v) => formatCurrency(v) },
+    { key: 'subtotal', label: 'Subtotal', render: (v) => formatCurrency(v) },
     { key: 'total_cost', label: 'Total', render: (v) => formatCurrency(v) },
     { key: 'status', label: 'Status' },
     {
@@ -91,9 +101,8 @@ function EstimatesPage() {
     { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
     { name: 'order_id', label: 'Related Order (optional)', type: 'select', section: 'Client & Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'description', label: 'Scope / Description', type: 'textarea', section: 'Client & Project' },
-    { name: 'material_cost', label: 'Material Cost', type: 'number', required: true, section: 'Cost Breakdown' },
-    { name: 'labor_cost', label: 'Labor Cost', type: 'number', required: true, section: 'Cost Breakdown' },
-    { name: 'tax_percent', label: 'Tax %', type: 'number', placeholder: '18', section: 'Cost Breakdown' },
+    { name: 'discount', label: 'Discount', type: 'number', placeholder: '0', section: 'Cost Breakdown' },
+    { name: 'tax_percent', label: 'Tax % (GST)', type: 'number', placeholder: '18', section: 'Cost Breakdown' },
     { name: 'valid_until', label: 'Valid Until', type: 'date', section: 'Terms' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Terms' },
   ];
@@ -119,6 +128,8 @@ function EstimatesPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
       <Modal isOpen={showAdd} title="New Estimate" onClose={() => setShowAdd(false)}>
+        <h4 style={{ marginBottom: 8 }}>Line Items</h4>
+        <LineItemEditor items={lineItems} onChange={setLineItems} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Estimate" />
       </Modal>
       <Modal isOpen={!!editingEstimate} title={`Edit ${editingEstimate?.estimate_code || ''}`} onClose={() => setEditingEstimate(null)}>

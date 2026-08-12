@@ -17,9 +17,14 @@ router = APIRouter(prefix="/api/daily-tasks", tags=["daily-tasks"])
 @router.get("/", response_model=List[DailyTaskResponse])
 def list_daily_tasks(employee_id: Optional[int] = Query(None), order_id: Optional[int] = Query(None),
                       date: Optional[datetime] = Query(None), status: Optional[str] = Query(None),
-                      db: Session = Depends(get_db), auth=Depends(get_current_user)):
+                      mine: bool = Query(False), db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(DailyTask)
-    if employee_id:
+    if mine:
+        my_employee_id = auth.get("employee_id")
+        if my_employee_id is None:
+            raise HTTPException(status_code=400, detail="Your account is not linked to an employee record.")
+        query = query.filter(DailyTask.employee_id == my_employee_id)
+    elif employee_id:
         query = query.filter(DailyTask.employee_id == employee_id)
     if order_id:
         query = query.filter(DailyTask.order_id == order_id)
@@ -55,13 +60,43 @@ def get_daily_task(task_id: int, db: Session = Depends(get_db), auth=Depends(get
     return task
 
 
+EMPLOYEE_SELF_SERVICE_FIELDS = {"status", "completion_percent", "remarks", "delay_reason"}
+
+
 @router.put("/{task_id}", response_model=DailyTaskResponse)
 def update_daily_task(task_id: int, data: DailyTaskUpdate, db: Session = Depends(get_db),
                        auth=Depends(get_current_user)):
     task = db.query(DailyTask).filter(DailyTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    for field, value in data.dict(exclude_unset=True).items():
+
+    role = auth.get("role", "user")
+    update_data = data.dict(exclude_unset=True)
+
+    if role not in ("master", "manager"):
+        # A regular account can only touch a task assigned to the
+        # employee record their own login is linked to - resolved via
+        # User.employee_id (set at account creation), never by matching
+        # names, so this can't be fooled by two people sharing a name
+        # and can't silently break if someone's display name changes.
+        my_employee_id = auth.get("employee_id")
+        if my_employee_id is None:
+            raise HTTPException(status_code=403, detail="Your account is not linked to an employee record.")
+        if task.employee_id != my_employee_id:
+            raise HTTPException(status_code=403, detail="You can only update tasks assigned to you.")
+
+        disallowed = set(update_data.keys()) - EMPLOYEE_SELF_SERVICE_FIELDS
+        if disallowed:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You can only update: {', '.join(sorted(EMPLOYEE_SELF_SERVICE_FIELDS))}. "
+                       f"Not allowed to change: {', '.join(sorted(disallowed))}.",
+            )
+
+    if update_data.get("status") == "Completed":
+        update_data["completion_percent"] = 100
+
+    for field, value in update_data.items():
         setattr(task, field, value)
     db.add(task)
     db.commit()

@@ -78,24 +78,50 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
     client_phone = estimate.client.phone if estimate.client else "-"
     client_address = estimate.client.address if estimate.client else "-"
 
+    # Only surface version info when this is genuinely part of a
+    # revision chain - v1 with no revisions carries no information and
+    # is just noise on every ordinary estimate.
+    is_revision = estimate.version > 1 or estimate.parent_estimate_id is not None
+    row2_right = ("VERSION", f"v{estimate.version}") if is_revision else ("SCOPE", estimate.description or "-")
+
     elements.append(section_table(
         [[("CLIENT", client_name), ("PHONE", client_phone)],
-         [("VALID UNTIL", _fmt_date(estimate.valid_until)), ("VERSION", f"v{estimate.version}")],
-         [("ADDRESS", client_address), ("SCOPE", estimate.description or "-")]],
+         [("VALID UNTIL", _fmt_date(estimate.valid_until)), row2_right],
+         [("ADDRESS", client_address), ("SCOPE", estimate.description or "-") if is_revision else ("STATUS", estimate.status.title())]],
         [3.5 * inch, 3.5 * inch],
     ))
     elements.append(Spacer(1, 14))
 
-    elements.append(line_items_table(
-        ["Description", "Amount"],
-        [
+    if estimate.line_items:
+        item_rows = [
+            [item.description, item.category or "-", f"{float(item.quantity):g}", item.unit or "-",
+             format_inr(item.rate), format_inr(item.amount)]
+            for item in estimate.line_items
+        ]
+        totals_rows = [["Subtotal", "", "", "", "", format_inr(estimate.subtotal)]]
+        if estimate.discount:
+            totals_rows.append(["Discount", "", "", "", "", f"-{format_inr(estimate.discount)}"])
+        totals_rows.append([f"GST ({float(estimate.tax_percent)}%)", "", "", "", "", format_inr(estimate.tax_amount)])
+        totals_rows.append(["Grand Total", "", "", "", "", format_inr(estimate.total_cost)])
+        elements.append(line_items_table(
+            ["Description", "Category", "Qty", "Unit", "Rate", "Amount"],
+            item_rows,
+            [1.8 * inch, 1.1 * inch, 0.6 * inch, 0.7 * inch, 1.1 * inch, 1.7 * inch],
+            totals_rows=totals_rows,
+        ))
+    else:
+        # Legacy fallback for estimates created before line items existed.
+        legacy_rows = [
             ["Material Cost", format_inr(estimate.material_cost)],
             ["Labor Cost", format_inr(estimate.labor_cost)],
-            [f"Tax ({float(estimate.tax_percent)}%)", format_inr(estimate.tax_amount)],
-        ],
-        [5 * inch, 2 * inch],
-        totals_rows=[["Total Estimate Value", format_inr(estimate.total_cost)]],
-    ))
+        ]
+        if estimate.discount:
+            legacy_rows.append(["Discount", f"-{format_inr(estimate.discount)}"])
+        legacy_rows.append([f"Tax ({float(estimate.tax_percent)}%)", format_inr(estimate.tax_amount)])
+        elements.append(line_items_table(
+            ["Description", "Amount"], legacy_rows, [5 * inch, 2 * inch],
+            totals_rows=[["Total Estimate Value", format_inr(estimate.total_cost)]],
+        ))
 
     elements.append(Spacer(1, 14))
     elements.append(Paragraph(

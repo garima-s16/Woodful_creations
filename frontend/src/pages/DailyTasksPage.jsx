@@ -52,11 +52,10 @@ function DailyTasksPage() {
   };
 
   const myEmployeeMatch = (task) => {
-    // "My Tasks" matches by the logged-in user's full name against the
-    // assigned employee's name - there is no direct user-to-employee link
-    // in the data model, so this is a best-effort match on name.
-    const emp = employees.find((e) => e.id === task.employee_id);
-    return emp && user?.full_name && emp.name.toLowerCase() === user.full_name.toLowerCase();
+    // Resolved via the real User.employee_id link set when the account
+    // was created, not by comparing names - two people can share a
+    // name, and a display-name edit would otherwise silently break this.
+    return user?.employee_id != null && task.employee_id === user.employee_id;
   };
 
   const isOverdue = (task) => {

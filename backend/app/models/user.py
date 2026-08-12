@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey
 from datetime import datetime
 
 from app.models.base import BaseModel
@@ -13,6 +13,12 @@ class User(BaseModel):
     full_name = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=True)
     role = Column(String(50), default="user", nullable=False)
+    # Links a login account to the real Employee record it belongs to -
+    # not every user account is necessarily an employee (e.g. an
+    # external accountant), so this is nullable. "My tasks" and similar
+    # self-service features resolve through this FK, never by matching
+    # full_name against Employee.name.
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
     profile_picture = Column(String(500), nullable=True)

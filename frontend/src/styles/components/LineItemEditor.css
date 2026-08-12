@@ -1,0 +1,62 @@
+.line-item-editor { margin: 12px 0; }
+
+.line-item-header-row,
+.line-item-row {
+  display: grid;
+  grid-template-columns: 2fr 1.3fr 0.7fr 0.9fr 1fr 1.1fr 70px;
+  gap: 8px;
+  align-items: center;
+}
+
+.line-item-header-row {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  padding: 0 4px 6px;
+}
+
+.line-item-row {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.line-item-row input,
+.line-item-row select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  width: 100%;
+}
+
+.line-item-amount {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.line-item-row-actions { display: flex; gap: 2px; }
+.line-item-row-actions button {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border-color);
+  background: var(--surface);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.line-item-row-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
+.line-item-remove { color: var(--danger); }
+
+.line-item-add { margin-top: 8px; }
+
+.line-item-subtotal {
+  text-align: right;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-strong);
+  font-size: 0.9rem;
+}

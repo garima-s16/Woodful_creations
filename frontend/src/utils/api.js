@@ -50,6 +50,7 @@ export const materialsAPI = {
 
 export const purchasesAPI = {
   list: (params) => client.get('/api/purchases/', { params }),
+  get: (id) => client.get(`/api/purchases/${id}`),
   create: (data) => client.post('/api/purchases/', data),
   update: (id, data) => client.put(`/api/purchases/${id}`, data),
 };
@@ -115,6 +116,7 @@ export const dailyTasksAPI = {
 
 export const productionJobsAPI = {
   list: (params) => client.get('/api/production-jobs/', { params }),
+  get: (id) => client.get(`/api/production-jobs/${id}`),
   create: (data) => client.post('/api/production-jobs/', data),
   update: (id, data) => client.put(`/api/production-jobs/${id}`, data),
 };
@@ -146,6 +148,15 @@ export const candidatesAPI = {
   get: (id) => client.get(`/api/candidates/${id}`),
   create: (data) => client.post('/api/candidates/', data),
   update: (id, data) => client.put(`/api/candidates/${id}`, data),
+  uploadResume: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post(`/api/candidates/${id}/resume`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  resumeDownloadUrl: (id) => `${API_URL}/api/candidates/${id}/resume`,
+  deleteResume: (id) => client.delete(`/api/candidates/${id}/resume`),
 };
 
 export const interviewsAPI = {

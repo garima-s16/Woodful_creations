@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from decimal import Decimal
 from app.models.base import BaseModel
 
 
@@ -17,8 +18,13 @@ class Estimate(BaseModel):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
     description = Column(Text, nullable=True)
+    # material_cost/labor_cost remain for backward compatibility with
+    # estimates created before line items existed - a new estimate with
+    # real line items drives its totals from the sum of those instead
+    # (see subtotal property below).
     material_cost = Column(Numeric(12, 2), nullable=False, default=0)
     labor_cost = Column(Numeric(12, 2), nullable=False, default=0)
+    discount = Column(Numeric(12, 2), nullable=False, default=0)
     tax_percent = Column(Numeric(5, 2), nullable=False, default=18)
     tax_amount = Column(Numeric(12, 2), nullable=False, default=0)
     total_cost = Column(Numeric(12, 2), nullable=False, default=0)
@@ -35,3 +41,14 @@ class Estimate(BaseModel):
     client = relationship("Client")
     order = relationship("Order", back_populates="estimates")
     parent_estimate = relationship("Estimate", remote_side="Estimate.id", backref="revisions")
+    line_items = relationship("EstimateLineItem", back_populates="estimate",
+                               cascade="all, delete-orphan", order_by="EstimateLineItem.sort_order")
+
+    @property
+    def subtotal(self):
+        """Sum of line item amounts if any exist; falls back to the legacy
+        material_cost + labor_cost for estimates created before line
+        items existed, so old records still compute a correct total."""
+        if self.line_items:
+            return sum((item.amount or Decimal("0") for item in self.line_items), Decimal("0"))
+        return (self.material_cost or Decimal("0")) + (self.labor_cost or Decimal("0"))

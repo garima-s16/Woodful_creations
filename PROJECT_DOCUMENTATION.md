@@ -1,6 +1,6 @@
 # Woodful Creations — Project Documentation
 
-## What this is and who it's for
+## Client Requirements
 
 Woodful Creations is a woodcraft/furniture business, and this application is their internal operations system — the tool the office staff, site supervisors, and management actually use to run the business day to day. It is not a public-facing product; there's no customer-facing storefront or portal anywhere in this codebase. Everyone who logs in is either staff or an owner/manager.
 
@@ -8,11 +8,11 @@ The business itself works roughly like this, and the app is shaped around that f
 
 Because this is an Indian business, that shows up directly in the code rather than being an abstraction: currency is INR and formatted the Indian way (lakhs/crores grouping — see `frontend/src/utils/currency.js`), tax defaults to 18% GST (`Estimate.tax_percent`), and order codes follow a `WC-2026-001` style scheme.
 
-If you're new to the team, the single most useful thing to internalize before touching code is this: **Order** is the center of gravity. Almost everything else — payments, expenses, production jobs, daily tasks, issues, estimates — hangs off an order via a foreign key. When in doubt about how two features relate to each other, start by asking how they both relate to an order.
+**Order** is the center of gravity. Almost everything else — payments, expenses, production jobs, daily tasks, issues, estimates — hangs off an order via a foreign key.
 
 ## How the core workflow is actually modeled
 
-**Clients → Estimates → Orders.** A `Client` can have any number of `Estimate` rows and any number of `Order` rows. Estimates are deliberately *not* locked to a single order — the code comment in `models/estimate.py` is explicit that a client can be quoted before an order is confirmed, because in practice a client might get quoted, go quiet for two months, and only convert later, or might get several competing estimates before picking one. Estimates also support versioning: revising an estimate doesn't overwrite it, it creates a new row with `version` incremented and `parent_estimate_id` pointing back to the original, so the full negotiation history survives. That was added deliberately (see the "estimate version and client activity log" commit) — before that, revising a quote silently lost the old numbers.
+**Clients → Estimates → Orders.** A `Client` can have any number of `Estimate` rows and any number of `Order` rows. Estimates are deliberately *not* locked to a single order — the code comment in `models/estimate.py` is explicit that a client can be quoted before an order is confirmed, because in practice a client might get quoted, go quiet for two months, and only convert later, or might get several competing estimates before picking one. Estimates also support versioning: revising an estimate doesn't overwrite it, it creates a new row with `version` incremented and `parent_estimate_id` pointing back to the original, so the full negotiation history survives. 
 
 **Orders carry their own status across three independent tracks**, not one combined status: `design_status`, `execution_status`, and `delivery_status`, plus an overall `project_status` (Enquiry → ... ) and a `progress_percent`. This exists because in a real furniture/interior project these three things genuinely move independently — design can be finished while execution hasn't started, or execution can be done while delivery is still pending logistics. If you're building anything that shows "order status" in the UI, check which of these four fields is actually the one that matters for what you're building; conflating them is an easy mistake.
 

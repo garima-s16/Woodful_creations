@@ -33,7 +33,7 @@ def create_user(data: UserCreateAdmin, request: Request, db: Session = Depends(g
 
     user = User(
         username=data.username, email=data.email, full_name=data.full_name, phone=data.phone,
-        role=data.role, password_hash=hash_password(data.password), is_active=True,
+        role=data.role, employee_id=data.employee_id, password_hash=hash_password(data.password), is_active=True,
     )
     db.add(user)
     db.commit()
