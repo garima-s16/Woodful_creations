@@ -2,11 +2,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.candidate import Candidate
 from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateResponse
+from app.utils.id_generator import generate_short_id
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
@@ -23,11 +25,17 @@ def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(g
 @router.post("/", response_model=CandidateResponse, status_code=201)
 def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
                       auth=Depends(require_role("master", "manager"))):
-    candidate = Candidate(**data.dict())
-    db.add(candidate)
-    db.commit()
-    db.refresh(candidate)
-    return candidate
+    for _ in range(5):
+        candidate = Candidate(**data.dict(), business_id=generate_short_id())
+        db.add(candidate)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(candidate)
+        return candidate
+    raise HTTPException(status_code=500, detail="Unable to generate a unique business ID, please try again")
 
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)

@@ -1,7 +1,20 @@
 import React from 'react';
 import './Form.css';
 
-function FieldInput({ field, value, error, onChange }) {
+function FieldInput({ field, value, error, onChange, formData }) {
+  if (field.type === 'computed') {
+    // Read-only, derived from other field values (e.g. leave days from
+    // start/end date) - never user-editable, so it can never end up
+    // 0/negative/out of sync with the dates it's computed from.
+    return (
+      <input
+        type="text" id={field.name} name={field.name}
+        value={field.compute ? field.compute(formData) : (value || '')}
+        readOnly disabled
+        className="form-input form-input-readonly"
+      />
+    );
+  }
   if (field.type === 'textarea') {
     return (
       <textarea
@@ -34,13 +47,15 @@ function FieldInput({ field, value, error, onChange }) {
 }
 
 function FieldGroup({ field, formData, errors, handleChange }) {
+  const label = field.getLabel ? field.getLabel(formData) : field.label;
+  const hint = field.getHint ? field.getHint(formData) : field.hint;
   return (
     <div className="form-group">
       <label htmlFor={field.name} className="form-label">
-        {field.label} {field.required && <span className="required">*</span>}
+        {label} {field.required && <span className="required">*</span>}
       </label>
-      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} />
-      {field.hint && <span className="form-hint">{field.hint}</span>}
+      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} formData={formData} />
+      {hint && <span className="form-hint">{hint}</span>}
       {errors[field.name] && <span className="error-message">{errors[field.name]}</span>}
     </div>
   );
@@ -86,6 +101,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
   const validate = (fieldsToCheck) => {
     const newErrors = {};
     fieldsToCheck.forEach((field) => {
+      if (field.visibleIf && !field.visibleIf(formData)) return; // hidden fields aren't required
       if (field.required && !formData[field.name]) {
         newErrors[field.name] = `${field.label} is required`;
       }
@@ -106,7 +122,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
   if (!sections) {
     return (
       <form className="form" onSubmit={handleSubmit}>
-        {fields.map((field) => (
+        {fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
           <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} />
         ))}
         <button type="submit" className="btn-submit" disabled={loading}>
@@ -145,7 +161,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
 
       {!isReview && (
         <div className="wizard-panel">
-          {currentSection.fields.map((field) => (
+          {currentSection.fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
             <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} />
           ))}
         </div>
@@ -156,9 +172,9 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
           {sections.map((s) => (
             <div key={s.name} className="review-section">
               <h4>{s.name}</h4>
-              {s.fields.map((f) => (
+              {s.fields.filter((f) => !f.visibleIf || f.visibleIf(formData)).map((f) => (
                 <div key={f.name} className="review-row">
-                  <span className="review-label">{f.label}</span>
+                  <span className="review-label">{f.getLabel ? f.getLabel(formData) : f.label}</span>
                   <span className="review-value">
                     {f.type === 'select'
                       ? (f.options?.find((o) => String(o.value) === String(formData[f.name]))?.label || formData[f.name] || '-')

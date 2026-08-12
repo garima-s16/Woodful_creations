@@ -13,8 +13,11 @@ class SalarySlip(BaseModel):
     __tablename__ = "salary_slips"
 
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     month = Column(String(20), nullable=False)
     year = Column(String(4), nullable=False)
+    working_days = Column(Numeric(5, 2), nullable=False, default=26)
+    paid_days = Column(Numeric(5, 2), nullable=False, default=26)
     basic = Column(Numeric(12, 2), nullable=False, default=0)
     da = Column(Numeric(12, 2), nullable=False, default=0)  # Dearness Allowance
     hra = Column(Numeric(12, 2), nullable=False, default=0)  # House Rent Allowance

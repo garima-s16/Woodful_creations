@@ -61,13 +61,19 @@ def _column_format(col_name: str) -> str:
 
 
 def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str],
-                 rows: Iterable[dict], headers: Sequence[str] = None, total_columns: Sequence[str] = None):
-    """Writes one formatted sheet: logo + title row, a styled header row,
-    then one row per dict in `rows` (keyed by `columns`). If
+                 rows: Iterable[dict], headers: Sequence[str] = None, total_columns: Sequence[str] = None,
+                 subtitle: str = None, summary: Sequence[tuple] = None):
+    """Writes one formatted sheet: logo + title row (+ optional subtitle row
+    for "Generated on <date>" / filters-applied context), a styled header
+    row, then one row per dict in `rows` (keyed by `columns`). If
     `total_columns` is given, appends a totals row using a real Excel
     =SUM() formula over those columns' cell range - not a Python-computed
     static value - so the workbook stays correct if someone edits a row
-    after opening it, same as any real spreadsheet total should."""
+    after opening it, same as any real spreadsheet total should. If
+    `summary` is given (a list of (label, value) pairs), appends a small
+    summary block below the table - e.g. counts/totals broken down by
+    payment mode - for reports where a single grand total isn't enough
+    context on its own."""
     ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet name limit
     headers = headers or columns
     last_col = max(len(columns), 1)
@@ -87,7 +93,13 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
     for c in range(2, last_col + 1):
         ws.cell(row=title_row, column=c).border = GOLD_UNDERLINE
 
-    header_row = title_row + 2
+    subtitle_row = title_row
+    if subtitle:
+        subtitle_row = title_row + 1
+        ws.cell(row=subtitle_row, column=1, value=subtitle).font = SUBTITLE_FONT
+        ws.merge_cells(start_row=subtitle_row, start_column=1, end_row=subtitle_row, end_column=last_col)
+
+    header_row = subtitle_row + 2
     for idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=header_row, column=idx, value=header)
         cell.font = HEADER_FONT
@@ -119,22 +131,51 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
                 cell.number_format = _column_format(col)
         row_num += 1
 
+    if summary:
+        row_num += 1  # blank separator row
+        summary_header_row = row_num
+        ws.cell(row=summary_header_row, column=1, value="Summary").font = Font(name="Arial", bold=True, size=11, color=INK)
+        row_num += 1
+        for label, value in summary:
+            # Caller passes `value` pre-formatted (e.g. "Rs 1,25,000.00" or
+            # "42 payments") rather than a raw number, since a summary block
+            # mixes genuinely different kinds of figures (currency, counts,
+            # percentages) that a single inferred number_format can't
+            # correctly guess between.
+            ws.cell(row=row_num, column=1, value=label).font = Font(name="Arial", bold=True, size=10)
+            ws.cell(row=row_num, column=2, value=value).font = BODY_FONT
+            row_num += 1
+
     for idx, col in enumerate(columns, start=1):
         header_len = len(str(headers[idx - 1]))
         ws.column_dimensions[get_column_letter(idx)].width = max(header_len + 2, 14)
 
     ws.freeze_panes = f"A{header_row + 1}"
+
+    # Filters (dropdown arrows on the header row) and print setup - applies
+    # to every export sheet, not just this one, since every report benefits
+    # from being filterable and printable without per-caller boilerplate.
+    if rows:
+        ws.auto_filter.ref = f"A{header_row}:{get_column_letter(last_col)}{last_data_row}"
+    ws.print_options.horizontalCentered = False
+    ws.page_setup.orientation = "landscape" if last_col > 6 else "portrait"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = f"{header_row}:{header_row}"
+
     return ws
 
 
 def build_workbook(sheets: list) -> BytesIO:
     """sheets: list of dicts, each with keys: sheet_name, title, columns,
-    rows, and optional headers, total_columns. Returns an in-memory xlsx file."""
+    rows, and optional headers, total_columns, subtitle. Returns an
+    in-memory xlsx file."""
     wb = Workbook()
     wb.remove(wb.active)  # drop the default blank sheet
     for spec in sheets:
         write_sheet(wb, spec["sheet_name"], spec["title"], spec["columns"], spec["rows"],
-                    spec.get("headers"), spec.get("total_columns"))
+                    spec.get("headers"), spec.get("total_columns"), spec.get("subtitle"), spec.get("summary"))
 
     buffer = BytesIO()
     wb.save(buffer)

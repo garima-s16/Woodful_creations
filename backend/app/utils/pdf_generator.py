@@ -121,14 +121,18 @@ def generate_salary_slip_pdf(slip: SalarySlip) -> BytesIO:
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
                              leftMargin=0.6 * inch, rightMargin=0.6 * inch)
     styles = get_styles()
-    elements = build_header("SALARY SLIP", f"{slip.month} {slip.year}", "")
+    elements = build_header("SALARY SLIP", f"{slip.month} {slip.year}", "", slip.business_id)
 
     employee_name = slip.employee.name if slip.employee else "-"
+    employee_code = slip.employee.employee_code if slip.employee else "-"
+    designation = (slip.employee.designation if slip.employee else None) or "-"
     department = slip.employee.department if slip.employee else "-"
 
     elements.append(section_table(
-        [[("EMPLOYEE", employee_name), ("DEPARTMENT", department)],
-         [("STATUS", slip.status), ("PAY PERIOD", f"{slip.month} {slip.year}")]],
+        [[("EMPLOYEE", employee_name), ("EMPLOYEE ID", employee_code)],
+         [("DESIGNATION", designation), ("DEPARTMENT", department)],
+         [("PAY PERIOD", f"{slip.month} {slip.year}"), ("STATUS", slip.status)],
+         [("WORKING DAYS", str(slip.working_days)), ("PAID DAYS", str(slip.paid_days))]],
         [3.5 * inch, 3.5 * inch],
     ))
     elements.append(Spacer(1, 14))
@@ -215,9 +219,10 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
         elements.append(Spacer(1, 16))
         elements.append(Paragraph("PAYMENT HISTORY", styles["section_label"]))
         elements.append(line_items_table(
-            ["Receipt", "Date", "Mode", "Amount"],
-            [[p.receipt_code, _fmt_date(p.date), p.payment_mode, format_inr(p.amount)] for p in payments],
-            [1.75 * inch, 1.65 * inch, 1.6 * inch, 2 * inch],
+            ["Receipt ID", "Date", "Mode", "Reference", "Amount"],
+            [[p.business_id or p.receipt_code, _fmt_date(p.date), p.payment_mode,
+              p.reference_number or "-", format_inr(p.amount)] for p in payments],
+            [1.3 * inch, 1.3 * inch, 1.2 * inch, 1.6 * inch, 1.6 * inch],
         ))
 
     elements.append(Spacer(1, 16))

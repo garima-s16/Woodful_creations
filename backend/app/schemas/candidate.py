@@ -24,6 +24,7 @@ class CandidateUpdate(BaseModel):
 
 class CandidateResponse(CandidateBase):
     id: int
+    business_id: str
     status: str
     created_at: datetime
     updated_at: datetime

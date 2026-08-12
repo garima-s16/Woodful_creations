@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
@@ -7,8 +7,11 @@ from datetime import datetime
 class EmployeeBase(BaseModel):
     employee_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
+    designation: Optional[str] = None
     department: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    manager: Optional[str] = None
     joining_date: Optional[datetime] = None
     monthly_salary: Decimal = Decimal("0")
     status: str = "Active"
@@ -22,8 +25,11 @@ class EmployeeCreate(EmployeeBase):
 
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
+    designation: Optional[str] = None
     department: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    manager: Optional[str] = None
     monthly_salary: Optional[Decimal] = None
     status: Optional[str] = None
     emergency_contact: Optional[str] = None

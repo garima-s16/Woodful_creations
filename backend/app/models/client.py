@@ -17,6 +17,8 @@ class Client(BaseModel):
     phone = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=True)
     address = Column(Text, nullable=True)
+    city = Column(String(100), nullable=True)
+    status = Column(String(20), nullable=False, default="Active")  # Active / Inactive
     lead_source = Column(String(100), nullable=True)
     first_contact_date = Column(DateTime, nullable=True)
     remarks = Column(Text, nullable=True)

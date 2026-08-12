@@ -12,8 +12,13 @@ class Employee(BaseModel):
     # employee_code, which stays as the human-scannable sequential reference.
     business_id = Column(String(10), unique=True, index=True, nullable=True)
     name = Column(String(255), nullable=False, index=True)
+    designation = Column(String(100), nullable=True)
     department = Column(String(100), nullable=True, index=True)
     phone = Column(String(20), nullable=True)
+    email = Column(String(255), nullable=True)
+    manager = Column(String(255), nullable=True)  # supervisor's name - kept as free text (not an FK to
+    # another Employee row) since not every org chart is a clean single-manager tree, and this avoids a
+    # self-referential FK cascade-delete/reassignment problem for a field that's "where applicable" anyway
     joining_date = Column(DateTime, nullable=True)
     monthly_salary = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String(20), nullable=False, default="Active")

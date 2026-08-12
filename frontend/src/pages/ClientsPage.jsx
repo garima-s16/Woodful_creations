@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { clientsAPI } from '../utils/api';
+import { clientsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -79,7 +79,8 @@ function ClientsPage() {
 
   const columns = [
     { key: 'client_code', label: 'Client ID' }, { key: 'name', label: 'Name' },
-    { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' },
+    { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'city', label: 'City' },
+    { key: 'status', label: 'Status' },
     { key: 'lead_source', label: 'Lead Source' }, { key: 'address', label: 'Address' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
@@ -90,14 +91,25 @@ function ClientsPage() {
 
   const fields = [
     { name: 'name', label: 'Name', required: true, section: 'Client Identity' },
+    { name: 'status', label: 'Status', type: 'select', section: 'Client Identity', options: [
+      { value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' },
+    ] },
     { name: 'phone', label: 'Phone', section: 'Contact Details' },
     { name: 'email', label: 'Email', type: 'email', section: 'Contact Details' },
     { name: 'address', label: 'Address', type: 'textarea', section: 'Address' },
+    { name: 'city', label: 'City', section: 'Address' },
     { name: 'lead_source', label: 'Lead Source', section: 'Commercial Information' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Commercial Information' },
   ];
 
   const editFields = fields.filter((f) => f.name !== 'client_code').map(({ section, ...f }) => f);
+
+  const exportUrl = () => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    const qs = params.toString();
+    return reportsAPI.downloadUrl(`clients.xlsx${qs ? `?${qs}` : ''}`);
+  };
 
   return (
     <div className="page">
@@ -106,7 +118,12 @@ function ClientsPage() {
           <h1>Clients</h1>
           <p className="page-summary">Manage client profiles, projects, and business history in one place.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
+        <div className="page-actions">
+          <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
+            {search ? 'Export Filtered' : 'Export All'}
+          </a>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <div className="kpi-row">

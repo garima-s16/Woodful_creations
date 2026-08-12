@@ -28,8 +28,11 @@ function SalarySlipsPage() {
       await salarySlipsAPI.create({
         ...formData,
         employee_id: Number(formData.employee_id),
+        working_days: formData.working_days || '26', paid_days: formData.paid_days || '26',
         basic: formData.basic || '0', da: formData.da || '0', hra: formData.hra || '0',
+        overtime_amount: formData.overtime_amount || '0',
         pf_deduction: formData.pf_deduction || '0', tds_deduction: formData.tds_deduction || '0',
+        other_deductions: formData.other_deductions || '0',
       });
       setShowAdd(false);
       load();
@@ -41,8 +44,10 @@ function SalarySlipsPage() {
   };
 
   const columns = [
+    { key: 'business_id', label: 'Slip ID', render: (v) => v || '-' },
     { key: 'employee_id', label: 'Employee', render: (v) => employees.find((e) => e.id === v)?.name || v },
     { key: 'month', label: 'Month' }, { key: 'year', label: 'Year' },
+    { key: 'working_days', label: 'Working Days' }, { key: 'paid_days', label: 'Paid Days' },
     { key: 'net_salary', label: 'Net Salary', render: (v) => formatCurrency(v) },
     { key: 'status', label: 'Status' },
     {
@@ -56,6 +61,8 @@ function SalarySlipsPage() {
     { name: 'employee_id', label: 'Employee', type: 'select', required: true, section: 'Pay Period', options: employees.map((e) => ({ value: e.id, label: e.name })) },
     { name: 'month', label: 'Month', required: true, placeholder: 'August', section: 'Pay Period' },
     { name: 'year', label: 'Year', required: true, placeholder: '2026', section: 'Pay Period' },
+    { name: 'working_days', label: 'Working Days', type: 'number', required: true, placeholder: '26', section: 'Pay Period' },
+    { name: 'paid_days', label: 'Paid Days', type: 'number', required: true, placeholder: '26', hint: 'Cannot exceed Working Days', section: 'Pay Period' },
     { name: 'basic', label: 'Basic', type: 'number', required: true, section: 'Earnings' },
     { name: 'da', label: 'DA (Dearness Allowance)', type: 'number', section: 'Earnings' },
     { name: 'hra', label: 'HRA (House Rent Allowance)', type: 'number', section: 'Earnings' },
@@ -78,7 +85,8 @@ function SalarySlipsPage() {
       </p>
       <Table columns={columns} data={slips} loading={pageLoading} emptyMessage="No salary slips generated yet." />
       <Modal isOpen={showAdd} title="Generate Salary Slip" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Generate" />
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Generate"
+          initialValues={{ working_days: '26', paid_days: '26' }} />
       </Modal>
     </div>
   );

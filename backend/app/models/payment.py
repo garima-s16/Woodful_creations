@@ -15,7 +15,7 @@ class Payment(BaseModel):
     date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     payment_type = Column(String(50), nullable=False)  # Advance / Progress Payment / Internal
-    payment_mode = Column(String(50), nullable=False)  # Bank / UPI / Cash / Credit Card
+    payment_mode = Column(String(50), nullable=False)  # Cash / UPI / Bank Transfer / Cheque / Card / Other
     amount = Column(Numeric(12, 2), nullable=False, default=0)
     reference_number = Column(String(100), nullable=True)
     received_by = Column(String(255), nullable=True)

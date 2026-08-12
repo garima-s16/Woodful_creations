@@ -2,8 +2,10 @@
 app/utils/exporters.py); the order estimate uses reportlab (see
 app/utils/pdf_generator.py)."""
 from datetime import datetime
+from decimal import Decimal
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,8 @@ from app.models.supplier import Supplier
 from app.models.order import Order
 from app.models.estimate import Estimate
 from app.models.salary_slip import SalarySlip
+from app.models.client import Client
+from app.models.employee import Employee
 from app.services.order_service import OrderService
 from app.utils.exporters import build_workbook
 from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf, generate_invoice_pdf
@@ -73,23 +77,180 @@ def export_issues(db: Session = Depends(get_db), auth=Depends(get_current_user))
 
 
 @router.get("/payments.xlsx")
-def export_payments(db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
-    payments = db.query(Payment).order_by(Payment.date.desc()).all()
+def export_payments(
+    order_id: Optional[int] = None, client_id: Optional[int] = None,
+    payment_mode: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    db: Session = Depends(get_db), auth=Depends(require_role("master", "manager")),
+):
+    query = db.query(Payment)
+    filters_applied = []
+    if order_id:
+        query = query.filter(Payment.order_id == order_id)
+        filters_applied.append(f"Order #{order_id}")
+    if client_id:
+        query = query.join(Order, Payment.order_id == Order.id).filter(Order.client_id == client_id)
+        filters_applied.append(f"Client #{client_id}")
+    if payment_mode:
+        query = query.filter(Payment.payment_mode == payment_mode)
+        filters_applied.append(f"Mode: {payment_mode}")
+    if start_date:
+        query = query.filter(Payment.date >= datetime.fromisoformat(start_date))
+        filters_applied.append(f"From {start_date}")
+    if end_date:
+        query = query.filter(Payment.date <= datetime.fromisoformat(end_date))
+        filters_applied.append(f"To {end_date}")
+
+    payments = query.order_by(Payment.date.desc()).all()
     rows = [{
-        "receipt_code": p.receipt_code, "business_id": p.business_id or "",
+        # Per spec section 2A, "Receipt ID" is the 10-character business ID
+        # (e.g. A7K92P4XQ1) - receipt_code (RCPT-001) is kept as a secondary
+        # human-scannable sequential reference, same distinction used
+        # everywhere else business_id coexists with a *_code field.
+        "receipt_id": p.business_id or "", "receipt_code": p.receipt_code,
+        "payment_reference": p.reference_number or "",
         "date": p.date.strftime("%d-%m-%Y") if p.date else "",
-        "order": p.order.order_code if p.order else "", "client": p.order.client.name if p.order and p.order.client else "",
+        "order": p.order.order_code if p.order else "",
+        "client_id": p.order.client.business_id if p.order and p.order.client else "",
+        "client": p.order.client.name if p.order and p.order.client else "",
+        "project": p.order.project_type if p.order else "",
         "payment_type": p.payment_type, "payment_mode": p.payment_mode, "amount": float(p.amount),
-        "reference_number": p.reference_number, "received_by": p.received_by,
+        "received_by": p.received_by or "", "notes": p.remarks or "",
     } for p in payments]
-    columns = ["receipt_code", "business_id", "date", "order", "client", "payment_type", "payment_mode",
-               "amount", "reference_number", "received_by"]
-    headers = ["Receipt ID", "Business ID", "Date", "Order ID", "Client Name", "Payment Type", "Payment Mode",
-               "Amount", "Reference No.", "Received By"]
-    buffer = build_workbook([{"sheet_name": "Payments", "title": "CLIENT PAYMENT REGISTER",
-                               "columns": columns, "headers": headers, "rows": rows,
-                               "total_columns": ["amount"]}])
-    return _xlsx_response(buffer, "payments.xlsx")
+    columns = ["receipt_id", "receipt_code", "payment_reference", "date", "order", "client_id", "client",
+               "project", "payment_type", "payment_mode", "amount", "received_by", "notes"]
+    headers = ["Receipt ID", "Receipt Code", "Payment Reference", "Date", "Order ID", "Client ID", "Client Name",
+               "Project", "Payment Type", "Payment Mode", "Amount", "Received By", "Notes"]
+
+    total_amount = sum(float(p.amount) for p in payments)
+    by_mode = {}
+    for p in payments:
+        by_mode[p.payment_mode] = by_mode.get(p.payment_mode, 0) + float(p.amount)
+    summary = [("Total Payments", f"{len(payments)}"), ("Total Amount", f"Rs {total_amount:,.2f}")]
+    summary += [(f"  {mode}", f"Rs {amt:,.2f}") for mode, amt in sorted(by_mode.items())]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+
+    buffer = build_workbook([{
+        "sheet_name": "Payments", "title": "CLIENT PAYMENT REGISTER",
+        "columns": columns, "headers": headers, "rows": rows,
+        "total_columns": ["amount"], "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"payment_register_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/clients.xlsx")
+def export_clients(
+    search: Optional[str] = Query(None), status: Optional[str] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Client Register - the complete client list without opening each
+    client individually (P4). `search`/`status` mirror the filters on
+    GET /api/clients/ exactly, so "search Mhow -> export only Mhow
+    clients" produces the same set the user is already looking at."""
+    query = db.query(Client)
+    filters_applied = []
+    if search:
+        like = f"%{search}%"
+        query = query.filter((Client.name.ilike(like)) | (Client.client_code.ilike(like)) | (Client.phone.ilike(like)))
+        filters_applied.append(f'Search: "{search}"')
+    if status:
+        query = query.filter(Client.status == status)
+        filters_applied.append(f"Status: {status}")
+
+    clients = query.order_by(Client.name).all()
+    rows = []
+    for c in clients:
+        orders = c.orders or []
+        total_order_value = sum((Decimal(o.order_value or 0) for o in orders), Decimal("0"))
+        total_paid = sum((Decimal(o.total_received or 0) for o in orders), Decimal("0"))
+        outstanding = sum((Decimal(o.balance or 0) for o in orders), Decimal("0"))
+        latest_order = max(orders, key=lambda o: o.order_date) if orders else None
+        rows.append({
+            "client_id": c.business_id or "", "name": c.name, "phone": c.phone or "",
+            "email": c.email or "", "address": c.address or "", "city": c.city or "",
+            "project_count": len(orders), "order_count": len(orders),
+            "total_order_value": float(total_order_value), "total_paid": float(total_paid),
+            "outstanding": float(outstanding),
+            "latest_order": latest_order.order_date.strftime("%d-%m-%Y") if latest_order else "",
+            "status": c.status, "created_date": c.created_at.strftime("%d-%m-%Y") if c.created_at else "",
+        })
+    columns = ["client_id", "name", "phone", "email", "address", "city", "project_count", "order_count",
+               "total_order_value", "total_paid", "outstanding", "latest_order", "status", "created_date"]
+    headers = ["Client ID", "Client Name", "Phone", "Email", "Address", "City", "Project Count", "Order Count",
+               "Total Order Value", "Total Paid", "Outstanding", "Latest Order", "Status", "Created Date"]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Clients", str(len(clients))),
+        ("Total Order Value", f"Rs {sum(r['total_order_value'] for r in rows):,.2f}"),
+        ("Total Outstanding", f"Rs {sum(r['outstanding'] for r in rows):,.2f}"),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Clients", "title": "CLIENT REGISTER",
+        "columns": columns, "headers": headers, "rows": rows,
+        "total_columns": ["total_order_value", "total_paid", "outstanding"],
+        "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"client_register_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/employees.xlsx")
+def export_employees(
+    search: Optional[str] = Query(None), department: Optional[str] = Query(None),
+    status: Optional[str] = Query(None), db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Employee Directory export (P5) - mirrors GET /api/employees/'s
+    search/department/status filters."""
+    query = db.query(Employee)
+    filters_applied = []
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            (Employee.name.ilike(like)) | (Employee.employee_code.ilike(like))
+            | (Employee.designation.ilike(like)) | (Employee.phone.ilike(like)) | (Employee.email.ilike(like))
+        )
+        filters_applied.append(f'Search: "{search}"')
+    if department:
+        query = query.filter(Employee.department == department)
+        filters_applied.append(f"Department: {department}")
+    if status:
+        query = query.filter(Employee.status == status)
+        filters_applied.append(f"Status: {status}")
+
+    employees = query.order_by(Employee.name).all()
+    rows = [{
+        "employee_id": e.business_id or "", "name": e.name, "designation": e.designation or "",
+        "department": e.department or "", "phone": e.phone or "", "email": e.email or "",
+        "joining_date": e.joining_date.strftime("%d-%m-%Y") if e.joining_date else "",
+        "status": e.status, "manager": e.manager or "",
+    } for e in employees]
+    columns = ["employee_id", "name", "designation", "department", "phone", "email",
+               "joining_date", "status", "manager"]
+    headers = ["Employee ID", "Employee Name", "Designation", "Department", "Phone", "Email",
+               "Joining Date", "Employment Status", "Manager/Supervisor"]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [("Total Employees", str(len(employees)))]
+    active_count = sum(1 for e in employees if e.status == "Active")
+    summary.append(("Active", str(active_count)))
+    summary.append(("Inactive/Other", str(len(employees) - active_count)))
+
+    buffer = build_workbook([{
+        "sheet_name": "Employees", "title": "EMPLOYEE DIRECTORY",
+        "columns": columns, "headers": headers, "rows": rows,
+        "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"employee_directory_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
 
 
 @router.get("/order-profitability.xlsx")

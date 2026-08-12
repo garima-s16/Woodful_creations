@@ -9,6 +9,8 @@ class ClientBase(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    status: str = "Active"
     lead_source: Optional[str] = None
     first_contact_date: Optional[datetime] = None
     remarks: Optional[str] = None
@@ -23,6 +25,8 @@ class ClientUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    status: Optional[str] = None
     lead_source: Optional[str] = None
     remarks: Optional[str] = None
 

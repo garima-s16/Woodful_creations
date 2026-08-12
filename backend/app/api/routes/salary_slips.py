@@ -2,11 +2,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import require_role
 from app.models.salary_slip import SalarySlip
 from app.schemas.salary_slip import SalarySlipCreate, SalarySlipUpdate, SalarySlipResponse
+from app.utils.id_generator import generate_short_id
 
 router = APIRouter(prefix="/api/salary-slips", tags=["salary-slips"])
 
@@ -34,11 +36,18 @@ def create_salary_slip(data: SalarySlipCreate, db: Session = Depends(get_db),
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Salary slip for this employee/month/year already exists")
-    slip = SalarySlip(**data.dict(), net_salary=_compute_net(data))
-    db.add(slip)
-    db.commit()
-    db.refresh(slip)
-    return slip
+
+    for _ in range(5):
+        slip = SalarySlip(**data.dict(), net_salary=_compute_net(data), business_id=generate_short_id())
+        db.add(slip)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
+        db.refresh(slip)
+        return slip
+    raise HTTPException(status_code=500, detail="Unable to generate a unique business ID, please try again")
 
 
 @router.get("/{slip_id}", response_model=SalarySlipResponse)
@@ -55,7 +64,14 @@ def update_salary_slip(slip_id: int, data: SalarySlipUpdate, db: Session = Depen
     slip = db.query(SalarySlip).filter(SalarySlip.id == slip_id).first()
     if not slip:
         raise HTTPException(status_code=404, detail="Salary slip not found")
-    for field, value in data.dict(exclude_unset=True).items():
+
+    updates = data.dict(exclude_unset=True)
+    new_working_days = updates.get("working_days", slip.working_days)
+    new_paid_days = updates.get("paid_days", slip.paid_days)
+    if new_paid_days > new_working_days:
+        raise HTTPException(status_code=400, detail="paid_days cannot exceed working_days")
+
+    for field, value in updates.items():
         setattr(slip, field, value)
     slip.net_salary = slip.basic + slip.da + slip.hra + slip.overtime_amount - slip.pf_deduction - slip.tds_deduction - slip.other_deductions
     db.add(slip)

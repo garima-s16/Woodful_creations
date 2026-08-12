@@ -14,11 +14,20 @@ router = APIRouter(prefix="/api/employees", tags=["employees"])
 
 
 @router.get("/", response_model=List[EmployeeResponse])
-def list_employees(department: Optional[str] = Query(None), db: Session = Depends(get_db),
+def list_employees(department: Optional[str] = Query(None), status: Optional[str] = Query(None),
+                    search: Optional[str] = Query(None), db: Session = Depends(get_db),
                     auth=Depends(get_current_user)):
     query = db.query(Employee)
     if department:
         query = query.filter(Employee.department == department)
+    if status:
+        query = query.filter(Employee.status == status)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            (Employee.name.ilike(like)) | (Employee.employee_code.ilike(like))
+            | (Employee.designation.ilike(like)) | (Employee.phone.ilike(like)) | (Employee.email.ilike(like))
+        )
     return query.order_by(Employee.name).all()
 
 

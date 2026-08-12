@@ -65,7 +65,7 @@ function PaymentsPage() {
   };
 
   const columns = [
-    { key: 'receipt_code', label: 'Receipt ID' },
+    { key: 'business_id', label: 'Receipt ID', render: (v) => v || '-' },
     { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
     { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
     { key: 'payment_type', label: 'Payment Type' }, { key: 'payment_mode', label: 'Payment Mode' },
@@ -83,6 +83,20 @@ function PaymentsPage() {
     },
   ];
 
+  // Reference-number field is context-aware per payment mode: Cash is
+  // system-generated (never user-typed, see backend OrderService), while
+  // other modes ask for whatever real-world reference identifies that
+  // transaction - the label changes so the user isn't guessing what to enter.
+  const referenceFieldFor = (mode) => {
+    switch (mode) {
+      case 'UPI': return { label: 'UPI Transaction ID', placeholder: 'e.g. 402812345678' };
+      case 'Bank Transfer': return { label: 'Bank Reference / UTR Number', placeholder: 'e.g. UTR1234567890' };
+      case 'Cheque': return { label: 'Cheque Number', placeholder: 'e.g. 000123' };
+      case 'Card': return { label: 'Transaction ID', placeholder: 'e.g. auth code / last 4 digits' };
+      default: return { label: 'Reference Number', placeholder: '' };
+    }
+  };
+
   const createFields = [
     { name: 'order_id', label: 'Order', type: 'select', required: true, section: 'Client & Order', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Client & Order' },
@@ -90,10 +104,24 @@ function PaymentsPage() {
       { value: 'Advance', label: 'Advance' }, { value: 'Progress Payment', label: 'Progress Payment' }, { value: 'Internal', label: 'Internal' },
     ] },
     { name: 'payment_mode', label: 'Payment Mode', type: 'select', required: true, section: 'Payment Details', options: [
-      { value: 'Cash', label: 'Cash' }, { value: 'UPI', label: 'UPI' }, { value: 'Bank', label: 'Bank' }, { value: 'Credit Card', label: 'Credit Card' },
+      { value: 'Cash', label: 'Cash' }, { value: 'UPI', label: 'UPI' }, { value: 'Bank Transfer', label: 'Bank Transfer' },
+      { value: 'Cheque', label: 'Cheque' }, { value: 'Card', label: 'Card' }, { value: 'Other', label: 'Other' },
     ] },
     { name: 'amount', label: 'Amount', type: 'number', required: true, section: 'Payment Details' },
-    { name: 'reference_number', label: 'Reference No.', section: 'Reference' },
+    {
+      // Cash: hidden entirely - the backend generates CASH-YYYYMMDD-001
+      // automatically, so there's nothing for the user to type.
+      name: 'cash_note', type: 'computed', section: 'Reference',
+      label: 'Reference Number',
+      hint: 'Generated automatically for cash payments (e.g. CASH-20260812-001) - you do not need to enter one.',
+      compute: () => 'Auto-generated on save',
+      visibleIf: (fd) => fd.payment_mode === 'Cash',
+    },
+    {
+      name: 'reference_number', section: 'Reference',
+      getLabel: (fd) => referenceFieldFor(fd.payment_mode).label,
+      visibleIf: (fd) => fd.payment_mode && fd.payment_mode !== 'Cash',
+    },
     { name: 'received_by', label: 'Received By', section: 'Reference' },
   ];
 
