@@ -34,6 +34,7 @@ function MaterialDetailPage() {
           <div className="detail-subtitle">
             {material.material_code} &middot; {material.category || 'Uncategorized'}
             {' '}<span className={`status-badge ${statusClass(material.stock_status)}`}>{material.stock_status}</span>
+            {material.business_id && <span className="business-id-badge">{material.business_id}</span>}
           </div>
         </div>
       </div>

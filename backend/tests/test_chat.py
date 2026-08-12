@@ -211,3 +211,64 @@ def test_chat_payment_proposal_requires_master_or_manager(client, test_user, db_
     body = chat_resp.json()
     assert body["proposed_action"] is None
     assert "master or manager" in body["response"].lower()
+
+
+def test_low_stock_returns_clickable_records(client, test_user):
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Chat Records Low Stock Material", "unit": "Sheets", "opening_stock": 1, "minimum_stock": 10,
+    }).json()
+
+    resp = client.post("/api/chat/", json={"message": "check low stock"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["records"]) > 0
+    match = next((r for r in body["records"] if r["label"] == "Chat Records Low Stock Material"), None)
+    assert match is not None
+    assert match["type"] == "Material"
+    assert match["path"] == f"/materials/{material['id']}"
+
+
+def test_outstanding_payments_returns_clickable_order_records(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Chat Records Payment Client"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "50000.00", "advance": "10000.00",
+    }).json()
+
+    resp = client.post("/api/chat/", json={"message": "which orders have outstanding payments"})
+    assert resp.status_code == 200
+    body = resp.json()
+    match = next((r for r in body["records"] if r["label"] == order["order_code"]), None)
+    assert match is not None
+    assert match["type"] == "Order"
+    assert match["path"] == f"/orders/{order['id']}"
+    assert "Chat Records Payment Client" in match["sublabel"]
+
+
+def test_outstanding_payments_records_respect_rbac(client, db_session):
+    from app.core.security import hash_password
+    from app.models.user import User
+
+    limited_user = User(
+        username="chatrecordslimited", email="chatrecordslimited@example.com", full_name="Limited User",
+        password_hash=hash_password("LimitedPass1!"), role="user", is_active=True,
+    )
+    db_session.add(limited_user)
+    db_session.commit()
+
+    resp = client.post("/api/auth/login", json={"identifier": "chatrecordslimited@example.com", "password": "LimitedPass1!"})
+    assert resp.status_code == 200
+
+    chat_resp = client.post("/api/chat/", json={"message": "show me pending payments"})
+    body = chat_resp.json()
+    assert body["records"] == []
+    assert "master/manager" in body["response"].lower()
+
+
+def test_no_low_stock_returns_no_records(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/chat/", json={"message": "check low stock"})
+    body = resp.json()
+    # Even with zero matches, the response must be well-formed - not an error.
+    assert isinstance(body["records"], list)

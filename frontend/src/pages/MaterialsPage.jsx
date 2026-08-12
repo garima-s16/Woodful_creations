@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { materialsAPI, suppliersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -18,7 +18,8 @@ function MaterialsPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

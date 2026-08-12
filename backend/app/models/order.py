@@ -11,6 +11,9 @@ class Order(BaseModel):
     __tablename__ = "orders"
 
     order_code = Column(String(20), unique=True, nullable=False, index=True)  # WC-2026-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # order_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     project_type = Column(String(100), nullable=True)
     order_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -40,8 +43,15 @@ class Order(BaseModel):
 
     def recompute_totals(self):
         """Call after adding/editing a Payment - keeps total_received and
-        balance consistent with the sum of this order's payments."""
+        balance consistent with the advance recorded at order creation
+        plus the sum of this order's Payment rows. The advance is stored
+        directly on the order, not as its own Payment record, so it must
+        be added back in explicitly here - omitting it was a real bug:
+        total_received would silently drop to just the newest payment
+        the moment any payment was recorded after order creation,
+        making the advance disappear from the running total."""
         from decimal import Decimal
-        total = sum((p.amount for p in self.payments), Decimal("0")) if self.payments else Decimal("0")
+        payments_total = sum((p.amount for p in self.payments), Decimal("0")) if self.payments else Decimal("0")
+        total = (self.advance or Decimal("0")) + payments_total
         self.total_received = total
         self.balance = (self.order_value or Decimal("0")) - total

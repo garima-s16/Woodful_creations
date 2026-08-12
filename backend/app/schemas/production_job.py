@@ -31,6 +31,7 @@ class ProductionJobUpdate(BaseModel):
 
 class ProductionJobResponse(ProductionJobBase):
     id: int
+    business_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -29,6 +29,7 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     id: int
+    business_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

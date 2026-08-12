@@ -9,6 +9,9 @@ class DailyTask(BaseModel):
     __tablename__ = "daily_tasks"
 
     task_code = Column(String(20), unique=True, nullable=False, index=True)  # TSK-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # task_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     date = Column(DateTime, nullable=False, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)

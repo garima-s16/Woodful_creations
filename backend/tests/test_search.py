@@ -70,3 +70,26 @@ def test_search_no_match_returns_empty_list(client, test_user):
     resp = client.get("/api/search/", params={"q": "ThisMatchesAbsolutelyNothingXYZ123"})
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_search_by_business_id_finds_the_record(client, test_user):
+    _login(client, test_user)
+    created = client.post("/api/clients/", json={"name": "Business ID Search Client"}).json()
+    business_id = created["business_id"]
+    assert business_id is not None
+
+    resp = client.get("/api/search/", params={"q": business_id})
+    assert resp.status_code == 200
+    results = resp.json()
+    assert any(r["type"] == "Client" and r["id"] == created["id"] for r in results)
+
+
+def test_search_by_business_id_across_entity_types(client, test_user):
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Search By Business ID Material", "unit": "Sheets", "opening_stock": 5, "minimum_stock": 1,
+    }).json()
+
+    resp = client.get("/api/search/", params={"q": material["business_id"]})
+    results = resp.json()
+    assert any(r["type"] == "Material" and r["id"] == material["id"] for r in results)

@@ -120,3 +120,31 @@ def test_payments_client_filter_excludes_other_clients(client, test_user):
     payments = resp.json()
     assert len(payments) == 1
     assert float(payments[0]["amount"]) == 5000.0
+
+
+def test_advance_is_not_lost_when_a_payment_is_recorded_afterward(client, test_user):
+    """Regression test for a real bug found during integration testing:
+    recompute_totals() summed only Payment rows, but the advance amount
+    is stored directly on the Order at creation (never as its own
+    Payment record) - so total_received would silently drop to just the
+    newest payment the instant any payment was recorded afterward,
+    making the original advance vanish from the running total."""
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+
+    client_id = client.post("/api/clients/", json={"name": "Advance Regression Client"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-01T00:00:00",
+        "order_value": "100000.00", "advance": "30000.00",
+    }).json()
+    assert order["total_received"] == "30000.00"
+
+    client.post("/api/payments/", json={
+        "date": "2026-08-05T00:00:00", "order_id": order["id"],
+        "payment_type": "Progress Payment", "payment_mode": "UPI", "amount": "20000.00",
+    })
+
+    order_after = client.get(f"/api/orders/{order['id']}").json()
+    # The advance (30000) must still be reflected, not just the new payment (20000).
+    assert order_after["total_received"] == "50000.00"
+    assert order_after["balance"] == "50000.00"

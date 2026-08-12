@@ -10,6 +10,9 @@ class Client(BaseModel):
     __tablename__ = "clients"
 
     client_code = Column(String(20), unique=True, nullable=False, index=True)  # CL-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # client_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     name = Column(String(255), nullable=False, index=True)
     phone = Column(String(20), nullable=True, index=True)
     email = Column(String(255), nullable=True)

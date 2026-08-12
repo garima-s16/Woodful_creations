@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { dailyTasksAPI, employeesAPI, ordersAPI } from '../utils/api';
 import Table from '../components/common/Table';
@@ -17,7 +17,8 @@ function DailyTasksPage() {
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
   const [view, setView] = useState('All');
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);

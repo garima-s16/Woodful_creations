@@ -61,6 +61,18 @@
 }
 .detail-title { font-size: 1.6rem; }
 .detail-subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+.business-id-badge {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  background: var(--color-ivory-dim);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-left: 8px;
+}
 .detail-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-3); }
 .detail-meta-item { font-size: 0.85rem; }
 .detail-meta-label { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; display: block; margin-bottom: 2px; }

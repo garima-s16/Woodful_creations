@@ -61,12 +61,17 @@ def _column_format(col_name: str) -> str:
 
 
 def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str],
-                 rows: Iterable[dict], headers: Sequence[str] = None):
+                 rows: Iterable[dict], headers: Sequence[str] = None, total_columns: Sequence[str] = None):
     """Writes one formatted sheet: logo + title row, a styled header row,
-    then one row per dict in `rows` (keyed by `columns`)."""
+    then one row per dict in `rows` (keyed by `columns`). If
+    `total_columns` is given, appends a totals row using a real Excel
+    =SUM() formula over those columns' cell range - not a Python-computed
+    static value - so the workbook stays correct if someone edits a row
+    after opening it, same as any real spreadsheet total should."""
     ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet name limit
     headers = headers or columns
     last_col = max(len(columns), 1)
+    rows = list(rows)
 
     title_row = 1
     if os.path.exists(LOGO_PATH):
@@ -89,7 +94,8 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
         cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    row_num = header_row + 1
+    first_data_row = header_row + 1
+    row_num = first_data_row
     for i, row in enumerate(rows):
         for idx, col in enumerate(columns, start=1):
             cell = ws.cell(row=row_num, column=idx, value=row.get(col))
@@ -97,6 +103,20 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
             cell.number_format = _column_format(col)
             if i % 2 == 1:
                 cell.fill = ZEBRA_FILL
+        row_num += 1
+    last_data_row = row_num - 1
+
+    if total_columns and rows:
+        total_row = row_num
+        ws.cell(row=total_row, column=1, value="Total").font = Font(name="Arial", bold=True, size=10, color="FFFFFF")
+        for idx, col in enumerate(columns, start=1):
+            cell = ws.cell(row=total_row, column=idx)
+            cell.fill = PatternFill(start_color=GOLD, end_color=GOLD, fill_type="solid")
+            if col in total_columns:
+                col_letter = get_column_letter(idx)
+                cell.value = f"=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row})"
+                cell.font = Font(name="Arial", bold=True, size=10, color="FFFFFF")
+                cell.number_format = _column_format(col)
         row_num += 1
 
     for idx, col in enumerate(columns, start=1):
@@ -109,12 +129,12 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
 
 def build_workbook(sheets: list) -> BytesIO:
     """sheets: list of dicts, each with keys: sheet_name, title, columns,
-    rows, and optional headers. Returns an in-memory xlsx file."""
+    rows, and optional headers, total_columns. Returns an in-memory xlsx file."""
     wb = Workbook()
     wb.remove(wb.active)  # drop the default blank sheet
     for spec in sheets:
         write_sheet(wb, spec["sheet_name"], spec["title"], spec["columns"], spec["rows"],
-                    spec.get("headers"))
+                    spec.get("headers"), spec.get("total_columns"))
 
     buffer = BytesIO()
     wb.save(buffer)

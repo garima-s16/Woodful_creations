@@ -44,3 +44,8 @@ class ChatResponse(BaseModel):
     # mode). The frontend must send this back as context.pending on the
     # user's next message - it is never persisted server-side.
     clarification: Optional[dict] = None
+    # Structured, clickable results for "which records" style questions
+    # (e.g. "which orders have outstanding payments") - each one has
+    # enough to render a card and link straight to the real detail page,
+    # rather than a wall of text listing them.
+    records: List[dict] = []

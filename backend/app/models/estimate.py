@@ -11,6 +11,9 @@ class Estimate(BaseModel):
     __tablename__ = "estimates"
 
     estimate_code = Column(String(20), unique=True, nullable=False, index=True)  # EST-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # estimate_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
     description = Column(Text, nullable=True)

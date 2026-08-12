@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.employee import Employee
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
@@ -28,7 +28,7 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db),
     payload = data.dict(exclude={"employee_code"})
     for _ in range(5):
         code = generate_unique_code(db, Employee, "employee_code", "EMP-")
-        employee = Employee(**payload, employee_code=code)
+        employee = Employee(**payload, employee_code=code, business_id=generate_short_id())
         db.add(employee)
         try:
             db.commit()

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { clientsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -16,7 +16,8 @@ function ClientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingClient, setEditingClient] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

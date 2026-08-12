@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { productionJobsAPI, employeesAPI, ordersAPI, materialsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -11,7 +12,8 @@ function ProductionJobsPage() {
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
   const [materials, setMaterials] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingJob, setEditingJob] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

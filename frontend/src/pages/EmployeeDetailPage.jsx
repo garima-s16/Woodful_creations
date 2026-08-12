@@ -95,7 +95,10 @@ function EmployeeDetailPage() {
         <div>
           <Link to="/employees" className="btn-link">&larr; Back to Employees</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{employee.name}</h1>
-          <div className="detail-subtitle">{employee.employee_code} &middot; {employee.department || 'No department'}</div>
+          <div className="detail-subtitle">
+            {employee.employee_code} &middot; {employee.department || 'No department'}
+            {employee.business_id && <span className="business-id-badge">{employee.business_id}</span>}
+          </div>
         </div>
         <div className="page-actions">
           <button className="btn-secondary" onClick={() => setActiveAction('attendance')}>Record Attendance</button>

@@ -9,6 +9,9 @@ class Payment(BaseModel):
     __tablename__ = "payments"
 
     receipt_code = Column(String(20), unique=True, nullable=False, index=True)  # RCPT-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # receipt_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     payment_type = Column(String(50), nullable=False)  # Advance / Progress Payment / Internal

@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI } from '../utils/api';
+import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI } from '../utils/api';
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
 import { formatCurrency } from '../utils/currency';
+import QuickActions from '../components/QuickActions';
 
 
-function AttentionRequired({ stock, orders, pendingTasks }) {
+function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pendingPurchases, delayedProduction }) {
   const navigate = useNavigate();
   const lowStock = (stock?.low_stock_action_list || []).slice(0, 4);
   const onHoldOrders = (orders?.top_orders || []).filter((o) => o.status === 'On Hold').slice(0, 4);
   const outstandingOrders = (orders?.top_orders || []).filter((o) => o.pending > 0).slice(0, 4);
   const tasks = (pendingTasks || []).slice(0, 4);
 
-  const hasAny = lowStock.length || onHoldOrders.length || outstandingOrders.length || tasks.length;
+  const hasAny = lowStock.length || onHoldOrders.length || outstandingOrders.length || tasks.length
+    || upcomingDeliveries.length || pendingPurchases.length || delayedProduction.length;
   if (!hasAny) {
     return (
       <Card title="Attention Required">
@@ -70,6 +72,39 @@ function AttentionRequired({ stock, orders, pendingTasks }) {
             ))}
           </div>
         )}
+        {upcomingDeliveries.length > 0 && (
+          <div className="attention-column">
+            <h4>Upcoming Deliveries</h4>
+            {upcomingDeliveries.map((o) => (
+              <button key={o.id} className="attention-item" onClick={() => navigate(`/orders/${o.id}`)}>
+                <span>{o.order_code} - {o.client?.name || 'Client'}</span>
+                <span className="status-badge status-info">{new Date(o.delivery_date).toLocaleDateString()}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {pendingPurchases.length > 0 && (
+          <div className="attention-column">
+            <h4>Purchases Pending Payment</h4>
+            {pendingPurchases.map((p) => (
+              <button key={p.id} className="attention-item" onClick={() => navigate('/purchases')}>
+                <span>{p.purchase_code} - {p.supplier?.name || 'Supplier'}</span>
+                <span className="status-badge status-warning">{p.payment_status}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {delayedProduction.length > 0 && (
+          <div className="attention-column">
+            <h4>Production Jobs Open 7+ Days</h4>
+            {delayedProduction.map((j) => (
+              <button key={j.id} className="attention-item" onClick={() => navigate('/production-jobs')}>
+                <span>{j.job_code} - {j.operation || 'Job'}</span>
+                <span className="status-badge status-warning">{j.status}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -104,12 +139,38 @@ function DashboardPage() {
   const [staff, setStaff] = useState(null);
   const [pendingTasks, setPendingTasks] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
+  const [pendingPurchases, setPendingPurchases] = useState([]);
+  const [delayedProduction, setDelayedProduction] = useState([]);
 
   useEffect(() => {
     dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
     dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
     dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
     dailyTasksAPI.list({ status: 'Not Started' }).then((res) => setPendingTasks(res.data)).catch(() => {});
+
+    // Upcoming deliveries: orders with a delivery_date in the next 14
+    // days that aren't already completed - a real, direct field query.
+    ordersAPI.list().then((res) => {
+      const now = Date.now();
+      const twoWeeksOut = now + 14 * 24 * 60 * 60 * 1000;
+      const upcoming = res.data.filter((o) => {
+        if (!o.delivery_date || o.project_status === 'Completed') return false;
+        const t = new Date(o.delivery_date).getTime();
+        return t >= now && t <= twoWeeksOut;
+      }).slice(0, 4);
+      setUpcomingDeliveries(upcoming);
+    }).catch(() => {});
+
+    // Production jobs open 7+ days: there is no planned-completion-date
+    // field on ProductionJob, so this is a stated approximation (same
+    // pattern as the Orders "30+ days overdue" filter) - not a precise
+    // "delayed" status the data doesn't actually support.
+    productionJobsAPI.list().then((res) => {
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const stale = res.data.filter((j) => j.status !== 'Completed' && new Date(j.date).getTime() < cutoff).slice(0, 4);
+      setDelayedProduction(stale);
+    }).catch(() => {});
 
     Promise.all([
       purchasesAPI.list().then((r) => r.data).catch(() => []),
@@ -120,6 +181,10 @@ function DashboardPage() {
         ...payments.slice(0, 4).map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
       ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
       setActivity(feed);
+
+      // Purchases still pending payment to the supplier - a direct
+      // field query on data already being fetched for the activity feed.
+      setPendingPurchases(purchases.filter((p) => p.payment_status !== 'Paid').slice(0, 4));
     });
   }, []);
 
@@ -136,6 +201,8 @@ function DashboardPage() {
         <h1>Business Overview</h1>
         <p className="dashboard-subtitle">A live snapshot of inventory, sales, and operations across the business.</p>
       </div>
+
+      <QuickActions />
 
       <h2 className="section-heading">Primary Business Metrics</h2>
       <div className="hero-metrics">
@@ -169,7 +236,10 @@ function DashboardPage() {
 
       <section className="dashboard-section">
         <h2 className="section-heading">Attention Required</h2>
-        <AttentionRequired stock={stock} orders={orders} pendingTasks={pendingTasks} />
+        <AttentionRequired
+          stock={stock} orders={orders} pendingTasks={pendingTasks}
+          upcomingDeliveries={upcomingDeliveries} pendingPurchases={pendingPurchases} delayedProduction={delayedProduction}
+        />
       </section>
 
       <section className="dashboard-section">

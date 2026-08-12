@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.security import require_role
 from app.models.project_expense import ProjectExpense
 from app.schemas.project_expense import ProjectExpenseCreate, ProjectExpenseUpdate, ProjectExpenseResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/project-expenses", tags=["project-expenses"])
 
@@ -28,7 +28,7 @@ def create_project_expense(data: ProjectExpenseCreate, db: Session = Depends(get
     payload = data.dict(exclude={"expense_code"})
     for _ in range(5):
         code = generate_unique_code(db, ProjectExpense, "expense_code", "EXP-")
-        expense = ProjectExpense(**payload, expense_code=code)
+        expense = ProjectExpense(**payload, expense_code=code, business_id=generate_short_id())
         db.add(expense)
         try:
             db.commit()

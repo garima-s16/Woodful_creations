@@ -27,7 +27,7 @@ def generate_order_estimate_pdf(order: Order) -> BytesIO:
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
                              leftMargin=0.6 * inch, rightMargin=0.6 * inch)
     styles = get_styles()
-    elements = build_header("ORDER SUMMARY", order.order_code, _fmt_date(order.order_date))
+    elements = build_header("ORDER SUMMARY", order.order_code, _fmt_date(order.order_date), order.business_id)
 
     client_name = order.client.name if order.client else "-"
     client_phone = order.client.phone if order.client else "-"
@@ -72,7 +72,7 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
                              leftMargin=0.6 * inch, rightMargin=0.6 * inch)
     styles = get_styles()
-    elements = build_header("ESTIMATE", estimate.estimate_code, _fmt_date(estimate.created_at))
+    elements = build_header("ESTIMATE", estimate.estimate_code, _fmt_date(estimate.created_at), estimate.business_id)
 
     client_name = estimate.client.name if estimate.client else "-"
     client_phone = estimate.client.phone if estimate.client else "-"
@@ -192,7 +192,7 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
                              leftMargin=0.6 * inch, rightMargin=0.6 * inch)
     styles = get_styles()
-    elements = build_header("INVOICE", order.order_code, datetime.utcnow().strftime("%d %b %Y"))
+    elements = build_header("INVOICE", order.order_code, datetime.utcnow().strftime("%d %b %Y"), order.business_id)
 
     client_name = order.client.name if order.client else "-"
     client_phone = order.client.phone if order.client else "-"

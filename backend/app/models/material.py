@@ -10,6 +10,9 @@ class Material(BaseModel):
     __tablename__ = "materials"
 
     material_code = Column(String(20), unique=True, nullable=False, index=True)  # MAT-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # material_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     name = Column(String(255), nullable=False, index=True)
     category = Column(String(100), nullable=True, index=True)
     brand_grade = Column(String(100), nullable=True)

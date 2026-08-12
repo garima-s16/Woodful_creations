@@ -7,6 +7,9 @@ class Supplier(BaseModel):
     __tablename__ = "suppliers"
 
     supplier_code = Column(String(20), unique=True, nullable=False, index=True)  # SUP-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # supplier_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     name = Column(String(255), nullable=False, index=True)
     category = Column(String(100), nullable=True)
     contact_person = Column(String(255), nullable=True)

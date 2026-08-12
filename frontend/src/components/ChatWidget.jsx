@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { chatAPI, paymentsAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
 import '../styles/components/ChatWidget.css';
@@ -14,6 +14,7 @@ function contextualGreetingSuggestion(params) {
 
 function ChatWidget() {
   const params = useParams();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
@@ -54,7 +55,7 @@ function ChatWidget() {
       setPending(res.data.clarification || null);
       setMessages((prev) => [...prev, {
         role: 'assistant', text: res.data.response, suggestions: res.data.suggestions,
-        proposedAction: res.data.proposed_action || null,
+        proposedAction: res.data.proposed_action || null, records: res.data.records || [],
       }]);
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -122,6 +123,17 @@ function ChatWidget() {
                         <button className="btn-primary" onClick={() => confirmAction(i, m.proposedAction)} disabled={loading}>Confirm</button>
                         <button className="btn-secondary" onClick={() => dismissAction(i)} disabled={loading}>Not now</button>
                       </div>
+                    </div>
+                  )}
+                  {m.records?.length > 0 && (
+                    <div className="chat-records">
+                      {m.records.map((r, ri) => (
+                        <button key={ri} className="chat-record-card" onClick={() => navigate(r.path)}>
+                          <span className="chat-record-type">{r.type}</span>
+                          <span className="chat-record-label">{r.label}</span>
+                          {r.sublabel && <span className="chat-record-sublabel">{r.sublabel}</span>}
+                        </button>
+                      ))}
                     </div>
                   )}
                   {m.suggestions?.length > 0 && (

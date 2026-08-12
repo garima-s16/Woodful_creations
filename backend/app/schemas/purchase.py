@@ -28,6 +28,7 @@ class PurchaseUpdate(BaseModel):
 
 class PurchaseResponse(PurchaseBase):
     id: int
+    business_id: Optional[str] = None
     taxable_value: Decimal
     gst_amount: Decimal
     invoice_total: Decimal

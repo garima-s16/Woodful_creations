@@ -9,6 +9,9 @@ class ProjectExpense(BaseModel):
     __tablename__ = "project_expenses"
 
     expense_code = Column(String(20), unique=True, nullable=False, index=True)  # EXP-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # expense_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     category = Column(String(100), nullable=False)

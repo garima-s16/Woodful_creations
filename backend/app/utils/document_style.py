@@ -86,9 +86,12 @@ def get_styles():
     }
 
 
-def build_header(document_title: str, reference: str, date_label: str):
+def build_header(document_title: str, reference: str, date_label: str, business_id: str = None):
     """Logo + wordmark on the left, document type/reference on the
-    right - the same two-sided header pattern used on every document."""
+    right - the same two-sided header pattern used on every document.
+    business_id, when supplied, is the opaque 10-character external
+    identifier (e.g. A7K92P4XQ1) shown alongside the human-scannable
+    reference code - optional since not every document type has one."""
     styles = get_styles()
     elements = []
 
@@ -97,11 +100,12 @@ def build_header(document_title: str, reference: str, date_label: str):
     else:
         logo = Paragraph("WOODFUL CREATIONS", styles["doc_title"])
 
+    id_line = f'<br/><font size="7.5" color="#C08A45">ID: {business_id}</font>' if business_id else ""
     header_table = Table(
         [[logo, Paragraph(
             f'<para align="right"><font size="14" color="#11110F"><b>{document_title}</b></font><br/>'
             f'<font size="9" color="#70685D">{reference}</font><br/>'
-            f'<font size="9" color="#70685D">{date_label}</font></para>',
+            f'<font size="9" color="#70685D">{date_label}</font>{id_line}</para>',
             styles["body"],
         )]],
         colWidths=[3 * inch, 4 * inch],

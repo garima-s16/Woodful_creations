@@ -9,6 +9,9 @@ class Purchase(BaseModel):
     __tablename__ = "purchases"
 
     purchase_code = Column(String(20), unique=True, nullable=False, index=True)  # PUR-001
+    # Opaque 10-char external identifier (e.g. A7K92P4XQ1) - separate from
+    # purchase_code, which stays as the human-scannable sequential reference.
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
     date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
     material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)

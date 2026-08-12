@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { paymentsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
@@ -13,7 +14,8 @@ function PaymentsPage() {
   const isTrueMaster = user?.role === 'master';
   const [payments, setPayments] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingPayment, setEditingPayment] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

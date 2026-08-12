@@ -12,7 +12,7 @@ from app.models.purchase import Purchase
 from app.models.issue import Issue
 from app.schemas.purchase import PurchaseCreate
 from app.schemas.issue import IssueCreate
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 
 class StockService:
@@ -30,7 +30,7 @@ class StockService:
         invoice_total = taxable_value + gst_amount
 
         purchase = Purchase(
-            purchase_code=purchase_code, date=data.date, supplier_id=data.supplier_id,
+            purchase_code=purchase_code, business_id=generate_short_id(), date=data.date, supplier_id=data.supplier_id,
             material_id=data.material_id, quantity=data.quantity, unit=data.unit, rate=data.rate,
             taxable_value=taxable_value, gst_percent=data.gst_percent, gst_amount=gst_amount,
             invoice_total=invoice_total, payment_status=data.payment_status,

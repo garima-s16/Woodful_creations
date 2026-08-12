@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.material import Material
 from app.schemas.material import MaterialCreate, MaterialUpdate, MaterialResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
 
@@ -50,7 +50,7 @@ def create_material(data: MaterialCreate, db: Session = Depends(get_db),
     payload["current_stock"] = payload["opening_stock"]
     for _ in range(5):
         code = generate_unique_code(db, Material, "material_code", "MAT-")
-        material = Material(**payload, material_code=code)
+        material = Material(**payload, material_code=code, business_id=generate_short_id())
         db.add(material)
         try:
             db.commit()

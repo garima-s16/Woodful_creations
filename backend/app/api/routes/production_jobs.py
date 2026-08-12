@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.production_job import ProductionJob
 from app.schemas.production_job import ProductionJobCreate, ProductionJobUpdate, ProductionJobResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/production-jobs", tags=["production-jobs"])
 
@@ -33,7 +33,7 @@ def create_production_job(data: ProductionJobCreate, db: Session = Depends(get_d
     payload = data.dict(exclude={"job_code"})
     for _ in range(5):
         code = generate_unique_code(db, ProductionJob, "job_code", "JOB-")
-        job = ProductionJob(**payload, job_code=code)
+        job = ProductionJob(**payload, job_code=code, business_id=generate_short_id())
         db.add(job)
         try:
             db.commit()

@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.daily_task import DailyTask
 from app.schemas.daily_task import DailyTaskCreate, DailyTaskUpdate, DailyTaskResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/daily-tasks", tags=["daily-tasks"])
 
@@ -35,7 +35,7 @@ def create_daily_task(data: DailyTaskCreate, db: Session = Depends(get_db), auth
     payload = data.dict(exclude={"task_code"})
     for _ in range(5):
         code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
-        task = DailyTask(**payload, task_code=code)
+        task = DailyTask(**payload, task_code=code, business_id=generate_short_id())
         db.add(task)
         try:
             db.commit()

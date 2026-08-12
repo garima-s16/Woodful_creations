@@ -9,7 +9,7 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
 from app.schemas.payment import PaymentCreate
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 
 class OrderService:
@@ -23,7 +23,7 @@ class OrderService:
         receipt_code = generate_unique_code(db, Payment, "receipt_code", "RCPT-")
 
         payment = Payment(
-            receipt_code=receipt_code, date=data.date, order_id=data.order_id,
+            receipt_code=receipt_code, business_id=generate_short_id(), date=data.date, order_id=data.order_id,
             payment_type=data.payment_type, payment_mode=data.payment_mode, amount=data.amount,
             reference_number=data.reference_number, received_by=data.received_by, remarks=data.remarks,
         )
@@ -46,6 +46,7 @@ class OrderService:
 
         return {
             "order_id": order.order_code,
+            "business_id": order.business_id or "",
             "client": order.client.name if order.client else None,
             "project_type": order.project_type,
             "order_value": float(order.order_value or 0),

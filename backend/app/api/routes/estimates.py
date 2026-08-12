@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.estimate import Estimate
 from app.schemas.estimate import EstimateCreate, EstimateUpdate, EstimateResponse
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
@@ -37,7 +37,7 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db), auth=De
     tax_amount, total_cost = _compute_totals(data.material_cost, data.labor_cost, data.tax_percent)
     for _ in range(5):
         code = generate_unique_code(db, Estimate, "estimate_code", "EST-")
-        estimate = Estimate(**payload, estimate_code=code, tax_amount=tax_amount, total_cost=total_cost)
+        estimate = Estimate(**payload, estimate_code=code, business_id=generate_short_id(), tax_amount=tax_amount, total_cost=total_cost)
         db.add(estimate)
         try:
             db.commit()

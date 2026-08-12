@@ -54,6 +54,7 @@ function EstimateDetailPage() {
           <div className="detail-subtitle">
             {client?.name || 'Client'} &middot; Version {estimate.version}
             {' '}<span className={`status-badge ${statusClass(estimate.status)}`}>{estimate.status}</span>
+            {estimate.business_id && <span className="business-id-badge">{estimate.business_id}</span>}
           </div>
         </div>
         <div className="page-actions">

@@ -31,6 +31,7 @@ class EstimateUpdate(BaseModel):
 
 class EstimateResponse(EstimateBase):
     id: int
+    business_id: Optional[str] = None
     tax_amount: Decimal
     total_cost: Decimal
     status: str

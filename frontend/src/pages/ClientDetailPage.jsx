@@ -97,7 +97,10 @@ function ClientDetailPage() {
         <div>
           <Link to="/clients" className="btn-link">&larr; Back to Clients</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{client.name}</h1>
-          <div className="detail-subtitle">{client.client_code} &middot; {client.lead_source || 'Lead source not recorded'}</div>
+          <div className="detail-subtitle">
+            {client.client_code} &middot; {client.lead_source || 'Lead source not recorded'}
+            {client.business_id && <span className="business-id-badge">{client.business_id}</span>}
+          </div>
         </div>
         <div className="page-actions">
           <button className="btn-secondary" onClick={() => setActiveAction('order')}>Create Order</button>

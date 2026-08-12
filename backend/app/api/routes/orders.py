@@ -9,7 +9,7 @@ from app.core.security import get_current_user, require_role
 from app.models.order import Order
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
 from app.services.order_service import OrderService
-from app.utils.id_generator import generate_unique_code
+from app.utils.id_generator import generate_unique_code, generate_short_id
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -51,7 +51,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db),
     year = datetime.utcnow().year
     for _ in range(5):
         code = generate_unique_code(db, Order, "order_code", f"WC-{year}-")
-        order = Order(**payload, order_code=code, advance=advance, total_received=advance, balance=data.order_value - advance)
+        order = Order(**payload, order_code=code, business_id=generate_short_id(), advance=advance, total_received=advance, balance=data.order_value - advance)
         db.add(order)
         try:
             db.commit()

@@ -38,6 +38,7 @@ class OrderUpdate(BaseModel):
 
 class OrderResponse(OrderBase):
     id: int
+    business_id: Optional[str] = None
     advance: Decimal
     other_received: Decimal
     total_received: Decimal

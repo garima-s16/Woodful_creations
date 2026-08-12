@@ -119,6 +119,7 @@ function OrderDetailPage() {
           <h1 className="detail-title" style={{ marginTop: 8 }}>{order.order_code}</h1>
           <div className="detail-subtitle">
             {client?.name || 'Client'} &middot; {order.project_type || 'Project'}
+            {order.business_id && <span className="business-id-badge">{order.business_id}</span>}
           </div>
           <div className="detail-meta">
             <div className="detail-meta-item">

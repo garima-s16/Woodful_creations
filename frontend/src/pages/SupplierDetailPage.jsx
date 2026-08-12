@@ -29,7 +29,10 @@ function SupplierDetailPage() {
         <div>
           <Link to="/suppliers" className="btn-link">&larr; Back to Suppliers</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{supplier.name}</h1>
-          <div className="detail-subtitle">{supplier.supplier_code} &middot; {supplier.category || 'Uncategorized'}</div>
+          <div className="detail-subtitle">
+            {supplier.supplier_code} &middot; {supplier.category || 'Uncategorized'}
+            {supplier.business_id && <span className="business-id-badge">{supplier.business_id}</span>}
+          </div>
         </div>
       </div>
 

@@ -32,6 +32,7 @@ class EmployeeUpdate(BaseModel):
 
 class EmployeeResponse(EmployeeBase):
     id: int
+    business_id: Optional[str] = None
     daily_wage: float
     created_at: datetime
     updated_at: datetime

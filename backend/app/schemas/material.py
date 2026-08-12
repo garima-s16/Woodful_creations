@@ -35,6 +35,7 @@ class MaterialUpdate(BaseModel):
 
 class MaterialResponse(MaterialBase):
     id: int
+    business_id: Optional[str] = None
     opening_stock: int
     total_purchased: int
     total_issued: int
