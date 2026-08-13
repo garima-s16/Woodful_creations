@@ -16,10 +16,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.database import Base, SessionLocal, engine
 from app import models  # noqa: F401
 from app.models.setting import (
-    Unit, MaterialCategory, StockStatus, StockPaymentStatus, Location, SupplierTerm,
+    Unit, StockStatus, StockPaymentStatus, SupplierTerm,
     Department, TaskStatus, AttendanceStatus, Machine,
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory,
 )
+from app.models.material_category import MaterialCategory
+from app.models.location import Location
 from app.models.supplier import Supplier
 from app.models.material import Material
 from app.models.purchase import Purchase

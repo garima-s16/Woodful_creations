@@ -16,20 +16,12 @@ class Unit(_LookupMixin, BaseModel):
     __tablename__ = "units"
 
 
-class MaterialCategory(_LookupMixin, BaseModel):
-    __tablename__ = "material_categories"
-
-
 class StockStatus(_LookupMixin, BaseModel):
     __tablename__ = "stock_statuses"
 
 
 class StockPaymentStatus(_LookupMixin, BaseModel):
     __tablename__ = "stock_payment_statuses"
-
-
-class Location(_LookupMixin, BaseModel):
-    __tablename__ = "locations"
 
 
 class SupplierTerm(_LookupMixin, BaseModel):

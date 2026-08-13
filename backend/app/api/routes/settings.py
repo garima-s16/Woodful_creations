@@ -10,19 +10,24 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.schemas.setting import LookupCreate, LookupUpdate, LookupResponse
 from app.models.setting import (
-    Unit, MaterialCategory, StockStatus, StockPaymentStatus, Location, SupplierTerm,
+    Unit, StockStatus, StockPaymentStatus, SupplierTerm,
     Department, TaskStatus, AttendanceStatus, Machine,
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+# NOTE: "material-categories" and "locations" are intentionally NOT included
+# here. They graduated from simple name/description lookup rows into full
+# models (app/models/material_category.py, app/models/location.py) with
+# their own dedicated CRUD routers (material_categories.router,
+# locations.router, registered in app/api/routes/__init__.py). Routing them
+# through this generic lookup CRUD would re-introduce the duplicate-table
+# mapping conflict those dedicated models replaced.
 LOOKUP_MODELS = {
     "units": Unit,
-    "material-categories": MaterialCategory,
     "stock-statuses": StockStatus,
     "stock-payment-statuses": StockPaymentStatus,
-    "locations": Location,
     "supplier-terms": SupplierTerm,
     "departments": Department,
     "task-statuses": TaskStatus,

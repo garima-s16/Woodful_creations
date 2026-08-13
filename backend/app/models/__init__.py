@@ -2,7 +2,7 @@ from app.models.base import Base, BaseModel
 from app.models.user import User
 
 from app.models.setting import (
-    Unit, MaterialCategory, StockStatus, StockPaymentStatus, Location, SupplierTerm,
+    Unit, StockStatus, StockPaymentStatus, SupplierTerm,
     Department, TaskStatus, AttendanceStatus, Machine,
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory,
 )

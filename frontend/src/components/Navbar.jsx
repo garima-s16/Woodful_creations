@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MenuIcon, LogoutIcon, ChevronIcon } from './icons';
+import { useSelector } from 'react-redux';
+import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon } from './icons';
 import GlobalSearch from './GlobalSearch';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = { master: 'Master Admin', manager: 'Manager', user: 'Team Member' };
 
-function Navbar({ user, onLogout, toggleSidebar }) {
+function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
+  const cartCount = useSelector((state) => state.cart.items.reduce((sum, i) => sum + i.quantity, 0));
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const menuRef = useRef(null);
@@ -49,6 +51,10 @@ function Navbar({ user, onLogout, toggleSidebar }) {
         <GlobalSearch />
 
         <div className="navbar-right">
+          <button className="cart-toggle" onClick={onOpenCart} title="Purchase cart" aria-label="Open purchase cart">
+            <CartIcon width={19} height={19} />
+            {cartCount > 0 && <span className="cart-toggle-badge">{cartCount}</span>}
+          </button>
           <div className="user-menu" ref={menuRef}>
             <button
               className="profile-button"

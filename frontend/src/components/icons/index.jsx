@@ -41,3 +41,8 @@ export const CloseIcon = (p) => <svg {...base} {...p}><path d="M6 6l12 12M18 6L6
 export const SearchIcon = (p) => <svg {...base} {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>;
 export const LogoutIcon = (p) => <svg {...base} {...p}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>;
 export const BellIcon = (p) => <svg {...base} {...p}><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 01-3.4 0" /></svg>;
+export const CartIcon = (p) => <svg {...base} {...p}><circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M2 3h2l2.6 12.6a2 2 0 002 1.6h8.8a2 2 0 002-1.7L21 8H6" /></svg>;
+export const GridIcon = (p) => <svg {...base} {...p}><rect x="3" y="3" width="8" height="8" rx="1" /><rect x="13" y="3" width="8" height="8" rx="1" /><rect x="3" y="13" width="8" height="8" rx="1" /><rect x="13" y="13" width="8" height="8" rx="1" /></svg>;
+export const ListIcon = (p) => <svg {...base} {...p}><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></svg>;
+export const PlusIcon = (p) => <svg {...base} {...p}><path d="M12 5v14M5 12h14" /></svg>;
+export const SlidersIcon = (p) => <svg {...base} {...p}><path d="M4 6h10M17 6h3M4 18h3M10 18h10M4 12h16" /><circle cx="16" cy="6" r="2" /><circle cx="7" cy="18" r="2" /></svg>;

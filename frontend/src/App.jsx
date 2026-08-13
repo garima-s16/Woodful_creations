@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar';
 import ProtectedRoute from './components/ProtectedRoute';
 import ChatWidget from './components/ChatWidget';
 import Footer from './components/Footer';
+import CartDrawer from './components/CartDrawer';
 
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -46,6 +47,7 @@ import AuditLogsPage from './pages/AuditLogsPage';
 
 function AppLayout({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isCartOpen, setCartOpen] = useState(false);
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -63,13 +65,14 @@ function AppLayout({ children }) {
 
   return (
     <div className="app-shell">
-      <Navbar user={navbarUser} onLogout={handleLogout} toggleSidebar={() => setSidebarOpen((v) => !v)} />
+      <Navbar user={navbarUser} onLogout={handleLogout} toggleSidebar={() => setSidebarOpen((v) => !v)} onOpenCart={() => setCartOpen(true)} />
       <div className="app-body">
         <Sidebar isOpen={isSidebarOpen} user={user} />
         <main className="app-content">{children}</main>
       </div>
       <Footer />
       <ChatWidget />
+      <CartDrawer open={isCartOpen} onClose={() => setCartOpen(false)} />
     </div>
   );
 }

@@ -84,7 +84,7 @@ function PurchasesPage() {
       <Table columns={columns} data={purchases} loading={pageLoading} onRowClick={(row) => navigate(`/purchases/${row.id}`)} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." />
       <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase"
-          initialValues={{ date: today() }} />
+          initialValues={{ date: today(), ...(location.state?.prefill || {}) }} />
       </Modal>
     </div>
   );
