@@ -169,6 +169,7 @@ function MaterialsPage() {
       supplierId: material.supplier_id,
       supplierName: supplier?.name,
       quantity: qty,
+      currentStock: material.current_stock,
     }));
     setAddedFlash(material.id);
     setTimeout(() => setAddedFlash(null), 1200);

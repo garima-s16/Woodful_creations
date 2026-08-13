@@ -51,6 +51,27 @@ DEFAULT_CATEGORY_NAME = "General Materials"
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+
+    # An earlier version of this app created a much simpler
+    # `material_categories` table directly via SQLAlchemy's create_all()
+    # (flat name/description columns, no business_id) before this
+    # Category -> Subcategory hierarchy - and this migration - existed.
+    # Left alone, that stray table makes create_table below fail with
+    # "table already exists". It's safe to replace automatically only
+    # if it's still empty; if it somehow already has data, stop and ask
+    # for a manual look rather than silently discarding it.
+    if insp.has_table("material_categories"):
+        row_count = conn.execute(sa.text("SELECT COUNT(*) FROM material_categories")).scalar()
+        if row_count:
+            raise RuntimeError(
+                "A pre-existing 'material_categories' table with data was found "
+                "that predates this migration's schema (missing business_id). "
+                "Migrate that data manually, then re-run this migration."
+            )
+        op.drop_table("material_categories")
+
     op.create_table(
         "material_categories",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),

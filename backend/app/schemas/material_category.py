@@ -90,6 +90,7 @@ class MaterialAttributeValueInput(BaseModel):
 class MaterialAttributeValueResponse(BaseModel):
     id: int
     attribute_definition_id: int
+    attribute_name: str
     value_text: Optional[str] = None
     value_number: Optional[Decimal] = None
     display_value: str

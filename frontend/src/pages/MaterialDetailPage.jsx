@@ -1,27 +1,46 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { materialsAPI, purchasesAPI, issuesAPI } from '../utils/api';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { materialsAPI, purchasesAPI, issuesAPI, supplierMaterialsAPI } from '../utils/api';
+import { addToCart } from '../redux/slices/cartSlice';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import { statusClass } from '../utils/statusColors';
 import { formatCurrency } from '../utils/currency';
 
-const TABS = ['Overview', 'Purchases', 'Issues'];
+const TABS = ['Overview', 'Suppliers', 'Purchases', 'Issues'];
 
 function MaterialDetailPage() {
   const { materialId } = useParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [material, setMaterial] = useState(null);
   const [purchases, setPurchases] = useState([]);
   const [issues, setIssues] = useState([]);
+  const [supplierLinks, setSupplierLinks] = useState([]);
   const [tab, setTab] = useState('Overview');
+  const [addedToCart, setAddedToCart] = useState(false);
 
   const load = useCallback(() => {
     materialsAPI.get(materialId).then((res) => setMaterial(res.data)).catch(() => setMaterial(null));
     purchasesAPI.list({ material_id: materialId }).then((res) => setPurchases(res.data));
     issuesAPI.list({ material_id: materialId }).then((res) => setIssues(res.data));
+    supplierMaterialsAPI.byMaterial(materialId).then((res) => setSupplierLinks(res.data)).catch(() => setSupplierLinks([]));
   }, [materialId]);
 
   useEffect(load, [load]);
+
+  const handleAddToCart = () => {
+    const preferred = supplierLinks.find((s) => s.is_preferred) || supplierLinks[0];
+    dispatch(addToCart({
+      materialId: material.id, name: material.name, unit: material.unit,
+      rate: preferred?.supplier_price || material.average_rate,
+      supplierId: preferred?.supplier_id, supplierName: preferred?.supplier_name,
+      quantity: 1, currentStock: material.current_stock,
+    }));
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 1500);
+  };
 
   if (!material) return <div className="page">Loading...</div>;
 
@@ -37,6 +56,9 @@ function MaterialDetailPage() {
             {material.business_id && <span className="business-id-badge">{material.business_id}</span>}
           </div>
         </div>
+        <button className="btn-primary" onClick={handleAddToCart}>
+          {addedToCart ? 'Added!' : 'Add to Purchase Cart'}
+        </button>
       </div>
 
       <div className="kpi-row">
@@ -65,6 +87,42 @@ function MaterialDetailPage() {
             </div>
           </div>
         </Card>
+      )}
+
+      {tab === 'Overview' && material.attribute_values?.length > 0 && (
+        <Card title="Specifications">
+          <div className="card-body">
+            <div className="detail-meta">
+              {material.attribute_values.map((attr) => (
+                <div className="detail-meta-item" key={attr.id}>
+                  <span className="detail-meta-label">{attr.attribute_name}</span>
+                  <span className="detail-meta-value">{attr.display_value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {tab === 'Suppliers' && (
+        supplierLinks.length === 0 ? (
+          <Card><div className="card-body" style={{ color: 'var(--text-secondary)' }}>
+            No suppliers linked to this material yet.
+          </div></Card>
+        ) : (
+          <Table
+            columns={[
+              { key: 'supplier_name', label: 'Supplier' },
+              { key: 'supplier_price', label: 'Price', render: (v) => v ? formatCurrency(v) : '-' },
+              { key: 'last_purchase_price', label: 'Last Purchase Price', render: (v) => v ? formatCurrency(v) : '-' },
+              { key: 'moq', label: 'MOQ', render: (v) => v || '-' },
+              { key: 'lead_time_days', label: 'Lead Time', render: (v) => v ? `${v} days` : '-' },
+              { key: 'is_preferred', label: 'Preferred', render: (v) => v ? <span className="status-badge status-ok">Preferred</span> : '' },
+            ]}
+            data={supplierLinks}
+            emptyMessage="No suppliers linked to this material yet."
+          />
+        )
       )}
 
       {tab === 'Purchases' && (

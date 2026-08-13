@@ -43,6 +43,25 @@ NAMING_CONVENTION = {
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+
+    # Same situation as material_categories in migration 0016: an earlier,
+    # pre-hierarchy version of this app created a flat `locations` table
+    # (name/description, no business_id/location_type/parent_id) directly
+    # via create_all(). Replace it automatically if it's still empty;
+    # otherwise stop rather than silently dropping real data.
+    if insp.has_table("locations"):
+        row_count = conn.execute(sa.text("SELECT COUNT(*) FROM locations")).scalar()
+        if row_count:
+            raise RuntimeError(
+                "A pre-existing 'locations' table with data was found that "
+                "predates this migration's schema (missing business_id/"
+                "location_type/parent_id). Migrate that data manually, then "
+                "re-run this migration."
+            )
+        op.drop_table("locations")
+
     op.create_table(
         "locations",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),

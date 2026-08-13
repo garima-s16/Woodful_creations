@@ -34,13 +34,19 @@ const cartSlice = createSlice({
   },
   reducers: {
     addToCart(state, action) {
-      const { materialId, name, unit, rate, supplierId, supplierName, quantity } = action.payload;
+      const { materialId, name, unit, rate, supplierId, supplierName, quantity, currentStock } = action.payload;
       const qty = Number(quantity) > 0 ? Number(quantity) : 1;
       const existing = state.items.find((i) => i.materialId === materialId);
       if (existing) {
         existing.quantity += qty;
+        // Stock may have been unknown on an earlier add (e.g. added
+        // before catalog data loaded) - refresh it if we now have it.
+        if (currentStock !== undefined) existing.currentStock = currentStock;
       } else {
-        state.items.push({ materialId, name, unit, rate: rate || 0, supplierId, supplierName, quantity: qty });
+        state.items.push({
+          materialId, name, unit, rate: rate || 0, supplierId, supplierName, quantity: qty,
+          currentStock: currentStock ?? null,
+        });
       }
       persist(state.items);
     },

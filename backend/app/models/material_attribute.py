@@ -51,6 +51,10 @@ class MaterialAttributeValue(BaseModel):
     attribute_definition = relationship("MaterialAttributeDefinition")
 
     @property
+    def attribute_name(self):
+        return self.attribute_definition.name if self.attribute_definition else None
+
+    @property
     def display_value(self):
         if self.value_number is not None:
             unit = self.attribute_definition.unit_label if self.attribute_definition else None

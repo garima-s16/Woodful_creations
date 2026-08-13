@@ -48,6 +48,21 @@ export const materialsAPI = {
   remove: (id) => client.delete(`/api/materials/${id}`),
 };
 
+export const supplierMaterialsAPI = {
+  byMaterial: (materialId) => client.get(`/api/supplier-materials/by-material/${materialId}`),
+  bySupplier: (supplierId) => client.get(`/api/supplier-materials/by-supplier/${supplierId}`),
+  create: (data) => client.post('/api/supplier-materials/', data),
+  update: (id, data) => client.put(`/api/supplier-materials/${id}`, data),
+  remove: (id) => client.delete(`/api/supplier-materials/${id}`),
+};
+
+export const locationsAPI = {
+  list: (params) => client.get('/api/locations/', { params }),
+  tree: () => client.get('/api/locations/tree'),
+  get: (id) => client.get(`/api/locations/${id}`),
+  create: (data) => client.post('/api/locations/', data),
+};
+
 export const purchasesAPI = {
   list: (params) => client.get('/api/purchases/', { params }),
   get: (id) => client.get(`/api/purchases/${id}`),

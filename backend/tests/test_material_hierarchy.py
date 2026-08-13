@@ -143,3 +143,23 @@ def test_updating_attribute_values_replaces_full_set(client, test_user):
     values = resp.json()["attribute_values"]
     assert len(values) == 1
     assert values[0]["value_text"] == "Walnut"
+
+
+def test_attribute_value_returns_real_name_not_just_id(client, test_user):
+    """Regression test - the API used to only return
+    attribute_definition_id, forcing the frontend to show a raw
+    internal ID ("Attribute #5") instead of an actual name."""
+    _login(client, test_user)
+    category = client.post("/api/material-categories/", json={"name": "Attr Name Test Category"}).json()
+    subcategory = client.post("/api/material-categories/subcategories", json={
+        "category_id": category["id"], "name": "Attr Name Test Subcategory",
+    }).json()
+    attr = client.post(f"/api/material-categories/subcategories/{subcategory['id']}/attributes", json={
+        "name": "Thickness", "data_type": "number", "unit_label": "mm",
+    }).json()
+    material = client.post("/api/materials/", json={
+        "name": "Attr Name Test Material", "unit": "Sheets", "opening_stock": 1, "minimum_stock": 1,
+        "subcategory_id": subcategory["id"],
+        "attribute_values": [{"attribute_definition_id": attr["id"], "value_number": "12"}],
+    }).json()
+    assert material["attribute_values"][0]["attribute_name"] == "Thickness"
