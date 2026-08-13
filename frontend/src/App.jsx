@@ -15,6 +15,7 @@ import CartDrawer from './components/CartDrawer';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MaterialsPage from './pages/MaterialsPage';
+import LocationsPage from './pages/LocationsPage';
 import MaterialDetailPage from './pages/MaterialDetailPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
@@ -102,6 +103,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
       <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
+      <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />
       <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
       <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />

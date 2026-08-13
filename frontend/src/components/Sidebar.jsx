@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  HomeIcon, MaterialIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon,
+  HomeIcon, MaterialIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon,
   OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
   LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon,
 } from './icons';
@@ -21,6 +21,7 @@ function Sidebar({ isOpen, user }) {
       name: 'Inventory',
       items: [
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
+        { path: '/locations', label: 'Locations', icon: LocationIcon },
         { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
         { path: '/issues', label: 'Material Issues', icon: IssueIcon },
         { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },

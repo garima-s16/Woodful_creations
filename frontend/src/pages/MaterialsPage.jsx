@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { materialsAPI, materialCategoriesAPI, suppliersAPI, reportsAPI } from '../utils/api';
+import { materialsAPI, materialCategoriesAPI, locationsAPI, suppliersAPI, reportsAPI } from '../utils/api';
 import { addToCart } from '../redux/slices/cartSlice';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -44,6 +44,7 @@ function MaterialsPage() {
   const [filterSubcategoryId, setFilterSubcategoryId] = useState('');
   const [filterAttributeDefs, setFilterAttributeDefs] = useState([]);
   const [filterAttributeValues, setFilterAttributeValues] = useState({}); // attribute_definition_id -> value
+  const [allLocations, setAllLocations] = useState([]);
   const [view, setView] = useState('grid'); // grid | list | table
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingMaterial, setEditingMaterial] = useState(null);
@@ -70,6 +71,7 @@ function MaterialsPage() {
     materialsAPI.list().then((res) => setAllMaterials(res.data)).catch(() => setAllMaterials([]));
     suppliersAPI.list().then((res) => setSuppliers(res.data)).catch(() => setSuppliers([]));
     materialCategoriesAPI.list().then((res) => setFilterCategories(res.data)).catch(() => setFilterCategories([]));
+    locationsAPI.list().then((res) => setAllLocations(res.data)).catch(() => setAllLocations([]));
   };
 
   useEffect(() => load(), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,6 +171,7 @@ function MaterialsPage() {
         opening_stock: Number(formData.opening_stock || 0),
         average_rate: formData.average_rate || '0',
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
+        location_id: formData.location_id ? Number(formData.location_id) : null,
         subcategory_id: hierarchySelection.subcategoryId,
         attribute_values: hierarchySelection.attributeValues,
       });
@@ -191,6 +194,7 @@ function MaterialsPage() {
         thickness_size: formData.thickness_size, unit: formData.unit,
         minimum_stock: Number(formData.minimum_stock || 0), average_rate: formData.average_rate,
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null, location: formData.location,
+        location_id: formData.location_id ? Number(formData.location_id) : null,
       });
       setEditingMaterial(null);
       applyServerFilters();
@@ -242,7 +246,8 @@ function MaterialsPage() {
     { name: 'minimum_stock', label: 'Reorder Level', type: 'number' },
     { name: 'average_rate', label: 'Average Rate', type: 'number' },
     { name: 'supplier_id', label: 'Primary Supplier', type: 'select', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
-    { name: 'location', label: 'Location' },
+    { name: 'location_id', label: 'Location', type: 'select', options: allLocations.map((l) => ({ value: l.id, label: l.full_path })) },
+    { name: 'location', label: 'Location (legacy free text - optional if using the dropdown above)' },
   ];
 
   const editFields = createFields.filter((f) => !['material_code', 'opening_stock'].includes(f.name));
