@@ -115,6 +115,24 @@
 .dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
 .dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
 
+.founder-attention-list { display: flex; flex-direction: column; gap: 12px; }
+.founder-attention-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.founder-attention-row:last-child { border-bottom: none; }
+.founder-attention-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.founder-attention-critical { background: var(--danger, #c0392b); }
+.founder-attention-warning { background: var(--color-gold); }
+.founder-attention-text {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.founder-attention-text strong { font-size: 0.92rem; }
+.founder-attention-text span { font-size: 0.8rem; color: var(--text-secondary); }
+
 .hero-metrics {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-5);
   padding: var(--space-6) 0; border-bottom: 1px solid var(--border-color); margin-bottom: var(--space-5);

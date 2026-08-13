@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI } from '../utils/api';
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
@@ -134,6 +135,7 @@ function RecentActivity({ items }) {
 }
 
 function DashboardPage() {
+  const { user } = useSelector((state) => state.auth);
   const [stock, setStock] = useState(null);
   const [orders, setOrders] = useState(null);
   const [staff, setStaff] = useState(null);
@@ -194,13 +196,56 @@ function DashboardPage() {
     ? (orders.order_profitability.reduce((s, o) => s + o.estimated_gross_profit, 0) / orders.total_order_value) * 100
     : 0;
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = user?.full_name?.split(' ')[0] || '';
+
+  // Same source data and same filter/slice logic as AttentionRequired
+  // below - kept side by side rather than computed twice from scratch,
+  // so this summary and the detailed sections can never show different
+  // counts for the same underlying situation.
+  const topAttentionItems = [
+    ...(stock?.low_stock_action_list || []).slice(0, 4).map((m) => ({
+      severity: 'critical', title: m.material, detail: `${m.current}/${m.minimum} ${m.unit || ''} remaining`.trim(),
+      path: `/materials/${m.id}`,
+    })),
+    ...(orders?.top_orders || []).filter((o) => o.pending > 0).slice(0, 4).map((o) => ({
+      severity: 'warning', title: `${o.client} - ${o.order_id}`, detail: `Rs ${o.pending.toLocaleString()} outstanding`,
+      path: `/orders/${o.id}`,
+    })),
+    ...(delayedProduction || []).slice(0, 4).map((j) => ({
+      severity: 'warning', title: `${j.job_code} - ${j.operation || 'Production'}`, detail: `Open ${j.status?.toLowerCase() || ''}`.trim(),
+      path: '/production-jobs',
+    })),
+  ].slice(0, 3);
+
   return (
     <div className="page dashboard-page">
       <div className="dashboard-header">
         <span className="dashboard-eyebrow">Woodful Creations</span>
-        <h1>Business Overview</h1>
+        <h1>{greeting}{firstName ? `, ${firstName}` : ''}.</h1>
         <p className="dashboard-subtitle">A live snapshot of inventory, sales, and operations across the business.</p>
       </div>
+
+      {topAttentionItems.length > 0 && (
+        <Card>
+          <div className="card-body">
+            <h3 style={{ marginTop: 0 }}>{topAttentionItems.length} thing{topAttentionItems.length > 1 ? 's' : ''} need{topAttentionItems.length === 1 ? 's' : ''} your attention</h3>
+            <div className="founder-attention-list">
+              {topAttentionItems.map((item, idx) => (
+                <div className="founder-attention-row" key={idx}>
+                  <span className={`founder-attention-dot founder-attention-${item.severity}`} aria-hidden="true" />
+                  <div className="founder-attention-text">
+                    <strong>{item.title}</strong>
+                    <span>{item.detail}</span>
+                  </div>
+                  <button className="btn-secondary" onClick={() => navigate(item.path)}>Review</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <QuickActions />
 

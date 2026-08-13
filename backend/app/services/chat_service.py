@@ -35,10 +35,12 @@ from app.models.payment import Payment
 from app.models.purchase import Purchase
 from app.models.employee import Employee
 from app.models.daily_task import DailyTask
+from app.models.leave import Leave
+from app.models.supplier import Supplier
 from app.schemas.chat import ChatContext, ProposedAction
 
-THIS_RECORD_WORDS = ["this order", "this material", "this client", "this employee",
-                      "summarize", "summarise", "should i reorder", "reorder this"]
+THIS_RECORD_WORDS = ["this order", "this material", "this client", "this employee", "this supplier",
+                      "summarize", "summarise", "should i reorder", "reorder this", "compare this supplier"]
 PAYMENT_INTENT_WORDS = ["record a payment", "record payment", "log a payment", "log payment", "add a payment"]
 AMOUNT_PATTERN = re.compile(r"(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:rs\.?|rupees|inr)?", re.IGNORECASE)
 
@@ -174,6 +176,10 @@ class ChatService:
         if task_result:
             return task_result
 
+        leave_result = ChatService._route_leave_query(m, db, current_employee_id)
+        if leave_result:
+            return leave_result
+
         if any(w in m for w in ["low stock", "reorder", "alert"]):
             return ChatService._low_stock(db)
         if any(w in m for w in ["stock", "material", "inventory"]):
@@ -221,6 +227,19 @@ class ChatService:
             if order.delivery_date:
                 lines.append(f"Delivery date: {order.delivery_date.strftime('%d %b %Y')}.")
             return " ".join(lines), ["Record Payment", "Show order pipeline"]
+
+        if context.supplier_id:
+            supplier = db.query(Supplier).filter(Supplier.id == context.supplier_id).first()
+            if not supplier:
+                return None
+            total_spend = sum((float(p.invoice_total or 0) for p in supplier.purchases), 0.0)
+            lines = [f"{supplier.name} ({supplier.supplier_code}): {len(supplier.purchases)} purchases on record."]
+            if supplier.purchases:
+                lines.append(f"Total spend: Rs {total_spend:,.2f}.")
+            material_names = [sm.material.name for sm in supplier.supplier_materials if sm.material]
+            if material_names:
+                lines.append(f"Supplies: {', '.join(material_names[:5])}" + (" and more." if len(material_names) > 5 else "."))
+            return " ".join(lines), []
 
         if context.material_id:
             material = db.query(Material).filter(Material.id == context.material_id).first()
@@ -276,6 +295,62 @@ class ChatService:
             f"You have {len(materials)} materials tracked, worth Rs {total_value:,.2f} in current stock.",
             ["Check low stock", "Show pending orders"], [],
         )
+
+    @staticmethod
+    def _route_leave_query(m: str, db: Session, current_employee_id: Optional[int]):
+        """"My leaves", "show Pankaj's leaves" - same real-data pattern as
+        _route_task_query: "my" resolves through the actual
+        User.employee_id link, a named person resolves through a live
+        Employee.name query, never hard-coded. Works from any page,
+        since it's checked unconditionally in _dispatch before any
+        context-specific branch, not gated behind what record the user
+        happened to be viewing when they opened the chat."""
+        if "leave" not in m:
+            return None
+
+        is_mine = any(w in m for w in ["my leave", "my leaves"])
+        if is_mine:
+            if current_employee_id is None:
+                return ("Your account isn't linked to an employee record, so I can't look up "
+                        "your leave records. Ask a master/manager to link your account to your "
+                        "employee profile."), [], []
+            employee = db.query(Employee).filter(Employee.id == current_employee_id).first()
+            return ChatService._leaves_for_employee(db, employee)
+
+        name = ChatService._extract_employee_name_for_leaves(m)
+        if name:
+            employee = db.query(Employee).filter(Employee.name.ilike(f"%{name}%")).first()
+            if not employee:
+                return f"I couldn't find an employee matching \"{name}\".", [], []
+            return ChatService._leaves_for_employee(db, employee)
+
+        return None
+
+    @staticmethod
+    def _extract_employee_name_for_leaves(m: str) -> Optional[str]:
+        patterns = [
+            r"([a-z]+)'s\s+leaves?",
+            r"leaves?\s+.*?\b(?:for|of)\s+([a-z]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, m)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _leaves_for_employee(db: Session, employee):
+        if not employee:
+            return "I couldn't find that employee.", [], []
+        leaves = db.query(Leave).filter(Leave.employee_id == employee.id).order_by(Leave.start_date.desc()).all()
+        if not leaves:
+            return f"{employee.name} has no leave records.", [], []
+        records = [{
+            "type": "Leave", "label": f"{leave.leave_type} - {leave.start_date.strftime('%d %b')} to {leave.end_date.strftime('%d %b %Y')}",
+            "sublabel": f"{float(leave.days)} day(s) - {leave.status}",
+            "path": "/leaves",
+        } for leave in leaves[:10]]
+        return f"{employee.name} has {len(leaves)} leave record(s).", [], records
 
     @staticmethod
     def _route_task_query(m: str, db: Session, current_employee_id: Optional[int]):

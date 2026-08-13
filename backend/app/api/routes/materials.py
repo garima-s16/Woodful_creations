@@ -1,7 +1,9 @@
 from typing import List, Optional
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
@@ -16,15 +18,29 @@ from app.utils.id_generator import generate_unique_code, generate_short_id
 router = APIRouter(prefix="/api/materials", tags=["materials"])
 
 
+def _try_decimal(value):
+    from decimal import Decimal, InvalidOperation
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
 @router.get("/", response_model=List[MaterialResponse])
 def list_materials(response: Response, category: Optional[str] = Query(None), search: Optional[str] = Query(None),
-                    low_stock_only: bool = Query(False),
+                    low_stock_only: bool = Query(False), subcategory_id: Optional[int] = Query(None),
+                    attribute_filters: Optional[str] = Query(
+                        None, description='JSON object mapping attribute_definition_id to the desired value, '
+                                           'e.g. {"5": "18", "7": "White"} - matched against either the numeric '
+                                           'or text value depending on the attribute\'s own data type.'),
                     limit: Optional[int] = Query(None, ge=1, le=500),
                     offset: int = Query(0, ge=0),
                     db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(Material)
     if category:
         query = query.filter(Material.category == category)
+    if subcategory_id:
+        query = query.filter(Material.subcategory_id == subcategory_id)
     if search:
         like = f"%{search}%"
         query = query.filter((Material.name.ilike(like)) | (Material.material_code.ilike(like)))
@@ -33,6 +49,28 @@ def list_materials(response: Response, category: Optional[str] = Query(None), se
         # moved into SQL so it composes correctly with pagination below
         # (filtering after paginating would silently return wrong pages).
         query = query.filter(Material.current_stock <= Material.minimum_stock)
+    if attribute_filters:
+        try:
+            filters = json.loads(attribute_filters)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="attribute_filters must be a valid JSON object")
+        for attr_def_id_str, desired_value in filters.items():
+            try:
+                attr_def_id = int(attr_def_id_str)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid attribute_definition_id: {attr_def_id_str}")
+            numeric_value = _try_decimal(desired_value)
+            match_conditions = [MaterialAttributeValue.value_text == str(desired_value)]
+            if numeric_value is not None:
+                match_conditions.append(MaterialAttributeValue.value_number == numeric_value)
+            matching_material_ids = db.query(MaterialAttributeValue.material_id).filter(
+                MaterialAttributeValue.attribute_definition_id == attr_def_id,
+                or_(*match_conditions),
+            )
+            # Each attribute filter narrows the result further (AND
+            # across filters) - a material must match every selected
+            # attribute value, not just any one of them.
+            query = query.filter(Material.id.in_(matching_material_ids))
 
     query = query.order_by(Material.name)
     total = query.count()

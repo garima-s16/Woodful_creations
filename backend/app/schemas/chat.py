@@ -11,6 +11,7 @@ class ChatContext(BaseModel):
     client_id: Optional[int] = None
     material_id: Optional[int] = None
     employee_id: Optional[int] = None
+    supplier_id: Optional[int] = None
     # Carries a partially-collected action across turns. There is no
     # server-side conversation table - the frontend simply echoes back
     # whatever `clarification` the previous response contained, so a

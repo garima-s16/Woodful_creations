@@ -1,24 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import { chatAPI, paymentsAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
+import { clearPendingMessage } from '../redux/slices/chatUiSlice';
 import '../styles/components/ChatWidget.css';
 
-function contextualGreetingSuggestion(params) {
+function contextualGreetingSuggestion(params, pathname) {
   if (params.orderId) return 'Summarize this order';
-  if (params.materialId) return 'Should I reorder this?';
+  if (params.materialId) return 'Tell me about this material';
   if (params.clientId) return 'Summarize this client';
   if (params.employeeId) return 'Summarize this employee';
+  if (params.supplierId) return 'Compare this supplier';
+  // Page-level context (no specific record id) - the materials catalog
+  // list itself, not a single material's detail page.
+  if (pathname === '/materials') return 'What should I reorder?';
   return null;
 }
 
 function ChatWidget() {
   const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const pendingCommand = useSelector((state) => state.chatUi.pendingMessage);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
-    const contextual = contextualGreetingSuggestion(params);
+    const contextual = contextualGreetingSuggestion(params, location.pathname);
     return [{
       role: 'assistant',
       text: 'Hi, I\'m the Woodful Assistant. Ask me about stock, orders, clients, payments, or staff.',
@@ -34,6 +43,15 @@ function ChatWidget() {
     if (open) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open]);
 
+  useEffect(() => {
+    if (pendingCommand) {
+      setOpen(true);
+      send(pendingCommand);
+      dispatch(clearPendingMessage());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCommand]);
+
   const send = async (text) => {
     const message = (text ?? input).trim();
     if (!message) return;
@@ -46,6 +64,7 @@ function ChatWidget() {
       client_id: params.clientId ? Number(params.clientId) : undefined,
       material_id: params.materialId ? Number(params.materialId) : undefined,
       employee_id: params.employeeId ? Number(params.employeeId) : undefined,
+      supplier_id: params.supplierId ? Number(params.supplierId) : undefined,
       pending: pending || undefined,
     };
     const hasContext = Object.values(context).some((v) => v !== undefined);

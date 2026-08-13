@@ -163,3 +163,25 @@ def test_attribute_value_returns_real_name_not_just_id(client, test_user):
         "attribute_values": [{"attribute_definition_id": attr["id"], "value_number": "12"}],
     }).json()
     assert material["attribute_values"][0]["attribute_name"] == "Thickness"
+
+
+def test_full_hierarchy_response_shape_matches_frontend_expectations(client, test_user):
+    """Confirms GET /api/material-categories/ returns categories with
+    nested subcategories with nested attribute_definitions - the exact
+    shape MaterialAttributesEditor.jsx relies on to build its dropdowns."""
+    _login(client, test_user)
+    category = client.post("/api/material-categories/", json={"name": "Shape Test Category"}).json()
+    subcategory = client.post("/api/material-categories/subcategories", json={
+        "category_id": category["id"], "name": "Shape Test Subcategory",
+    }).json()
+    client.post(f"/api/material-categories/subcategories/{subcategory['id']}/attributes", json={
+        "name": "Shape Test Attribute", "data_type": "text",
+    })
+
+    resp = client.get("/api/material-categories/")
+    assert resp.status_code == 200
+    found_category = next(c for c in resp.json() if c["id"] == category["id"])
+    assert "subcategories" in found_category
+    found_subcategory = next(s for s in found_category["subcategories"] if s["id"] == subcategory["id"])
+    assert "attribute_definitions" in found_subcategory
+    assert found_subcategory["attribute_definitions"][0]["name"] == "Shape Test Attribute"

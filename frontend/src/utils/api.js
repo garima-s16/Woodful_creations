@@ -48,6 +48,14 @@ export const materialsAPI = {
   remove: (id) => client.delete(`/api/materials/${id}`),
 };
 
+export const materialCategoriesAPI = {
+  list: () => client.get('/api/material-categories/'),
+  createCategory: (data) => client.post('/api/material-categories/', data),
+  createSubcategory: (data) => client.post('/api/material-categories/subcategories', data),
+  getSubcategory: (id) => client.get(`/api/material-categories/subcategories/${id}`),
+  createAttribute: (subcategoryId, data) => client.post(`/api/material-categories/subcategories/${subcategoryId}/attributes`, data),
+};
+
 export const supplierMaterialsAPI = {
   byMaterial: (materialId) => client.get(`/api/supplier-materials/by-material/${materialId}`),
   bySupplier: (supplierId) => client.get(`/api/supplier-materials/by-supplier/${supplierId}`),

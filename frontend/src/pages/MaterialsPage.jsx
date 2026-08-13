@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { materialsAPI, suppliersAPI, reportsAPI } from '../utils/api';
+import { materialsAPI, materialCategoriesAPI, suppliersAPI, reportsAPI } from '../utils/api';
 import { addToCart } from '../redux/slices/cartSlice';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
+import MaterialAttributesEditor from '../components/MaterialAttributesEditor';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
 import Pagination from '../components/common/Pagination';
@@ -38,12 +39,18 @@ function MaterialsPage() {
   const [sort, setSort] = useState('name-asc');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [filterCategories, setFilterCategories] = useState([]);
+  const [filterCategoryId, setFilterCategoryId] = useState('');
+  const [filterSubcategoryId, setFilterSubcategoryId] = useState('');
+  const [filterAttributeDefs, setFilterAttributeDefs] = useState([]);
+  const [filterAttributeValues, setFilterAttributeValues] = useState({}); // attribute_definition_id -> value
   const [view, setView] = useState('grid'); // grid | list | table
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [error, setError] = useState('');
   const [addedFlash, setAddedFlash] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [hierarchySelection, setHierarchySelection] = useState({ subcategoryId: null, attributeValues: [] });
   const [pageLoading, setPageLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -62,16 +69,23 @@ function MaterialsPage() {
     }).finally(() => setPageLoading(false));
     materialsAPI.list().then((res) => setAllMaterials(res.data)).catch(() => setAllMaterials([]));
     suppliersAPI.list().then((res) => setSuppliers(res.data)).catch(() => setSuppliers([]));
+    materialCategoriesAPI.list().then((res) => setFilterCategories(res.data)).catch(() => setFilterCategories([]));
   };
 
   useEffect(() => load(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Server-side filters: search, category, low-stock. These reset pagination.
+  // Server-side filters: search, category, low-stock, and now the real
+  // dynamic subcategory/attribute filters (built server-side against
+  // MaterialAttributeValue, not client-side against the legacy
+  // brand_grade/thickness_size strings). These reset pagination.
   const serverFilters = () => {
     const params = {};
     if (search) params.search = search;
     if (category) params.category = category;
     if (lowStockOnly) params.low_stock_only = true;
+    if (filterSubcategoryId) params.subcategory_id = filterSubcategoryId;
+    const activeAttrFilters = Object.entries(filterAttributeValues).filter(([, v]) => v);
+    if (activeAttrFilters.length > 0) params.attribute_filters = JSON.stringify(Object.fromEntries(activeAttrFilters));
     return params;
   };
 
@@ -79,6 +93,31 @@ function MaterialsPage() {
     e?.preventDefault();
     setPage(1);
     load(serverFilters(), 1);
+  };
+
+  const handleFilterCategoryChange = (e) => {
+    const id = e.target.value;
+    setFilterCategoryId(id);
+    setFilterSubcategoryId('');
+    setFilterAttributeDefs([]);
+    setFilterAttributeValues({});
+  };
+
+  const handleFilterSubcategoryChange = (e) => {
+    const id = e.target.value;
+    setFilterSubcategoryId(id);
+    setFilterAttributeValues({});
+    if (!id) {
+      setFilterAttributeDefs([]);
+      return;
+    }
+    const cat = filterCategories.find((c) => String(c.id) === filterCategoryId);
+    const sub = cat?.subcategories.find((s) => String(s.id) === id);
+    setFilterAttributeDefs(sub?.attribute_definitions || []);
+  };
+
+  const handleFilterAttributeChange = (attrId, value) => {
+    setFilterAttributeValues((prev) => ({ ...prev, [attrId]: value }));
   };
 
   const selectCategory = (cat) => {
@@ -130,8 +169,11 @@ function MaterialsPage() {
         opening_stock: Number(formData.opening_stock || 0),
         average_rate: formData.average_rate || '0',
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
+        subcategory_id: hierarchySelection.subcategoryId,
+        attribute_values: hierarchySelection.attributeValues,
       });
       setShowAdd(false);
+      setHierarchySelection({ subcategoryId: null, attributeValues: [] });
       applyServerFilters();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to add material');
@@ -192,9 +234,9 @@ function MaterialsPage() {
 
   const createFields = [
     { name: 'name', label: 'Name', required: true },
-    { name: 'category', label: 'Category' },
-    { name: 'brand_grade', label: 'Brand/Grade' },
-    { name: 'thickness_size', label: 'Thickness/Size' },
+    { name: 'category', label: 'Category (legacy - optional if using Category/Subcategory above)' },
+    { name: 'brand_grade', label: 'Brand/Grade (legacy - optional if using Specifications above)' },
+    { name: 'thickness_size', label: 'Thickness/Size (legacy - optional if using Specifications above)' },
     { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
     { name: 'opening_stock', label: 'Opening Stock', type: 'number' },
     { name: 'minimum_stock', label: 'Reorder Level', type: 'number' },
@@ -275,18 +317,55 @@ function MaterialsPage() {
 
           {showFilters && (
             <div className="catalog-filter-panel">
-              {brands.length > 0 && (
+              <label className="catalog-filter-field">
+                Category
+                <select value={filterCategoryId} onChange={handleFilterCategoryChange}>
+                  <option value="">All categories</option>
+                  {filterCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </label>
+              {filterCategoryId && (
                 <label className="catalog-filter-field">
-                  Brand / Grade
+                  Subcategory
+                  <select value={filterSubcategoryId} onChange={handleFilterSubcategoryChange}>
+                    <option value="">All subcategories</option>
+                    {(filterCategories.find((c) => String(c.id) === filterCategoryId)?.subcategories || [])
+                      .map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {filterAttributeDefs.map((def) => (
+                <label className="catalog-filter-field" key={def.id}>
+                  {def.name}{def.unit_label && ` (${def.unit_label})`}
+                  {def.data_type === 'select' ? (
+                    <select value={filterAttributeValues[def.id] || ''} onChange={(e) => handleFilterAttributeChange(def.id, e.target.value)}>
+                      <option value="">Any {def.name}</option>
+                      {(def.select_options || '').split(',').map((o) => o.trim()).filter(Boolean).map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={def.data_type === 'number' ? 'number' : 'text'}
+                      value={filterAttributeValues[def.id] || ''}
+                      onChange={(e) => handleFilterAttributeChange(def.id, e.target.value)}
+                      placeholder={`Any ${def.name}`}
+                    />
+                  )}
+                </label>
+              ))}
+              {!filterSubcategoryId && brands.length > 0 && (
+                <label className="catalog-filter-field">
+                  Brand / Grade (legacy)
                   <select value={brand} onChange={(e) => setBrand(e.target.value)}>
                     <option value="">All brands</option>
                     {brands.map((b) => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </label>
               )}
-              {thicknesses.length > 0 && (
+              {!filterSubcategoryId && thicknesses.length > 0 && (
                 <label className="catalog-filter-field">
-                  Thickness / Size
+                  Thickness / Size (legacy)
                   <select value={thickness} onChange={(e) => setThickness(e.target.value)}>
                     <option value="">All sizes</option>
                     {thicknesses.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -300,7 +379,11 @@ function MaterialsPage() {
               <button className="btn-secondary" onClick={applyServerFilters}>Apply</button>
               <button
                 className="btn-link"
-                onClick={() => { setBrand(''); setThickness(''); setLowStockOnly(false); setCategory(''); setSearch(''); setPage(1); load({}, 1); }}
+                onClick={() => {
+                  setBrand(''); setThickness(''); setLowStockOnly(false); setCategory(''); setSearch('');
+                  setFilterCategoryId(''); setFilterSubcategoryId(''); setFilterAttributeDefs([]); setFilterAttributeValues({});
+                  setPage(1); load({}, 1);
+                }}
               >
                 Clear all
               </button>
@@ -351,6 +434,7 @@ function MaterialsPage() {
       )}
 
       <Modal isOpen={showAdd} title="Add Material" onClose={() => setShowAdd(false)}>
+        <MaterialAttributesEditor onChange={setHierarchySelection} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
       </Modal>
       <Modal isOpen={!!editingMaterial} title={`Edit ${editingMaterial?.name || ''}`} onClose={() => setEditingMaterial(null)}>
