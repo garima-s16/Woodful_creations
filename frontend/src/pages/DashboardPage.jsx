@@ -8,7 +8,6 @@ import Table from '../components/common/Table';
 import SimpleBarChart from '../components/common/SimpleBarChart';
 import { formatCurrency } from '../utils/currency';
 import { today } from '../utils/dates';
-import QuickActions from '../components/QuickActions';
 
 
 function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pendingPurchases, delayedProduction }) {
@@ -254,8 +253,6 @@ function DashboardPage() {
           </div>
         </Card>
       )}
-
-      <QuickActions />
 
       <h2 className="section-heading">{isPrivileged ? 'Primary Business Metrics' : 'My Work'}</h2>
       <div className="hero-metrics">

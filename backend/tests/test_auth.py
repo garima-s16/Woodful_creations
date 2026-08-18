@@ -13,9 +13,12 @@ def test_login_invalid_credentials(client, test_user):
 
 
 def test_login_wrong_password_message(client, test_user):
+    """Message must be generic - not "Incorrect password", which would
+    confirm to an attacker that the account exists (account
+    enumeration)."""
     response = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "wrong"})
     assert response.status_code == 401
-    assert response.json()["detail"] == "Incorrect password"
+    assert response.json()["detail"] == "Invalid username or password."
 
 
 def test_login_by_username_works(client, test_user):
@@ -30,9 +33,23 @@ def test_login_by_email_still_works(client, test_user):
 
 
 def test_login_unknown_email_message(client, test_user):
+    """Message must be generic - not "No account found", which would
+    confirm to an attacker that the identifier does NOT exist
+    (account enumeration)."""
     response = client.post("/api/auth/login", json={"identifier": "nobody@example.com", "password": "whatever"})
     assert response.status_code == 401
-    assert response.json()["detail"] == "No account found with that email or username"
+    assert response.json()["detail"] == "Invalid username or password."
+
+
+def test_login_does_not_leak_account_existence(client, test_user):
+    """The actual security property: a wrong password for a real
+    account and a login attempt against a non-existent account must
+    be genuinely indistinguishable to the caller - same status code,
+    same message, not just similar wording."""
+    wrong_password = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "wrong"})
+    unknown_account = client.post("/api/auth/login", json={"identifier": "nobody@example.com", "password": "wrong"})
+    assert wrong_password.status_code == unknown_account.status_code
+    assert wrong_password.json()["detail"] == unknown_account.json()["detail"]
 
 
 def test_mobile_login_returns_token(client, test_user):

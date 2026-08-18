@@ -59,6 +59,14 @@
   margin: 0;
 }
 
+.login-brand-descriptor {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(247, 243, 236, 0.55);
+  margin: var(--space-3) 0 0;
+}
+
 /* Right panel: form */
 .login-form-panel {
   background: var(--color-ivory);

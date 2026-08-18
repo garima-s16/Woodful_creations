@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from app.core.config import settings
 from app.models.user import User
 from app.schemas.user import LoginResponse, MobileLoginResponse, UserLogin
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
@@ -31,10 +34,12 @@ def _authenticate(request: UserLogin, db: Session) -> User:
     ).first()
 
     if not user:
-        raise HTTPException(status_code=401, detail="No account found with that email or username")
+        logger.info("Login failed: no account for identifier %r", request.identifier)
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     if not verify_password(request.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Incorrect password")
+        logger.info("Login failed: wrong password for user_id %s", user.id)
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been deactivated")
