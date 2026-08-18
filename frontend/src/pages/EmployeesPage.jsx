@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { employeesAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -10,6 +11,8 @@ import { formatCurrency } from '../utils/currency';
 
 function EmployeesPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -76,13 +79,13 @@ function EmployeesPage() {
     { key: 'department', label: 'Department' }, { key: 'phone', label: 'Phone' },
     { key: 'email', label: 'Email' },
     { key: 'joining_date', label: 'Joining Date', render: (v) => (v ? new Date(v).toLocaleDateString() : '-') },
-    { key: 'monthly_salary', label: 'Monthly Salary', render: (v) => formatCurrency(v) },
-    { key: 'daily_wage', label: 'Daily Wage', render: (v) => formatCurrency(v) },
+    { key: 'monthly_salary', label: 'Monthly Salary', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
+    { key: 'daily_wage', label: 'Daily Wage', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
     { key: 'manager', label: 'Manager' },
     { key: 'status', label: 'Status' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEmployee(row); }}>Edit</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEmployee(row); }}>Edit</button> : null
       ),
     },
   ];
@@ -133,7 +136,7 @@ function EmployeesPage() {
           <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
             {search ? 'Export Filtered' : 'Export All'}
           </a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Employee</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Employee</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

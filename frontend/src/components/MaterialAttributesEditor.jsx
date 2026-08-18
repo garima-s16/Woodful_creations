@@ -7,8 +7,15 @@ import '../styles/components/MaterialAttributesEditor.css';
  * same form, so this is a dedicated component (same reason
  * LineItemEditor exists) - rendered alongside the static Form fields
  * (name, unit, stock settings), not replacing them. Reports
- * {subcategoryId, attributeValues} up to the parent on every change. */
-function MaterialAttributesEditor({ onChange }) {
+ * {subcategoryId, attributeValues} up to the parent on every change.
+ *
+ * initialSubcategoryId/initialAttributeValues let the same component
+ * serve both create (blank) and edit (pre-populated with the
+ * material's current specs) - passing neither behaves exactly as
+ * before. initialAttributeValues is the material's real
+ * attribute_values response shape (attribute_definition_id +
+ * value_text/value_number), not a separately-invented input format. */
+function MaterialAttributesEditor({ onChange, initialSubcategoryId, initialAttributeValues }) {
   const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState('');
   const [subcategories, setSubcategories] = useState([]);
@@ -17,7 +24,40 @@ function MaterialAttributesEditor({ onChange }) {
   const [values, setValues] = useState({}); // attribute_definition_id -> raw string input
 
   useEffect(() => {
-    materialCategoriesAPI.list().then((res) => setCategories(res.data)).catch(() => setCategories([]));
+    materialCategoriesAPI.list().then((res) => {
+      setCategories(res.data);
+      if (!initialSubcategoryId) return;
+      // Find which category owns this subcategory, so both selects and
+      // the attribute fields can be pre-populated in one pass.
+      for (const category of res.data) {
+        const match = (category.subcategories || []).find((s) => s.id === initialSubcategoryId);
+        if (match) {
+          setCategoryId(String(category.id));
+          setSubcategories(category.subcategories);
+          setSubcategoryId(String(match.id));
+          setAttributeDefs(match.attribute_definitions || []);
+          const prefilled = {};
+          const attributeValues = [];
+          (initialAttributeValues || []).forEach((v) => {
+            const raw = v.value_number ?? v.value_text ?? '';
+            prefilled[v.attribute_definition_id] = raw;
+            attributeValues.push({
+              attribute_definition_id: v.attribute_definition_id,
+              value_number: v.value_number != null ? raw : undefined,
+              value_text: v.value_number == null ? raw : undefined,
+            });
+          });
+          setValues(prefilled);
+          // The parent's state must reflect these pre-populated values
+          // immediately - otherwise saving the form without touching
+          // the hierarchy fields would submit subcategoryId: null and
+          // silently wipe the material's existing category/specs.
+          onChange({ subcategoryId: match.id, attributeValues });
+          break;
+        }
+      }
+    }).catch(() => setCategories([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCategoryChange = (e) => {

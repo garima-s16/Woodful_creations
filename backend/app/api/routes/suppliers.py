@@ -1,12 +1,15 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from app.core.audit import log_action
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.supplier import Supplier
+from app.models.purchase import Purchase
+from app.models.supplier_material import SupplierMaterial
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
@@ -24,7 +27,7 @@ def list_suppliers(category: Optional[str] = Query(None), db: Session = Depends(
 
 @router.post("/", response_model=SupplierResponse, status_code=201)
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     payload = data.dict(exclude={"supplier_code"})
     for _ in range(5):
         code = generate_unique_code(db, Supplier, "supplier_code", "SUP-")
@@ -50,7 +53,7 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db), auth=Depends(g
 
 @router.put("/{supplier_id}", response_model=SupplierResponse)
 def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -63,10 +66,17 @@ def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depend
 
 
 @router.delete("/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
+def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    if db.query(Purchase).filter(Purchase.supplier_id == supplier_id).first():
+        raise HTTPException(status_code=400, detail="This supplier has purchase history and cannot be deleted.")
+    if db.query(SupplierMaterial).filter(SupplierMaterial.supplier_id == supplier_id).first():
+        raise HTTPException(status_code=400, detail="This supplier is linked to materials and cannot be deleted. Remove those links first.")
+    supplier_name = supplier.name
     db.delete(supplier)
     db.commit()
+    log_action(db, request, user_id=auth.get("user_id"), action="delete_supplier", module_name="suppliers",
+               record_id=supplier_id, old_value={"name": supplier_name})

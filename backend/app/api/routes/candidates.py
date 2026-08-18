@@ -2,13 +2,14 @@ from typing import List, Optional
 import os
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
+from app.core.audit import log_action
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.security import require_role
 from app.core.config import settings
 from app.models.candidate import Candidate
 from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateResponse
@@ -30,7 +31,7 @@ RESUME_UPLOAD_DIR = os.path.join(settings.UPLOAD_DIRECTORY, "resumes")
 
 @router.get("/", response_model=List[CandidateResponse])
 def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     query = db.query(Candidate)
     if status:
         query = query.filter(Candidate.status == status)
@@ -39,7 +40,7 @@ def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(g
 
 @router.post("/", response_model=CandidateResponse, status_code=201)
 def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
-                      auth=Depends(require_role("master", "manager"))):
+                      auth=Depends(require_role("master"))):
     for _ in range(5):
         candidate = Candidate(**data.dict(), business_id=generate_short_id())
         db.add(candidate)
@@ -55,7 +56,7 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)
 def get_candidate(candidate_id: int, db: Session = Depends(get_db),
-                   auth=Depends(require_role("master", "manager"))):
+                   auth=Depends(require_role("master"))):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -64,7 +65,7 @@ def get_candidate(candidate_id: int, db: Session = Depends(get_db),
 
 @router.put("/{candidate_id}", response_model=CandidateResponse)
 def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Depends(get_db),
-                      auth=Depends(require_role("master", "manager"))):
+                      auth=Depends(require_role("master"))):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -85,7 +86,7 @@ def _delete_stored_resume_file(candidate: Candidate) -> None:
 
 @router.post("/{candidate_id}/resume", response_model=CandidateResponse)
 def upload_resume(candidate_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
-                   auth=Depends(require_role("master", "manager"))):
+                   auth=Depends(require_role("master"))):
     """Upload (or replace) a candidate's resume file. Validates the file
     extension, the browser-reported MIME type, and the actual size read
     from disk (a Content-Length header can be spoofed or absent - the
@@ -144,7 +145,7 @@ def upload_resume(candidate_id: int, file: UploadFile = File(...), db: Session =
 
 @router.get("/{candidate_id}/resume")
 def download_resume(candidate_id: int, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate or not candidate.resume_stored_filename:
         raise HTTPException(status_code=404, detail="No resume file uploaded for this candidate.")
@@ -158,8 +159,8 @@ def download_resume(candidate_id: int, db: Session = Depends(get_db),
 
 
 @router.delete("/{candidate_id}/resume", response_model=CandidateResponse)
-def delete_resume(candidate_id: int, db: Session = Depends(get_db),
-                   auth=Depends(require_role("master", "manager"))):
+def delete_resume(candidate_id: int, request: Request, db: Session = Depends(get_db),
+                   auth=Depends(require_role("master"))):
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -170,4 +171,6 @@ def delete_resume(candidate_id: int, db: Session = Depends(get_db),
     db.add(candidate)
     db.commit()
     db.refresh(candidate)
+    log_action(db, request, user_id=auth.get("user_id"), action="delete_resume", module_name="candidates",
+               record_id=candidate_id)
     return candidate

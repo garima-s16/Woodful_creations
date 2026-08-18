@@ -1,4 +1,9 @@
-.chat-widget { position: fixed; bottom: var(--space-5); right: var(--space-5); z-index: 1200; }
+.chat-widget {
+  position: fixed;
+  bottom: max(var(--space-5), calc(env(safe-area-inset-bottom) + var(--space-3)));
+  right: max(var(--space-5), env(safe-area-inset-right));
+  z-index: 1200;
+}
 
 .chat-fab {
   display: flex; align-items: center; gap: 10px;
@@ -14,7 +19,7 @@
 
 .chat-panel {
   position: absolute; bottom: 68px; right: 0;
-  width: 350px; max-height: 500px;
+  width: 368px; max-height: 525px;
   background: var(--surface); border: 1px solid var(--border-color);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column; overflow: hidden;
@@ -40,7 +45,7 @@
 .chat-panel-body {
   flex: 1; overflow-y: auto; padding: var(--space-3);
   display: flex; flex-direction: column; gap: var(--space-3);
-  min-height: 260px; max-height: 360px; background: var(--color-ivory);
+  min-height: 260px; max-height: 360px; background: var(--color-ink);
 }
 
 .chat-row { display: flex; align-items: flex-start; gap: 8px; }
@@ -52,6 +57,14 @@
 .chat-assistant { background: var(--surface); border: 1px solid var(--border-color); color: var(--text-primary); white-space: pre-line; }
 
 .chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.chat-loading-checklist { display: flex; flex-direction: column; gap: 5px; }
+.chat-loading-step { display: flex; align-items: center; gap: 7px; font-size: 0.82rem; color: var(--text-secondary); }
+.chat-loading-step.done { color: var(--text-secondary); }
+.chat-loading-step.active { color: var(--text-primary); font-weight: 500; }
+.chat-loading-step-mark { width: 14px; text-align: center; flex-shrink: 0; }
+.chat-loading-step.done .chat-loading-step-mark { color: var(--success); }
+.chat-loading-step.active .chat-loading-step-mark { color: var(--color-gold); }
 .chat-suggestion {
   font-size: 0.72rem; padding: 4px 9px; border-radius: 100px;
   border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer;
@@ -64,9 +77,9 @@
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 8px 10px; border-radius: var(--radius-sm);
   border: 1px solid var(--border-color); background: var(--surface);
-  cursor: pointer; text-align: left; transition: all var(--transition);
+  text-align: left; transition: all var(--transition);
 }
-.chat-record-card:hover { border-color: var(--color-gold); background: var(--color-ivory); }
+.chat-record-card:hover { border-color: var(--color-gold); background: var(--color-charcoal-elevated); }
 .chat-record-type {
   font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--color-gold); background: rgba(192, 138, 69, 0.12);
@@ -74,10 +87,17 @@
 }
 .chat-record-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
 .chat-record-sublabel { font-size: 0.74rem; color: var(--text-secondary); width: 100%; }
+.chat-record-actions { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 4px; }
+.chat-record-action-btn {
+  font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 100px;
+  border: 1px solid var(--border-strong); background: var(--color-charcoal-elevated);
+  color: var(--text-primary); cursor: pointer; transition: all var(--transition);
+}
+.chat-record-action-btn:hover { border-color: var(--color-gold); color: var(--color-gold-soft); }
 
 .chat-proposed-action {
   margin-top: 10px; padding: 10px; border-radius: var(--radius-sm);
-  background: var(--color-ivory); border: 1px solid var(--border-color);
+  background: var(--color-charcoal-elevated); border: 1px solid var(--border-color);
 }
 .chat-proposed-summary { font-size: 0.82rem; font-weight: 600; margin-bottom: 8px; }
 .chat-proposed-buttons { display: flex; gap: 8px; }

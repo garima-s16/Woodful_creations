@@ -1,12 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { chatAPI, paymentsAPI } from '../utils/api';
+import { chatAPI, paymentsAPI, materialsAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
 import { clearPendingMessage } from '../redux/slices/chatUiSlice';
+import { addToCart } from '../redux/slices/cartSlice';
 import '../styles/components/ChatWidget.css';
 
-function contextualGreetingSuggestion(params, pathname) {
+function contextualGreetingSuggestion(params, pathname, cartOpen) {
+  // Checked first - the cart drawer can be open on top of any page, so
+  // this isn't mutually exclusive with a route param the way the
+  // record-based ones below are.
+  if (cartOpen) return 'Optimize this purchase';
   if (params.orderId) return 'Summarize this order';
   if (params.materialId) return 'Tell me about this material';
   if (params.clientId) return 'Summarize this client';
@@ -23,11 +29,13 @@ function ChatWidget() {
   const location = useLocation();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const cartOpen = useSelector((state) => state.cart.isOpen);
+  const cartItems = useSelector((state) => state.cart.items);
   const pendingCommand = useSelector((state) => state.chatUi.pendingMessage);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
-    const contextual = contextualGreetingSuggestion(params, location.pathname);
+    const contextual = contextualGreetingSuggestion(params, location.pathname, cartOpen);
     return [{
       role: 'assistant',
       text: 'Hi, I\'m the Woodful Assistant. Ask me about stock, orders, clients, payments, or staff.',
@@ -36,7 +44,18 @@ function ChatWidget() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState(0);
+  const LOADING_STEPS = ['Understanding request', 'Checking permissions', 'Fetching from Woodful'];
+  useEffect(() => {
+    if (!loading) { setCompletedSteps(0); return undefined; }
+    const interval = setInterval(
+      () => setCompletedSteps((s) => Math.min(s + 1, LOADING_STEPS.length - 1)),
+      450,
+    );
+    return () => clearInterval(interval);
+  }, [loading]);
   const [pending, setPending] = useState(null);
+  const [lastEntity, setLastEntity] = useState(null);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -59,19 +78,29 @@ function ChatWidget() {
     setInput('');
     setLoading(true);
 
+    // One param -> record_type mapping, not one context field per page.
+    // Adding a new contextual page type (e.g. a future Purchase Cart
+    // page) means adding one line here, not a new field on ChatContext.
+    const PARAM_TO_RECORD_TYPE = [
+      ['orderId', 'order'], ['clientId', 'client'], ['materialId', 'material'],
+      ['employeeId', 'employee'], ['supplierId', 'supplier'], ['taskId', 'task'],
+    ];
+    const activeParam = PARAM_TO_RECORD_TYPE.find(([param]) => params[param]);
     const context = {
-      order_id: params.orderId ? Number(params.orderId) : undefined,
-      client_id: params.clientId ? Number(params.clientId) : undefined,
-      material_id: params.materialId ? Number(params.materialId) : undefined,
-      employee_id: params.employeeId ? Number(params.employeeId) : undefined,
-      supplier_id: params.supplierId ? Number(params.supplierId) : undefined,
+      record_type: activeParam ? activeParam[1] : undefined,
+      record_id: activeParam ? Number(params[activeParam[0]]) : undefined,
       pending: pending || undefined,
+      last_entity: lastEntity || undefined,
+      cart_items: (cartOpen && cartItems.length > 0)
+        ? cartItems.map((i) => ({ material_id: i.materialId, quantity: i.quantity }))
+        : undefined,
     };
     const hasContext = Object.values(context).some((v) => v !== undefined);
 
     try {
       const res = await chatAPI.send(message, hasContext ? context : undefined);
       setPending(res.data.clarification || null);
+      setLastEntity(res.data.last_entity || null);
       setMessages((prev) => [...prev, {
         role: 'assistant', text: res.data.response, suggestions: res.data.suggestions,
         proposedAction: res.data.proposed_action || null, records: res.data.records || [],
@@ -84,18 +113,30 @@ function ChatWidget() {
     }
   };
 
-  // The assistant only ever prepares this - the real payment is created
-  // here, at the moment the user explicitly clicks Confirm, via the same
-  // authenticated/RBAC'd/audited endpoint the Payments page itself uses.
+  // The assistant only ever prepares this - the real mutation happens
+  // here, at the moment the user explicitly clicks Confirm, via the
+  // same authenticated/RBAC'd/audited endpoint the relevant page itself
+  // uses. One executor per action_type, not a special case handled
+  // elsewhere - adding a new proposable action means adding one entry
+  // here, not another `if` chain.
+  const ACTION_EXECUTORS = {
+    record_payment: { execute: (payload) => paymentsAPI.create(payload), successText: 'recorded.' },
+    create_material: { execute: (payload) => materialsAPI.create(payload), successText: 'added to Material Master.' },
+    add_to_cart: {
+      execute: (payload) => dispatch(addToCart(payload)).unwrap(),
+      successText: 'added to your cart.',
+    },
+  };
+
   const confirmAction = async (messageIndex, action) => {
     setLoading(true);
     try {
-      if (action.action_type === 'record_payment') {
-        await paymentsAPI.create(action.payload);
-      }
+      const executor = ACTION_EXECUTORS[action.action_type];
+      if (!executor) throw new Error('Unsupported action type');
+      await executor.execute(action.payload);
       setMessages((prev) => prev.map((msg, i) => (
         i === messageIndex
-          ? { ...msg, proposedAction: null, text: `${msg.text}\n\nDone - recorded.` }
+          ? { ...msg, proposedAction: null, text: `${msg.text}\n\nDone - ${executor.successText}` }
           : msg
       )));
     } catch (err) {
@@ -147,11 +188,31 @@ function ChatWidget() {
                   {m.records?.length > 0 && (
                     <div className="chat-records">
                       {m.records.map((r, ri) => (
-                        <button key={ri} className="chat-record-card" onClick={() => navigate(r.path)}>
+                        <motion.div
+                          key={ri} className="chat-record-card"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.18, delay: ri * 0.04 }}
+                          onClick={r.actions ? undefined : () => navigate(r.path)}
+                          role={r.actions ? undefined : 'button'}
+                          style={r.actions ? {} : { cursor: 'pointer' }}
+                        >
                           <span className="chat-record-type">{r.type}</span>
                           <span className="chat-record-label">{r.label}</span>
                           {r.sublabel && <span className="chat-record-sublabel">{r.sublabel}</span>}
-                        </button>
+                          {r.actions && (
+                            <div className="chat-record-actions">
+                              {r.actions.map((a, ai) => (
+                                <button
+                                  key={ai} className="chat-record-action-btn"
+                                  onClick={() => navigate(a.path)}
+                                >
+                                  {a.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </motion.div>
                       ))}
                     </div>
                   )}
@@ -168,7 +229,22 @@ function ChatWidget() {
             {loading && (
               <div className="chat-row chat-row-assistant">
                 <AssistantMascot size={26} />
-                <div className="chat-bubble chat-assistant">Thinking...</div>
+                <div className="chat-bubble chat-assistant chat-loading-bubble">
+                  <div className="chat-loading-checklist">
+                    {LOADING_STEPS.map((step, i) => (
+                      <motion.div
+                        key={step}
+                        className={`chat-loading-step ${i < completedSteps ? 'done' : i === completedSteps ? 'active' : 'pending'}`}
+                        initial={{ opacity: 0, x: -4 }}
+                        animate={{ opacity: i <= completedSteps ? 1 : 0.4, x: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <span className="chat-loading-step-mark">{i < completedSteps ? '✓' : '●'}</span>
+                        <span>{step}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
             <div ref={endRef} />

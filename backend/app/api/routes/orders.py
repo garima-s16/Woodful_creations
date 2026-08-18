@@ -1,12 +1,15 @@
+import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
+from app.core.audit import log_action, serializable_fields
 from app.models.order import Order
+from app.models.ai_workspace_report import AIWorkspaceReport
 from app.models.order_item import OrderItem
 from app.models.estimate import Estimate
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
@@ -15,6 +18,33 @@ from app.utils.id_generator import generate_unique_code, generate_short_id
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
+
+
+def _serialize_orders(orders, role: str):
+    """Employees can see order status/progress/client/project info, but
+    not money - order_value, advance, other_received, total_received,
+    balance, items_subtotal, and payment_status are genuinely nulled
+    here, including each order item's rate/amount (redacting only the
+    order-level total while leaving line-item pricing visible would
+    let anyone just sum the items back to the real total)."""
+    responses = [OrderResponse.model_validate(o) for o in orders]
+    if role not in ("master",):
+        for r in responses:
+            r.order_value = None
+            r.advance = None
+            r.other_received = None
+            r.total_received = None
+            r.balance = None
+            r.items_subtotal = None
+            r.payment_status = None
+            for item in r.items:
+                item.rate = None
+                item.amount = None
+    return responses
+
+
+def _serialize_order(order, role: str):
+    return _serialize_orders([order], role)[0]
 
 
 @router.get("/", response_model=List[OrderResponse])
@@ -42,7 +72,7 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
 
     if limit is not None:
         query = query.offset(offset).limit(limit)
-    return query.all()
+    return _serialize_orders(query.all(), auth.get("role", "user"))
 
 
 def _build_order_items(items_data, order_id: int = None):
@@ -64,8 +94,8 @@ def _build_order_items(items_data, order_id: int = None):
 
 
 @router.post("/", response_model=OrderResponse, status_code=201)
-def create_order(data: OrderCreate, db: Session = Depends(get_db),
-                  auth=Depends(require_role("master", "manager"))):
+def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_db),
+                  auth=Depends(require_role("master"))):
     from decimal import Decimal
 
     payload = data.dict(exclude={"order_code", "advance", "items", "from_estimate_id"})
@@ -117,6 +147,11 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db),
             db.add(source_estimate)
         db.commit()
         db.refresh(order)
+        log_action(db, request, user_id=auth.get("user_id"), action="create_order", module_name="orders",
+                   record_id=order.id, new_value={
+                       "client_id": order.client_id, "order_code": order.order_code,
+                       "order_value": float(order.order_value or 0), "advance": float(order.advance or 0),
+                   })
         return order
     raise HTTPException(status_code=500, detail="Unable to generate a unique order code, please try again")
 
@@ -126,12 +161,12 @@ def get_order(order_id: int, db: Session = Depends(get_db), auth=Depends(get_cur
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return _serialize_order(order, auth.get("role", "user"))
 
 
 @router.put("/{order_id}", response_model=OrderResponse)
-def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db),
-                  auth=Depends(require_role("master", "manager"))):
+def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session = Depends(get_db),
+                  auth=Depends(require_role("master"))):
     from decimal import Decimal
 
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -139,6 +174,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Order not found")
 
     update_fields = data.dict(exclude_unset=True, exclude={"items"})
+    old_value = serializable_fields(order, update_fields.keys())
     for field, value in update_fields.items():
         setattr(order, field, value)
 
@@ -158,13 +194,44 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
     db.add(order)
     db.commit()
     db.refresh(order)
+    new_value = serializable_fields(order, update_fields.keys())
+    if data.items is not None:
+        new_value["items_changed"] = True
+    log_action(db, request, user_id=auth.get("user_id"), action="update_order", module_name="orders",
+               record_id=order.id, old_value=old_value, new_value=new_value)
     return order
 
 
 @router.get("/{order_id}/profitability")
 def get_order_profitability(order_id: int, db: Session = Depends(get_db),
-                             auth=Depends(require_role("master", "manager"))):
+                             auth=Depends(require_role("master"))):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return OrderService.profitability(db, order)
+
+
+@router.get("/{order_id}/ai-reports")
+def list_order_ai_reports(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Persisted AI workspace reports for this order (Section 10 -
+    "artifacts must be viewable"). Open to any role, matching "everyone
+    can view tasks/order status" - but findings are re-redacted here
+    against the CURRENT viewer's role, not trusted from whatever role
+    created the report. A master's report viewed later by an employee
+    must not leak the payment figure it was created with."""
+    if not db.query(Order).filter(Order.id == order_id).first():
+        raise HTTPException(status_code=404, detail="Order not found")
+    is_privileged = auth.get("role", "user") in ("master",)
+    reports = db.query(AIWorkspaceReport).filter(AIWorkspaceReport.order_id == order_id).order_by(
+        AIWorkspaceReport.created_at.desc()
+    ).all()
+    result = []
+    for r in reports:
+        findings = json.loads(r.findings)
+        if not is_privileged:
+            findings.pop("pending_payment", None)
+        result.append({
+            "id": r.id, "query_text": r.query_text, "risk_level": r.risk_level,
+            "findings": findings, "created_at": r.created_at,
+        })
+    return result

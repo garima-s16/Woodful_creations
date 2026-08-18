@@ -45,6 +45,37 @@ the correct dependency order, not a decision to defer arbitrarily.**
 
 ## MEDIUM PRIORITY
 
+### 5. Material creation form has no "intelligent defaults" from typed text
+**Severity:** Medium
+**Component:** `MaterialsPage.jsx` create flow (`MaterialAttributesEditor` + `Form`)
+**Issue:** Section 8 of the UX brief wants typing "HDHMR 6mm" into the
+Name field to auto-infer Category/Subcategory/Thickness, pre-filling the
+rest of the form. Not implemented.
+**Why not attempted this turn:** `MaterialAttributesEditor` (renders the
+Category/Subcategory/Specifications pickers) and `Form` (renders Name/
+Unit/etc., including the Name field this feature would read from) are
+sibling components with no shared reactive state today -
+`MaterialAttributesEditor` only reports its OWN selections upward via
+`onChange`, it has no visibility into what's typed into `Form`'s
+internal `formData`. Building this properly means either lifting the
+Name field's value out of `Form` into the parent page (so both
+components can react to it), or moving name-based inference into
+`MaterialAttributesEditor` itself with its own text input feeding both
+the inference AND the eventual submitted name - a real architectural
+change, not a small addition. Attempting a rushed version risked a
+half-working feature that appears to work for the brief's own example
+("HDHMR 6mm") but breaks for anything slightly different, which is worse
+than being explicit that it doesn't exist yet.
+**Planned resolution:** Lift the material name into `MaterialsPage`'s own
+state, pass it to `MaterialAttributesEditor` as a prop, and reuse the
+same regex-extraction approach already built and tested for the chatbot's
+`parse_add_material_command` (backend) - or expose that logic via a
+small `/api/materials/interpret?text=...` endpoint the frontend can call
+as the user types, so the inference logic isn't duplicated between chat
+and the form. **Not started.**
+
+---
+
 ### 2. Chatbot's initial-greeting suggestion doesn't update on navigation
 **Severity:** Medium — cosmetic staleness, not a functional bug.
 **Component:** `ChatWidget.jsx`
@@ -92,30 +123,116 @@ project's budget tracking?") when there's no variance.
 `isOverBudget` flag into `ChatWidget` context, and make the suggestion
 conditional on that flag rather than universal. **Not started.**
 
-### 4. No Purchase Cart-specific chatbot context ("Optimize this purchase")
-**Severity:** Medium
-**Component:** `ChatWidget.jsx` + `CartDrawer.jsx`
-**Issue:** Requested example: while the Purchase Cart is open, offer
-"Optimize this purchase" as a contextual suggestion. Unlike Material/
-Supplier/Order, the cart isn't a routed page - it's a drawer, and its
-open/closed state currently lives as local state in whatever parent
-renders `CartDrawer`, not in Redux, so `ChatWidget` (a sibling component)
-has no way to know "the cart is open right now."
-**Expected behavior:** When the cart drawer is open, the chat widget
-should recognize this and offer "Optimize this purchase" (matching the
-already-real cart shortage-math and supplier-price-comparison data now
-available via `SupplierMaterial`).
-**Planned resolution:** Lift cart-drawer open/closed state into a small
-Redux slice (or extend the existing `chatUi` coordination slice) so
-`ChatWidget` can read it the same way it already reads route params. The
-actual "optimize" logic itself (grouping cart items by cheapest available
-supplier using real `SupplierMaterial` price data) also does not exist
-yet on the backend and would need its own implementation - this is a
-two-part gap, not just a UI wiring gap. **Not started.**
-
 ---
 
 ## RESOLVED
+
+### R4. Purchase Cart leaked between different users on the same browser
+**Component:** `cartSlice.js`, `App.jsx`
+**Issue:** The cart's localStorage key was a single global string
+(`woodful_purchase_cart_v1`), not scoped to who was logged in. Logging
+out and a different person logging in on the same browser would show
+them the previous person's cart contents.
+**What was fixed:** Storage key is now per-user
+(`woodful_purchase_cart_v1_user_<id>`). State starts empty at module
+load (before any user is known) and `loadCartForUser(userId)` is
+dispatched reactively in `AppLayout` whenever `state.auth.user` changes
+- covering both session restore and fresh login the same way, since
+both just update that same piece of state, and correctly requiring no
+separate hook for future auth flows. Logging out loads with `userId:
+null`, which clears the in-memory view without touching any stored
+data - the same user logging back in still finds their cart exactly as
+they left it, which was already working correctly and remains so.
+**Verified via:** confirmed `/login` and `/me` both include `id` in
+their response (the previous turn's chat-context work already
+established this pattern) before relying on it here.
+
+### R5. Chatbot had no profit/margin handling, and RBAC audited more broadly
+**Component:** `chat_service.py`
+**Issue:** No keyword handling existed for "profit"/"margin" at all -
+asking about profitability fell through to the generic "I didn't quite
+catch that" fallback for every role, master included. Separately
+audited whether task/leave name-based lookups needed similar RBAC
+gating, given they let any user ask about a colleague's records with
+no role check.
+**What was fixed:** Added real profit/margin handling
+(`_profitability_summary`), reusing `OrderService.profitability()` -
+the exact calculation the dashboard's own "Gross Margin" figure already
+uses, not a separately re-derived one - gated to master/manager only,
+matching the existing pattern for payments/purchases exactly (a real
+"master/manager accounts only" denial, never silence or a generic
+non-answer).
+**What was deliberately NOT changed:** task/leave name-based lookups
+were checked against the real Leaves API (`list_leaves` in
+`leaves.py`) and found to already allow any authenticated user to view
+any colleague's leave records via the `employee_id` filter - only
+*approving* a leave is master/manager-restricted. The chatbot matching
+that existing policy is correct, not a gap; restricting it further
+would have made the assistant less capable than the actual page for no
+real reason, so this was intentionally left as-is.
+**Verified via:** 5 backend tests, including one confirming the exact
+figures the chatbot reports match `OrderService.profitability()`'s
+output via the dashboard endpoint character-for-character, not just
+that *a* number is returned.
+
+### R3. Purchase Cart chatbot context ("Optimize this purchase")
+**Component:** `cartSlice.js`, `ChatWidget.jsx`, `chat_service.py`
+**What was fixed:** Both real halves of the two-part gap. (1) Lifted
+cart-drawer open/closed state from `App.jsx`'s local `useState` into
+`cartSlice.isOpen` - `App.jsx` now dispatches `openCart()`/`closeCart()`
+instead of managing its own state, so there's one source of truth both
+it and `ChatWidget` read. (2) Since the cart has no backend
+representation at all, `ChatWidget` now sends its contents as
+`context.cart_items` (material_id + quantity) on every message while
+the cart is open - a genuinely different kind of context than
+`record_type`/`record_id` (data the server has no other way to see, not
+"what record is open"), documented as such in `ChatContext`'s
+docstring. `_optimize_cart()` groups the cart by the real cheapest
+available `SupplierMaterial` price per item, falling back to the
+material's `average_rate` when no supplier is linked, and reports
+genuine savings (cheapest total vs. worst-case total) - a material with
+only one price source contributes zero to the savings figure rather
+than a fabricated one.
+**A real bug caught mid-implementation:** the initial-greeting
+suggestion chip is still only computed once at mount (see item 2 below -
+this pre-existing limitation wasn't fixed here), so simply passing
+`cartOpen` to that function alone wouldn't make "optimize this purchase"
+actually work if the cart is opened after the widget is already mounted
+(the common case). The suggestion greeting was extended as a minor
+improvement for the fresh-mount case, but the functional fix is that
+`context.cart_items` is rebuilt fresh from Redux on every `send()` call,
+independent of the suggestion chip - asking works correctly regardless
+of whether the chip text happens to be stale.
+**Verified via:** 4 backend tests, including one that hand-traces exact
+savings numbers (two suppliers at 100/120 for one item, a single
+fallback price for another) and confirms the reported savings figure
+matches precisely - not just that a number appears.
+
+### R2. Seed data's MaterialCategory rows were flat and orphaned
+**Component:** `scripts/seed_sample_data.py`
+**Found during:** explicit verification pass on the seed script, not
+during original implementation - a fresh, careful re-read surfaced it.
+**What was wrong:** `LOOKUPS[MaterialCategory]` created 16 top-level
+`MaterialCategory` rows (Plywood, HDHMR, MDF, ...) with zero
+`MaterialSubcategory` children - directly contradicting the two-level
+Category->Subcategory hierarchy the rest of this project uses. Worse,
+`seed_materials` never referenced these rows at all (materials only set
+the legacy flat `category` string), so they were completely disconnected
+data that misrepresented the real model to anyone browsing categories.
+**What was fixed:** Removed the flat entry from `LOOKUPS`. Added
+`seed_material_hierarchy()` building a real 2-level structure matching
+Section 26's own categorization (Board & Wood Materials -> Plywood/
+HDHMR/MDF/...; Surface Materials -> Laminate/Acrylic/...; Hardware ->
+Hinges/Drawer Channels/Handles; etc.), and wired each seeded material's
+real `subcategory_id` to match, so the Material Catalog's dynamic
+filters (built two turns ago) will actually have real subcategory data
+to filter by once this seed runs.
+**Also fixed in the same pass:** a second instance of this session's
+recurring `str_replace`-deletes-a-`def`-line mistake (this is the third
+occurrence) - caught immediately via `py_compile` plus an exhaustive
+AST-based expected-vs-actual function name comparison, not just eyeballing
+the diff.
+
 
 ### R0. Material Catalog filters were generic, not category-aware
 **Component:** `MaterialsPage.jsx`, `list_materials` (backend)

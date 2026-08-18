@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { dailyTasksAPI, employeesAPI, ordersAPI } from '../utils/api';
+import { dailyTasksAPI, employeesAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { today } from '../utils/dates';
 
-const VIEWS = ['All', 'My Tasks', 'Overdue', 'In Progress', 'Completed'];
+const VIEWS = ['All', 'My Tasks', 'Overdue', 'Doing', 'Done'];
 
 function DailyTasksPage() {
   const navigate = useNavigate();
@@ -59,7 +59,7 @@ function DailyTasksPage() {
   };
 
   const isOverdue = (task) => {
-    if (task.status === 'Completed') return false;
+    if (task.status === 'DONE') return false;
     const taskDate = new Date(task.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -69,8 +69,8 @@ function DailyTasksPage() {
   const filteredTasks = tasks.filter((t) => {
     if (view === 'My Tasks') return myEmployeeMatch(t);
     if (view === 'Overdue') return isOverdue(t);
-    if (view === 'In Progress') return t.status === 'In Progress';
-    if (view === 'Completed') return t.status === 'Completed';
+    if (view === 'Doing') return t.status === 'DOING';
+    if (view === 'Done') return t.status === 'DONE';
     return true;
   });
 
@@ -99,7 +99,12 @@ function DailyTasksPage() {
     <div className="page">
       <div className="page-header">
         <h1>Tasks</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Assign Task</button>
+        <div className="page-actions">
+          <a className="btn-secondary" href={reportsAPI.downloadUrl('tasks.xlsx')} target="_blank" rel="noreferrer">
+            Export Tasks &amp; Production
+          </a>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Assign Task</button>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <div className="tab-bar">
@@ -107,7 +112,17 @@ function DailyTasksPage() {
           <button key={v} className={view === v ? 'tab active' : 'tab'} onClick={() => setView(v)}>{v}</button>
         ))}
       </div>
-      <Table columns={columns} data={filteredTasks} loading={pageLoading} onRowClick={(row) => navigate(`/daily-tasks/${row.id}`)} emptyMessage="No tasks in this view." />
+      <Table
+        columns={columns} data={filteredTasks} loading={pageLoading}
+        onRowClick={(row) => navigate(`/daily-tasks/${row.id}`)}
+        emptyMessage={
+          view === 'Overdue' ? "Nothing overdue - you're on top of it."
+          : view === 'My Tasks' ? 'No work assigned to you right now.'
+          : view === 'Doing' ? 'Nothing in progress at the moment.'
+          : view === 'Done' ? 'Nothing completed in this view yet.'
+          : 'No tasks yet. Assign the first one to get started.'
+        }
+      />
       <Modal isOpen={showAdd} title="Assign Task" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Assign Task"
           initialValues={{ date: today(), checked_by: user?.full_name || user?.username || '' }} />

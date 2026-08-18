@@ -24,6 +24,14 @@ class Employee(BaseModel):
     status = Column(String(20), nullable=False, default="Active")
     emergency_contact = Column(String(20), nullable=True)
     remarks = Column(Text, nullable=True)
+    # Payroll/statutory identifiers - needed for salary slip generation.
+    # All nullable: not administrative data every employee record will
+    # have from day one.
+    pan = Column(String(10), nullable=True)
+    uan = Column(String(20), nullable=True)
+    bank_name = Column(String(100), nullable=True)
+    bank_account_number = Column(String(30), nullable=True)
+    tax_regime = Column(String(10), nullable=True)  # Old / New
 
     attendance_records = relationship("Attendance", back_populates="employee")
     daily_tasks = relationship("DailyTask", back_populates="employee")

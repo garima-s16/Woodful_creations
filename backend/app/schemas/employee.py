@@ -17,6 +17,11 @@ class EmployeeBase(BaseModel):
     status: str = "Active"
     emergency_contact: Optional[str] = None
     remarks: Optional[str] = None
+    pan: Optional[str] = None
+    uan: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    tax_regime: Optional[str] = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -34,12 +39,18 @@ class EmployeeUpdate(BaseModel):
     status: Optional[str] = None
     emergency_contact: Optional[str] = None
     remarks: Optional[str] = None
+    pan: Optional[str] = None
+    uan: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    tax_regime: Optional[str] = None
 
 
 class EmployeeResponse(EmployeeBase):
     id: int
     business_id: Optional[str] = None
-    daily_wage: float
+    monthly_salary: Optional[Decimal] = None
+    daily_wage: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 

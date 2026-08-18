@@ -43,4 +43,4 @@ class ClientResponse(ClientBase):
 
 class ClientWithStats(ClientResponse):
     total_orders: int
-    total_sales: float
+    total_sales: Optional[float] = None

@@ -1,0 +1,41 @@
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 200;
+    background: var(--surface);
+    border-top: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .mobile-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 4px 6px;
+    min-height: 56px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .mobile-nav-item.active { color: var(--color-gold); }
+  .mobile-nav-icon { width: 20px; height: 20px; }
+
+  /* Room for the fixed bottom nav so page content and the footer are
+     never covered by it. */
+  .app-content { padding-bottom: 64px; }
+  .app-footer { display: none; }
+}

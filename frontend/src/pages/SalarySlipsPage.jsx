@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { salarySlipsAPI, employeesAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -7,6 +8,8 @@ import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
 
 function SalarySlipsPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [slips, setSlips] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -16,7 +19,7 @@ function SalarySlipsPage() {
 
   const load = () => {
     setPageLoading(true);
-    salarySlipsAPI.list().then((res) => setSlips(res.data)).catch(() => setError('You do not have permission to view salary slips.')).finally(() => setPageLoading(false));
+    salarySlipsAPI.list().then((res) => setSlips(res.data)).catch(() => setError('Unable to load salary slips.')).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
   };
   useEffect(load, []);
@@ -76,7 +79,7 @@ function SalarySlipsPage() {
     <div className="page">
       <div className="page-header">
         <h1>Salary Slips</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Generate Salary Slip</button>
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Generate Salary Slip</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <p style={{ marginBottom: 16, color: '#6b7280', fontSize: '0.85rem' }}>

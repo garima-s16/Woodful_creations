@@ -1,12 +1,13 @@
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_role
+from app.core.audit import log_action, serializable_fields
 from app.models.estimate import Estimate
 from app.models.estimate_line_item import EstimateLineItem
 from app.schemas.estimate import EstimateCreate, EstimateUpdate, EstimateResponse
@@ -41,6 +42,30 @@ def _build_line_items(line_items_data, estimate_id: int = None):
     return items
 
 
+def _serialize_estimates(estimates, role: str):
+    """An estimate is inherently a pricing document - material_cost,
+    labor_cost, discount, subtotal, tax_amount, total_cost, and each
+    line item's rate/amount are genuinely nulled for non-master
+    roles. status/version (workflow state, not money) stay visible."""
+    responses = [EstimateResponse.model_validate(e) for e in estimates]
+    if role not in ("master",):
+        for r in responses:
+            r.material_cost = None
+            r.labor_cost = None
+            r.discount = None
+            r.subtotal = None
+            r.tax_amount = None
+            r.total_cost = None
+            for item in r.line_items:
+                item.rate = None
+                item.amount = None
+    return responses
+
+
+def _serialize_estimate(estimate, role: str):
+    return _serialize_estimates([estimate], role)[0]
+
+
 @router.get("/", response_model=List[EstimateResponse])
 def list_estimates(client_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
                     db: Session = Depends(get_db), auth=Depends(get_current_user)):
@@ -49,11 +74,11 @@ def list_estimates(client_id: Optional[int] = Query(None), status: Optional[str]
         query = query.filter(Estimate.client_id == client_id)
     if status:
         query = query.filter(Estimate.status == status)
-    return query.order_by(Estimate.created_at.desc()).all()
+    return _serialize_estimates(query.order_by(Estimate.created_at.desc()).all(), auth.get("role", "user"))
 
 
 @router.post("/", response_model=EstimateResponse, status_code=201)
-def create_estimate(data: EstimateCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def create_estimate(data: EstimateCreate, request: Request, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
     payload = data.dict(exclude={"estimate_code", "line_items"})
 
     if data.line_items:
@@ -88,6 +113,11 @@ def create_estimate(data: EstimateCreate, db: Session = Depends(get_db), auth=De
             db.add(item)
         db.commit()
         db.refresh(estimate)
+        log_action(db, request, user_id=auth.get("user_id"), action="create_estimate", module_name="estimates",
+                   record_id=estimate.id, new_value={
+                       "client_id": estimate.client_id, "estimate_code": estimate.estimate_code,
+                       "total_cost": float(estimate.total_cost or 0),
+                   })
         return estimate
     raise HTTPException(status_code=500, detail="Unable to generate a unique estimate code, please try again")
 
@@ -97,17 +127,18 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(g
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
-    return estimate
+    return _serialize_estimate(estimate, auth.get("role", "user"))
 
 
 @router.put("/{estimate_id}", response_model=EstimateResponse)
-def update_estimate(estimate_id: int, data: EstimateUpdate, db: Session = Depends(get_db),
-                     auth=Depends(get_current_user)):
+def update_estimate(estimate_id: int, data: EstimateUpdate, request: Request, db: Session = Depends(get_db),
+                     auth=Depends(require_role("master"))):
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
 
     update_fields = data.dict(exclude_unset=True, exclude={"line_items"})
+    old_value = serializable_fields(estimate, update_fields.keys())
     for field, value in update_fields.items():
         setattr(estimate, field, value)
 
@@ -135,11 +166,16 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, db: Session = Depend
     db.add(estimate)
     db.commit()
     db.refresh(estimate)
+    new_value = serializable_fields(estimate, update_fields.keys())
+    if data.line_items is not None:
+        new_value["items_changed"] = True
+    log_action(db, request, user_id=auth.get("user_id"), action="update_estimate", module_name="estimates",
+               record_id=estimate.id, old_value=old_value, new_value=new_value)
     return estimate
 
 
 @router.post("/{estimate_id}/revise", response_model=EstimateResponse, status_code=201)
-def revise_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def revise_estimate(estimate_id: int, request: Request, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
     """Create a new version of an estimate rather than overwriting it -
     copies the source estimate's figures (including its line items) into
     a new row, incrementing the version number and always pointing
@@ -174,6 +210,9 @@ def revise_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depend
         ))
     db.commit()
     db.refresh(revision)
+    log_action(db, request, user_id=auth.get("user_id"), action="revise_estimate", module_name="estimates",
+               record_id=revision.id, old_value={"source_estimate_id": source.id, "source_version": source.version},
+               new_value={"new_version": revision.version, "estimate_code": revision.estimate_code})
     return revision
 
 
@@ -188,4 +227,4 @@ def list_estimate_versions(estimate_id: int, db: Session = Depends(get_db), auth
     versions = db.query(Estimate).filter(
         (Estimate.id == root_id) | (Estimate.parent_estimate_id == root_id)
     ).order_by(Estimate.version.asc()).all()
-    return versions
+    return _serialize_estimates(versions, auth.get("role", "user"))

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { issuesAPI, materialsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -6,6 +7,8 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function IssuesPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [issues, setIssues] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -68,7 +71,7 @@ function IssuesPage() {
         <h1>Issues (Stock Out)</h1>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('issues.xlsx')} target="_blank" rel="noreferrer">Export</a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Issue</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Issue</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

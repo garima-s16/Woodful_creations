@@ -32,7 +32,8 @@ class EstimateLineItemCreate(EstimateLineItemBase):
 class EstimateLineItemResponse(EstimateLineItemBase):
     id: int
     estimate_id: int
-    amount: Decimal
+    amount: Optional[Decimal] = None
+    rate: Optional[Decimal] = None
     sort_order: int
 
     class Config:
@@ -74,9 +75,12 @@ class EstimateUpdate(BaseModel):
 class EstimateResponse(EstimateBase):
     id: int
     business_id: Optional[str] = None
-    subtotal: Decimal
-    tax_amount: Decimal
-    total_cost: Decimal
+    material_cost: Optional[Decimal] = None
+    labor_cost: Optional[Decimal] = None
+    discount: Optional[Decimal] = None
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    total_cost: Optional[Decimal] = None
     status: str
     version: int
     parent_estimate_id: Optional[int]

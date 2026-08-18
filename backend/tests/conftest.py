@@ -7,7 +7,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # A valid-looking SECRET_KEY must exist before app.core.config is imported.
-os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-real-use-1234567890")
+# Must not contain any of the validator's placeholder markers (change,
+# secret-key, your-, woodful-secret) - a prior version of this line
+# literally contained "secret-key" and would fail its own check.
+os.environ.setdefault("SECRET_KEY", "pytest-fixture-a8f3k29dl0qm4x7bnv6t1rwzcy5hj-not-a-real-value")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("COOKIE_SECURE", "False")

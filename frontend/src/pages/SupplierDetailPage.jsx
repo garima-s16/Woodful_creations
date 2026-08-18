@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { suppliersAPI, purchasesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
@@ -8,12 +9,14 @@ import { formatCurrency } from '../utils/currency';
 
 function SupplierDetailPage() {
   const { supplierId } = useParams();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [supplier, setSupplier] = useState(null);
   const [purchases, setPurchases] = useState([]);
 
   const load = useCallback(() => {
     suppliersAPI.get(supplierId).then((res) => setSupplier(res.data)).catch(() => setSupplier(null));
-    purchasesAPI.list({ supplier_id: supplierId }).then((res) => setPurchases(res.data));
+    purchasesAPI.list({ supplier_id: supplierId }).then((res) => setPurchases(res.data)).catch(() => setPurchases([]));
   }, [supplierId]);
 
   useEffect(load, [load]);
@@ -37,9 +40,13 @@ function SupplierDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Total Purchased</div><h3>{formatCurrency(totalPurchased)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Purchase Count</div><h3>{purchases.length}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Unpaid/Part Paid Invoices</div><h3>{outstanding.length}</h3></div></Card>
+        {isPrivileged && (
+          <>
+            <Card><div className="card-body"><div className="detail-meta-label">Total Purchased</div><h3>{formatCurrency(totalPurchased)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Purchase Count</div><h3>{purchases.length}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Unpaid/Part Paid Invoices</div><h3>{outstanding.length}</h3></div></Card>
+          </>
+        )}
         <Card><div className="card-body"><div className="detail-meta-label">Payment Terms</div><h3 style={{ fontSize: '1.1rem' }}>{supplier.payment_terms || '-'}</h3></div></Card>
       </div>
 
@@ -53,18 +60,20 @@ function SupplierDetailPage() {
         </div>
       </Card>
 
-      <Card title="Purchase History">
-        <Table
-          columns={[
-            { key: 'purchase_code', label: 'Purchase' },
-            { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
-            { key: 'quantity', label: 'Quantity' }, { key: 'invoice_total', label: 'Invoice Total', render: formatCurrency },
-            { key: 'payment_status', label: 'Payment Status' },
-          ]}
-          data={purchases}
-          emptyMessage="No purchases recorded from this supplier yet."
-        />
-      </Card>
+      {isPrivileged && (
+        <Card title="Purchase History">
+          <Table
+            columns={[
+              { key: 'purchase_code', label: 'Purchase' },
+              { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+              { key: 'quantity', label: 'Quantity' }, { key: 'invoice_total', label: 'Invoice Total', render: formatCurrency },
+              { key: 'payment_status', label: 'Payment Status' },
+            ]}
+            data={purchases}
+            emptyMessage="No purchases recorded from this supplier yet."
+          />
+        </Card>
+      )}
     </div>
   );
 }

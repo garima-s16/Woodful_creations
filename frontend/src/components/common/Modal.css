@@ -55,7 +55,7 @@
 }
 
 .modal-close:hover {
-  color: var(--color-ink);
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -68,7 +68,7 @@
   justify-content: flex-end;
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--border-color);
-  background-color: var(--color-ivory);
+  background-color: var(--color-charcoal-elevated);
 }
 
 /* Buttons inside the modal reuse the canonical .btn-primary/.btn-secondary
@@ -78,4 +78,15 @@
 .modal-footer .btn-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.confirm-dialog-message {
+  margin: 0 0 var(--space-5);
+  color: var(--text-secondary);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }

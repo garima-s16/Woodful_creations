@@ -1,10 +1,25 @@
 """Helper for writing to the audit_logs table."""
-from typing import Any, Optional
+from decimal import Decimal
+from typing import Optional
 
 from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+
+
+def serializable_fields(obj, field_names) -> dict:
+    """Snapshot of the given attributes on a SQLAlchemy model, safe to
+    store in the audit log's JSON columns. Numeric columns return
+    Decimal, which json.dumps cannot serialize on its own (it's not a
+    subclass of int/float) - every caller needing an old/new value
+    snapshot for a mutation should use this rather than reimplement
+    the same conversion."""
+    result = {}
+    for name in field_names:
+        value = getattr(obj, name)
+        result[name] = float(value) if isinstance(value, Decimal) else value
+    return result
 
 
 def log_action(

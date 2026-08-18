@@ -64,6 +64,31 @@ export const supplierMaterialsAPI = {
   remove: (id) => client.delete(`/api/supplier-materials/${id}`),
 };
 
+export const stockAPI = {
+  transfer: (data) => client.post('/api/stock/transfers', data),
+  adjust: (data) => client.post('/api/stock/adjustments', data),
+};
+
+export const purchaseImportAPI = {
+  templateUrl: `${API_URL}/api/purchase-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/purchase-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/purchase-imports/commit', { rows }),
+};
+
+export const personalCartAPI = {
+  list: () => client.get('/api/personal-cart/'),
+  add: (data) => client.post('/api/personal-cart/', data),
+  update: (id, data) => client.put(`/api/personal-cart/${id}`, data),
+  remove: (id) => client.delete(`/api/personal-cart/${id}`),
+  clear: () => client.delete('/api/personal-cart/'),
+};
+
 export const locationsAPI = {
   list: (params) => client.get('/api/locations/', { params }),
   tree: () => client.get('/api/locations/tree'),
@@ -71,11 +96,19 @@ export const locationsAPI = {
   create: (data) => client.post('/api/locations/', data),
 };
 
+export const notificationsAPI = {
+  list: (params) => client.get('/api/notifications/', { params }),
+  unreadCount: () => client.get('/api/notifications/unread-count'),
+  markRead: (id) => client.put(`/api/notifications/${id}/read`),
+  markAllRead: () => client.put('/api/notifications/read-all'),
+};
+
 export const purchasesAPI = {
   list: (params) => client.get('/api/purchases/', { params }),
   get: (id) => client.get(`/api/purchases/${id}`),
   create: (data) => client.post('/api/purchases/', data),
   update: (id, data) => client.put(`/api/purchases/${id}`, data),
+  receive: (id) => client.post(`/api/purchases/${id}/receive`),
 };
 
 export const issuesAPI = {
@@ -97,11 +130,13 @@ export const ordersAPI = {
   create: (data) => client.post('/api/orders/', data),
   update: (id, data) => client.put(`/api/orders/${id}`, data),
   profitability: (id) => client.get(`/api/orders/${id}/profitability`),
+  aiReports: (id) => client.get(`/api/orders/${id}/ai-reports`),
 };
 
 export const paymentsAPI = {
   list: (params) => client.get('/api/payments/', { params }),
   create: (data) => client.post('/api/payments/', data),
+  update: (id, data) => client.put(`/api/payments/${id}`, data),
 };
 
 export const projectExpensesAPI = {
@@ -135,6 +170,9 @@ export const dailyTasksAPI = {
   get: (id) => client.get(`/api/daily-tasks/${id}`),
   create: (data) => client.post('/api/daily-tasks/', data),
   update: (id, data) => client.put(`/api/daily-tasks/${id}`, data),
+  completeAndAssignNext: (id, data) => client.post(`/api/daily-tasks/${id}/complete-and-assign-next`, data),
+  listComments: (id) => client.get(`/api/daily-tasks/${id}/comments`),
+  addComment: (id, data) => client.post(`/api/daily-tasks/${id}/comments`, data),
 };
 
 export const productionJobsAPI = {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 import { locationsAPI } from '../utils/api';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
@@ -6,7 +7,7 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import '../styles/components/LocationTree.css';
 
-function LocationNode({ node, onAddChild }) {
+function LocationNode({ node, onAddChild, isPrivileged }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
 
@@ -21,12 +22,12 @@ function LocationNode({ node, onAddChild }) {
         <span className="location-node-name">{node.name}</span>
         {node.location_type && <span className="location-node-type">{node.location_type}</span>}
         {node.business_id && <span className="business-id-badge">{node.business_id}</span>}
-        <button className="btn-link" onClick={() => onAddChild(node)}>+ Add here</button>
+        {isPrivileged && <button className="btn-link" onClick={() => onAddChild(node)}>+ Add here</button>}
       </div>
       {hasChildren && expanded && (
         <ul className="location-node-children">
           {node.children.map((child) => (
-            <LocationNode key={child.id} node={child} onAddChild={onAddChild} />
+            <LocationNode key={child.id} node={child} onAddChild={onAddChild} isPrivileged={isPrivileged} />
           ))}
         </ul>
       )}
@@ -35,6 +36,8 @@ function LocationNode({ node, onAddChild }) {
 }
 
 function LocationsPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [tree, setTree] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [parentForNew, setParentForNew] = useState(null); // null = top-level (new Warehouse)
@@ -89,7 +92,7 @@ function LocationsPage() {
             or as many/few levels as your business needs). Create your own structure; nothing here is fixed.
           </p>
         </div>
-        <button className="btn-primary" onClick={handleAddTopLevel}>+ New Top-Level Location</button>
+        {isPrivileged && <button className="btn-primary" onClick={handleAddTopLevel}>+ New Top-Level Location</button>}
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
@@ -102,7 +105,7 @@ function LocationsPage() {
         ) : (
           <ul className="location-tree-root">
             {tree.map((node) => (
-              <LocationNode key={node.id} node={node} onAddChild={handleAddChild} />
+              <LocationNode key={node.id} node={node} onAddChild={handleAddChild} isPrivileged={isPrivileged} />
             ))}
           </ul>
         )}

@@ -4,9 +4,11 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { authAPI } from './utils/api';
 import { sessionCheckFinished, logout as logoutAction } from './redux/slices/authSlice';
+import { openCart, closeCart, fetchCart, resetCartView } from './redux/slices/cartSlice';
 
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import MobileBottomNav from './components/MobileBottomNav';
 import ProtectedRoute from './components/ProtectedRoute';
 import ChatWidget from './components/ChatWidget';
 import Footer from './components/Footer';
@@ -16,6 +18,8 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MaterialsPage from './pages/MaterialsPage';
 import LocationsPage from './pages/LocationsPage';
+import PurchaseImportPage from './pages/PurchaseImportPage';
+import MobileAppPage from './pages/MobileAppPage';
 import MaterialDetailPage from './pages/MaterialDetailPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
@@ -47,11 +51,24 @@ import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 
 function AppLayout({ children }) {
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [isCartOpen, setCartOpen] = useState(false);
+  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
+  const isCartOpen = useSelector((state) => state.cart.isOpen);
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
+  // Runs whenever the logged-in identity changes (login, logout, or a
+  // different user's session restoring) - fetches THAT user's own cart
+  // from the database (the backend scopes it to the authenticated
+  // token, so no user id needs to be passed here), or clears the
+  // in-memory view on logout without touching any stored data.
+  useEffect(() => {
+    if (user?.id) {
+      dispatch(fetchCart());
+    } else {
+      dispatch(resetCartView());
+    }
+  }, [dispatch, user?.id]);
 
   const handleLogout = async () => {
     try {
@@ -66,14 +83,15 @@ function AppLayout({ children }) {
 
   return (
     <div className="app-shell">
-      <Navbar user={navbarUser} onLogout={handleLogout} toggleSidebar={() => setSidebarOpen((v) => !v)} onOpenCart={() => setCartOpen(true)} />
+      <Navbar user={navbarUser} onLogout={handleLogout} toggleSidebar={() => setSidebarOpen((v) => !v)} onOpenCart={() => dispatch(openCart())} />
       <div className="app-body">
         <Sidebar isOpen={isSidebarOpen} user={user} />
         <main className="app-content">{children}</main>
       </div>
       <Footer />
+      <MobileBottomNav onOpenMenu={() => setSidebarOpen((v) => !v)} />
       <ChatWidget />
-      <CartDrawer open={isCartOpen} onClose={() => setCartOpen(false)} />
+      <CartDrawer open={isCartOpen} onClose={() => dispatch(closeCart())} />
     </div>
   );
 }
@@ -104,6 +122,8 @@ function AppRoutes() {
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
       <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
       <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />
+      <Route path="/purchases/import" element={<Protected><PurchaseImportPage /></Protected>} />
+      <Route path="/mobile-app" element={<Protected><MobileAppPage /></Protected>} />
       <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
       <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />

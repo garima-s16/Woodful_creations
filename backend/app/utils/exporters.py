@@ -7,12 +7,27 @@ That also keeps report generation fast and dependency-free at request time
 """
 import os
 from io import BytesIO
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as XLImage
+
+FORMULA_INJECTION_PREFIXES = ("=", "+", "-", "@")
+
+
+def _sanitize_cell_value(value):
+    """Prevents Excel formula injection: user-controlled text (a client
+    name, remark, task description, etc.) that happens to start with
+    =, +, -, or @ would otherwise be interpreted as an executable
+    formula the moment someone opens the downloaded file - not stored
+    as literal text. Only applies to strings; numbers/dates/None pass
+    through untouched, including real legitimate negative numbers,
+    which are numeric types here, not strings starting with "-"."""
+    if isinstance(value, str) and value.startswith(FORMULA_INJECTION_PREFIXES):
+        return "'" + value
+    return value
 
 INK = "11110F"
 GOLD = "C08A45"
@@ -45,7 +60,7 @@ CURRENCY_COLUMNS = {
     "rate", "amount", "taxable_value", "gst_amount", "invoice_total", "average_rate",
     "stock_value", "order_value", "advance", "other_received", "total_received",
     "balance", "monthly_salary", "daily_wage", "gross_profit", "estimated_gross_profit",
-    "total_stock_value", "purchase_value", "pending_payment", "project_expenses",
+    "total_stock_value", "purchase_value", "pending_payment", "project_expenses", "material_cost",
 }
 PERCENT_COLUMNS = {"gross_margin_percent", "margin_percent", "completion_percent"}
 
@@ -110,7 +125,7 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
     row_num = first_data_row
     for i, row in enumerate(rows):
         for idx, col in enumerate(columns, start=1):
-            cell = ws.cell(row=row_num, column=idx, value=row.get(col))
+            cell = ws.cell(row=row_num, column=idx, value=_sanitize_cell_value(row.get(col)))
             cell.font = BODY_FONT
             cell.number_format = _column_format(col)
             if i % 2 == 1:
@@ -142,8 +157,8 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
             # mixes genuinely different kinds of figures (currency, counts,
             # percentages) that a single inferred number_format can't
             # correctly guess between.
-            ws.cell(row=row_num, column=1, value=label).font = Font(name="Arial", bold=True, size=10)
-            ws.cell(row=row_num, column=2, value=value).font = BODY_FONT
+            ws.cell(row=row_num, column=1, value=_sanitize_cell_value(label)).font = Font(name="Arial", bold=True, size=10)
+            ws.cell(row=row_num, column=2, value=_sanitize_cell_value(value)).font = BODY_FONT
             row_num += 1
 
     for idx, col in enumerate(columns, start=1):

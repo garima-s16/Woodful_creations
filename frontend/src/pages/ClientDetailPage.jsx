@@ -15,7 +15,7 @@ function ClientDetailPage() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const canViewFinancials = user?.role === 'master' || user?.role === 'manager';
+  const canViewFinancials = user?.role === 'master';
   const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments', 'Activity'] : ['Overview', 'Orders', 'Estimates', 'Activity'];
   const [client, setClient] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -103,8 +103,8 @@ function ClientDetailPage() {
           </div>
         </div>
         <div className="page-actions">
-          <button className="btn-secondary" onClick={() => setActiveAction('order')}>Create Order</button>
-          <button className="btn-secondary" onClick={() => setActiveAction('estimate')}>Create Estimate</button>
+          {canViewFinancials && <button className="btn-secondary" onClick={() => setActiveAction('order')}>Create Order</button>}
+          {canViewFinancials && <button className="btn-secondary" onClick={() => setActiveAction('estimate')}>Create Estimate</button>}
           {canViewFinancials && orders.length > 0 && (
             <button className="btn-secondary" onClick={() => setActiveAction('payment')}>Record Payment</button>
           )}
@@ -114,7 +114,9 @@ function ClientDetailPage() {
 
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Total Orders</div><h3>{client.total_orders}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Total Sales</div><h3>{formatCurrency(client.total_sales)}</h3></div></Card>
+        {canViewFinancials && (
+          <Card><div className="card-body"><div className="detail-meta-label">Total Sales</div><h3>{formatCurrency(client.total_sales)}</h3></div></Card>
+        )}
         {canViewFinancials && (
           <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(orders.reduce((sum, o) => sum + Number(o.balance || 0), 0))}</h3></div></Card>
         )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { ordersAPI, clientsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -19,6 +20,8 @@ const PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Urgent'].map((s) => ({ value
 
 function OrdersPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [orders, setOrders] = useState([]);
   const [clients, setClients] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -146,9 +149,9 @@ function OrdersPage() {
     { key: 'order_code', label: 'Order ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
     { key: 'project_type', label: 'Project Type' },
-    { key: 'order_value', label: 'Order Value', render: (v) => formatCurrency(v) },
-    { key: 'total_received', label: 'Received', render: (v) => formatCurrency(v) },
-    { key: 'balance', label: 'Balance', render: (v) => formatCurrency(v) },
+    { key: 'order_value', label: 'Order Value', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
+    { key: 'total_received', label: 'Received', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
+    { key: 'balance', label: 'Balance', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
     { key: 'payment_status', label: 'Payment Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
     { key: 'project_status', label: 'Stage' }, { key: 'progress_percent', label: 'Progress %' },
     { key: 'design_status', label: 'Design' }, { key: 'execution_status', label: 'Execution' },
@@ -160,7 +163,7 @@ function OrdersPage() {
     },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingOrder(row); }}>Edit Details</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingOrder(row); }}>Edit Details</button> : null
       ),
     },
     {
@@ -200,7 +203,7 @@ function OrdersPage() {
           <a className="btn-secondary" href={reportsAPI.downloadUrl('order-profitability.xlsx')} target="_blank" rel="noreferrer">
             Export Profitability
           </a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>New Order</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>New Order</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

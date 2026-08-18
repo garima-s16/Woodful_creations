@@ -34,7 +34,7 @@
 }
 .wizard-step {
   font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
-  padding: 4px 10px; border-radius: 100px; background: var(--color-ivory);
+  padding: 4px 10px; border-radius: 100px; background: var(--color-charcoal-elevated);
 }
 .wizard-step.active { background: var(--color-ink); color: var(--color-ivory); }
 .wizard-step.done { color: var(--success); }

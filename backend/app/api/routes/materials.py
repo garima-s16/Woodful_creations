@@ -1,7 +1,8 @@
 from typing import List, Optional
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
+from app.core.audit import log_action
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +13,22 @@ from app.models.material import Material
 from app.models.material_category import MaterialSubcategory
 from app.models.material_attribute import MaterialAttributeValue
 from app.models.location import Location
+from app.models.purchase import Purchase
+from app.models.issue import Issue
 from app.schemas.material import MaterialCreate, MaterialUpdate, MaterialResponse
+
+
+def _serialize_materials(materials, role: str):
+    """Employees can see stock quantities/status/material info, but not
+    financial data (average_rate, stock_value) - genuinely nulled here,
+    server-side, before the response is built, not merely hidden by the
+    frontend. Master/manager get the real figures unchanged."""
+    responses = [MaterialResponse.model_validate(m) for m in materials]
+    if role not in ("master",):
+        for r in responses:
+            r.average_rate = None
+            r.stock_value = None
+    return responses
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
@@ -28,7 +44,8 @@ def _try_decimal(value):
 
 @router.get("/", response_model=List[MaterialResponse])
 def list_materials(response: Response, category: Optional[str] = Query(None), search: Optional[str] = Query(None),
-                    low_stock_only: bool = Query(False), subcategory_id: Optional[int] = Query(None),
+                    low_stock_only: bool = Query(False), active_only: bool = Query(False),
+                    subcategory_id: Optional[int] = Query(None),
                     attribute_filters: Optional[str] = Query(
                         None, description='JSON object mapping attribute_definition_id to the desired value, '
                                            'e.g. {"5": "18", "7": "White"} - matched against either the numeric '
@@ -41,6 +58,8 @@ def list_materials(response: Response, category: Optional[str] = Query(None), se
         query = query.filter(Material.category == category)
     if subcategory_id:
         query = query.filter(Material.subcategory_id == subcategory_id)
+    if active_only:
+        query = query.filter(Material.is_active.is_(True))
     if search:
         like = f"%{search}%"
         query = query.filter((Material.name.ilike(like)) | (Material.material_code.ilike(like)))
@@ -81,7 +100,11 @@ def list_materials(response: Response, category: Optional[str] = Query(None), se
         # Existing callers that never pass limit/offset get exactly the
         # same response shape as before this change - a plain array with
         # every matching row, no pagination applied.
-    return query.all()
+    return _serialize_materials(query.all(), auth.get("role", "user"))
+
+
+def _serialize_material(material, role: str):
+    return _serialize_materials([material], role)[0]
 
 
 def _resolve_category_name(db: Session, subcategory_id):
@@ -124,7 +147,7 @@ def _apply_attribute_values(db: Session, material: Material, attribute_values):
 
 @router.post("/", response_model=MaterialResponse, status_code=201)
 def create_material(data: MaterialCreate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     payload = data.dict(exclude={"material_code", "attribute_values"})
     payload["current_stock"] = payload["opening_stock"]
     if data.subcategory_id:
@@ -154,12 +177,12 @@ def get_material(material_id: int, db: Session = Depends(get_db), auth=Depends(g
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
-    return material
+    return _serialize_material(material, auth.get("role", "user"))
 
 
 @router.put("/{material_id}", response_model=MaterialResponse)
 def update_material(material_id: int, data: MaterialUpdate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
@@ -182,10 +205,17 @@ def update_material(material_id: int, data: MaterialUpdate, db: Session = Depend
 
 
 @router.delete("/{material_id}", status_code=204)
-def delete_material(material_id: int, db: Session = Depends(get_db),
+def delete_material(material_id: int, request: Request, db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
+    if db.query(Purchase).filter(Purchase.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material has purchase history and cannot be deleted. Mark it inactive instead.")
+    if db.query(Issue).filter(Issue.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material has issue history and cannot be deleted. Mark it inactive instead.")
+    material_name = material.name
     db.delete(material)
     db.commit()
+    log_action(db, request, user_id=auth.get("user_id"), action="delete_material", module_name="materials",
+               record_id=material_id, old_value={"name": material_name})

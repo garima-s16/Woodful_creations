@@ -5,7 +5,9 @@ import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsA
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
+import SimpleBarChart from '../components/common/SimpleBarChart';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 import QuickActions from '../components/QuickActions';
 
 
@@ -136,6 +138,7 @@ function RecentActivity({ items }) {
 
 function DashboardPage() {
   const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [stock, setStock] = useState(null);
   const [orders, setOrders] = useState(null);
   const [staff, setStaff] = useState(null);
@@ -144,12 +147,16 @@ function DashboardPage() {
   const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
   const [pendingPurchases, setPendingPurchases] = useState([]);
   const [delayedProduction, setDelayedProduction] = useState([]);
+  const [myTasks, setMyTasks] = useState([]);
 
   useEffect(() => {
     dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
     dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
     dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
-    dailyTasksAPI.list({ status: 'Not Started' }).then((res) => setPendingTasks(res.data)).catch(() => {});
+    dailyTasksAPI.list({ status: 'TO DO' }).then((res) => setPendingTasks(res.data)).catch(() => {});
+    if (!isPrivileged) {
+      dailyTasksAPI.list({ mine: true }).then((res) => setMyTasks(res.data)).catch(() => {});
+    }
 
     // Upcoming deliveries: orders with a delivery_date in the next 14
     // days that aren't already completed - a real, direct field query.
@@ -249,34 +256,60 @@ function DashboardPage() {
 
       <QuickActions />
 
-      <h2 className="section-heading">Primary Business Metrics</h2>
+      <h2 className="section-heading">{isPrivileged ? 'Primary Business Metrics' : 'My Work'}</h2>
       <div className="hero-metrics">
-        <div className="hero-metric">
-          <span className="hero-label">Revenue</span>
-          <span className="hero-value">{formatCurrency(orders.total_order_value)}</span>
-        </div>
-        <div className="hero-metric">
-          <span className="hero-label">Outstanding</span>
-          <span className="hero-value hero-warning">{formatCurrency(orders.pending_payment)}</span>
-        </div>
-        <div className="hero-metric">
-          <span className="hero-label">Inventory Value</span>
-          <span className="hero-value">{formatCurrency(stock.total_stock_value)}</span>
-        </div>
-        <div className="hero-metric">
-          <span className="hero-label">Gross Margin</span>
-          <span className="hero-value">{grossMargin.toFixed(1)}%</span>
-        </div>
+        {isPrivileged ? (
+          <>
+            <div className="hero-metric">
+              <span className="hero-label">Revenue</span>
+              <span className="hero-value">{formatCurrency(orders.total_order_value)}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Outstanding</span>
+              <span className="hero-value hero-warning">{formatCurrency(orders.pending_payment)}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Inventory Value</span>
+              <span className="hero-value">{formatCurrency(stock.total_stock_value)}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Gross Margin</span>
+              <span className="hero-value">{grossMargin.toFixed(1)}%</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="hero-metric">
+              <span className="hero-label">My Open Tasks</span>
+              <span className="hero-value">{myTasks.filter((t) => t.status !== 'DONE').length}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Due Today</span>
+              <span className="hero-value">{myTasks.filter((t) => t.status !== 'DONE' && t.date?.slice(0, 10) === today()).length}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Overdue</span>
+              <span className="hero-value hero-warning">{myTasks.filter((t) => t.status !== 'DONE' && t.date?.slice(0, 10) < today()).length}</span>
+            </div>
+            <div className="hero-metric">
+              <span className="hero-label">Blocked</span>
+              <span className="hero-value">{myTasks.filter((t) => t.status === 'BLOCKED').length}</span>
+            </div>
+          </>
+        )}
       </div>
 
       <h2 className="section-heading">Operations Snapshot</h2>
       <div className="secondary-metrics">
-        <KpiCard label="Amount Received" value={formatCurrency(orders.total_received)} />
+        {isPrivileged && <KpiCard label="Amount Received" value={formatCurrency(orders.total_received)} />}
         <KpiCard label="Active Orders" value={orders.active_orders} />
-        <KpiCard label="Low Stock" value={stock.low_stock_items} tone={stock.low_stock_items > 0 ? 'warning' : 'success'} />
-        <KpiCard label="Out of Stock" value={stock.out_of_stock_items} tone={stock.out_of_stock_items > 0 ? 'danger' : 'success'} />
         <KpiCard label="Active Employees" value={staff.active_employees} />
         <KpiCard label="Pending Tasks" value={staff.pending_tasks} tone={staff.pending_tasks > 0 ? 'warning' : 'success'} />
+        <KpiCard label="Completed Tasks" value={staff.completed_tasks} tone="success" />
+        <KpiCard
+          label="Production Jobs In Progress"
+          value={(staff.production_status_summary || []).filter((p) => p.status !== 'Completed').reduce((sum, p) => sum + p.count, 0)}
+        />
       </div>
 
       <section className="dashboard-section">
@@ -288,28 +321,13 @@ function DashboardPage() {
       </section>
 
       <section className="dashboard-section">
-        <h2 className="section-heading">Business Activity</h2>
+        <h2 className="section-heading">Business at a Glance</h2>
         <div className="dashboard-grid">
           <Card title="Order Pipeline">
-            <Table columns={[{ key: 'status', label: 'Status' }, { key: 'orders', label: 'Orders' }]} data={orders.order_pipeline} />
+            <SimpleBarChart data={orders.order_pipeline} labelKey="status" valueKey="orders" />
           </Card>
-          <Card title="Category Summary">
-            <Table
-              columns={[
-                { key: 'category', label: 'Category' }, { key: 'items', label: 'Items' },
-                { key: 'stock_value', label: 'Stock Value', render: formatCurrency },
-              ]}
-              data={stock.category_summary}
-            />
-          </Card>
-        </div>
-      </section>
-
-      <section className="dashboard-section">
-        <h2 className="section-heading">Projects &amp; Production</h2>
-        <div className="dashboard-grid">
-          <Card title="Task Status">
-            <Table columns={[{ key: 'status', label: 'Status' }, { key: 'count', label: 'Count' }]} data={staff.task_status_summary} />
+          <Card title="Stock Value by Category">
+            <SimpleBarChart data={stock.category_summary} labelKey="category" valueKey="stock_value" formatValue={formatCurrency} />
           </Card>
           <Card title="Top Orders & Payment Position">
             <Table
@@ -317,7 +335,7 @@ function DashboardPage() {
                 { key: 'order_id', label: 'Order' }, { key: 'client', label: 'Client' },
                 { key: 'pending', label: 'Pending', render: formatCurrency }, { key: 'status', label: 'Status' },
               ]}
-              data={orders.top_orders.slice(0, 6)}
+              data={orders.top_orders.slice(0, 5)}
             />
           </Card>
         </div>

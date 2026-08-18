@@ -23,6 +23,11 @@ class Purchase(BaseModel):
     gst_amount = Column(Numeric(12, 2), nullable=False, default=0)
     invoice_total = Column(Numeric(12, 2), nullable=False)
     payment_status = Column(String(20), nullable=False, default="Paid")
+    # "Received" (default) - stock increases immediately, the only
+    # behavior that existed before this field. "Ordered" - goods
+    # requested from the supplier but not yet arrived; stock is
+    # untouched until StockService.mark_purchase_received is called.
+    receipt_status = Column(String(20), nullable=False, default="Received")
 
     supplier = relationship("Supplier", back_populates="purchases")
     material = relationship("Material", back_populates="purchases")

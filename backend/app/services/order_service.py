@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
+from app.models.issue import Issue
 from app.schemas.payment import PaymentCreate
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
@@ -77,9 +78,31 @@ class OrderService:
 
     @staticmethod
     def profitability(db: Session, order: Order) -> dict:
+        """Actual direct cost = project expenses + the real cost of
+        material actually issued to this order (Issue.quantity_issued *
+        the material's average_rate at time of query - not a fabricated
+        estimate). Previously this only subtracted project expenses,
+        which understated cost for any order where material was a
+        significant part of the job.
+
+        Labour/production cost is deliberately NOT included: neither
+        DailyTask nor ProductionJob tracks hours worked or a wage
+        allocation per order, so there is no genuine data to compute it
+        from - inventing a formula (e.g. assuming a flat number of
+        hours) would be exactly the "invent accounting rules" this
+        calculation must not do. If real time-tracking data is added
+        later, this is the place to incorporate it."""
         expenses = db.query(ProjectExpense).filter(ProjectExpense.order_id == order.id).all()
         total_expenses = sum((e.amount for e in expenses), Decimal("0"))
-        gross_profit = (order.order_value or Decimal("0")) - total_expenses
+
+        issues = db.query(Issue).filter(Issue.order_id == order.id).all()
+        material_cost = sum(
+            (Decimal(str(i.quantity_issued or 0)) * Decimal(str(i.material.average_rate or 0)) for i in issues),
+            Decimal("0"),
+        )
+
+        actual_direct_costs = total_expenses + material_cost
+        gross_profit = (order.order_value or Decimal("0")) - actual_direct_costs
         margin = float(gross_profit / order.order_value) if order.order_value else 0.0
 
         return {
@@ -91,6 +114,8 @@ class OrderService:
             "total_received": float(order.total_received or 0),
             "pending_payment": float(order.balance or 0),
             "project_expenses": float(total_expenses),
+            "material_cost": float(material_cost),
+            "actual_direct_costs": float(actual_direct_costs),
             "estimated_gross_profit": float(gross_profit),
             "gross_margin_percent": round(margin, 6),
             "status": order.project_status,

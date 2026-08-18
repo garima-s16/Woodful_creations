@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_role
 from app.models.issue import Issue
 from app.schemas.issue import IssueCreate, IssueResponse
 from app.services.stock_service import StockService
@@ -24,7 +24,7 @@ def list_issues(order_id: Optional[int] = Query(None), material_id: Optional[int
 
 
 @router.post("/", response_model=IssueResponse, status_code=201)
-def create_issue(data: IssueCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def create_issue(data: IssueCreate, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
     return StockService.record_issue(db, data)
 
 

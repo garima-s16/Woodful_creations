@@ -210,7 +210,7 @@ def test_chat_payment_proposal_requires_master_or_manager(client, test_user, db_
     })
     body = chat_resp.json()
     assert body["proposed_action"] is None
-    assert "master or manager" in body["response"].lower()
+    assert "master account" in body["response"].lower()
 
 
 def test_low_stock_returns_clickable_records(client, test_user):
@@ -263,7 +263,7 @@ def test_outstanding_payments_records_respect_rbac(client, db_session):
     chat_resp = client.post("/api/chat/", json={"message": "show me pending payments"})
     body = chat_resp.json()
     assert body["records"] == []
-    assert "master/manager" in body["response"].lower()
+    assert "master accounts only" in body["response"].lower()
 
 
 def test_no_low_stock_returns_no_records(client, test_user):

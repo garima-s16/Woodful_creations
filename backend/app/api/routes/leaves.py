@@ -28,6 +28,11 @@ def calculate_leave_days(start_date, end_date) -> Decimal:
 @router.get("/", response_model=List[LeaveResponse])
 def list_leaves(employee_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    if auth.get("role", "user") not in ("master",):
+        own_employee_id = auth.get("employee_id")
+        if employee_id and employee_id != own_employee_id:
+            raise HTTPException(status_code=403, detail="You can only view your own leave records.")
+        employee_id = own_employee_id
     query = db.query(Leave)
     if employee_id:
         query = query.filter(Leave.employee_id == employee_id)
@@ -38,6 +43,8 @@ def list_leaves(employee_id: Optional[int] = Query(None), status: Optional[str] 
 
 @router.post("/", response_model=LeaveResponse, status_code=201)
 def request_leave(data: LeaveCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    if auth.get("role", "user") not in ("master",) and data.employee_id != auth.get("employee_id"):
+        raise HTTPException(status_code=403, detail="You can only request leave for yourself.")
     if data.end_date < data.start_date:
         raise HTTPException(status_code=400, detail="End date cannot be before start date")
 
@@ -65,7 +72,7 @@ def request_leave(data: LeaveCreate, db: Session = Depends(get_db), auth=Depends
 
 @router.put("/{leave_id}", response_model=LeaveResponse)
 def update_leave_status(leave_id: int, data: LeaveUpdate, db: Session = Depends(get_db),
-                         auth=Depends(require_role("master", "manager"))):
+                         auth=Depends(require_role("master"))):
     """Approve/reject a leave request - restricted since it's a supervisory action."""
     leave = db.query(Leave).filter(Leave.id == leave_id).first()
     if not leave:

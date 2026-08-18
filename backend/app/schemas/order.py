@@ -34,7 +34,8 @@ class OrderItemCreate(OrderItemBase):
 class OrderItemResponse(OrderItemBase):
     id: int
     order_id: int
-    amount: Decimal
+    amount: Optional[Decimal] = None
+    rate: Optional[Decimal] = None
     source_estimate_item_id: Optional[int] = None
     sort_order: int
 
@@ -84,12 +85,13 @@ class OrderUpdate(BaseModel):
 class OrderResponse(OrderBase):
     id: int
     business_id: Optional[str] = None
-    advance: Decimal
-    other_received: Decimal
-    total_received: Decimal
-    balance: Decimal
+    order_value: Optional[Decimal] = None
+    advance: Optional[Decimal] = None
+    other_received: Optional[Decimal] = None
+    total_received: Optional[Decimal] = None
+    balance: Optional[Decimal] = None
     items_subtotal: Optional[Decimal] = None
-    payment_status: str
+    payment_status: Optional[str] = None
     project_status: str
     design_status: str
     execution_status: str

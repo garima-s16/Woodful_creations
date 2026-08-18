@@ -16,6 +16,9 @@ const TABS = ['Overview', 'Attendance', 'Leave', 'Tasks', 'Production'];
 function EmployeeDetailPage() {
   const { employeeId } = useParams();
   const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
+  const isOwnProfile = String(user?.employee_id) === String(employeeId);
+  const canViewHrDetails = isPrivileged || isOwnProfile;
   const [employee, setEmployee] = useState(null);
   const [attendance, setAttendance] = useState([]);
   const [leaves, setLeaves] = useState([]);
@@ -29,8 +32,8 @@ function EmployeeDetailPage() {
 
   const load = useCallback(() => {
     employeesAPI.get(employeeId).then((res) => setEmployee(res.data)).catch(() => setEmployee(null));
-    attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data));
-    leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data));
+    attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data)).catch(() => setAttendance([]));
+    leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data)).catch(() => setLeaves([]));
     dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data));
     // production_jobs doesn't support an employee_id filter server-side yet;
     // filter client-side here rather than fetch nothing.
@@ -108,14 +111,18 @@ function EmployeeDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Total Hours</div><h3>{totalHours.toFixed(1)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Overtime Hours</div><h3>{totalOvertime.toFixed(1)}</h3></div></Card>
+        {canViewHrDetails && (
+          <>
+            <Card><div className="card-body"><div className="detail-meta-label">Total Hours</div><h3>{totalHours.toFixed(1)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Overtime Hours</div><h3>{totalOvertime.toFixed(1)}</h3></div></Card>
+          </>
+        )}
         <Card><div className="card-body"><div className="detail-meta-label">Tasks Completed</div><h3>{completedTasks}/{tasks.length}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Status</div><h3 style={{ fontSize: '1.1rem' }}>{employee.status}</h3></div></Card>
       </div>
 
       <div className="tab-bar">
-        {TABS.map((t) => (
+        {(canViewHrDetails ? TABS : TABS.filter((t) => t !== 'Attendance' && t !== 'Leave')).map((t) => (
           <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
@@ -126,8 +133,8 @@ function EmployeeDetailPage() {
             <div className="detail-meta">
               <div className="detail-meta-item"><span className="detail-meta-label">Phone</span><span className="detail-meta-value">{employee.phone || '-'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Joining Date</span><span className="detail-meta-value">{employee.joining_date ? new Date(employee.joining_date).toLocaleDateString() : '-'}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{formatCurrency(employee.monthly_salary)}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{formatCurrency(employee.daily_wage)}</span></div>
+              <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{employee.monthly_salary != null ? formatCurrency(employee.monthly_salary) : 'Restricted'}</span></div>
+              <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{employee.daily_wage != null ? formatCurrency(employee.daily_wage) : 'Restricted'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Emergency Contact</span><span className="detail-meta-value">{employee.emergency_contact || '-'}</span></div>
             </div>
           </div>

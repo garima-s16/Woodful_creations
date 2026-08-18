@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
@@ -11,6 +12,8 @@ import { formatCurrency } from '../utils/currency';
 function EstimateDetailPage() {
   const { estimateId } = useParams();
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [estimate, setEstimate] = useState(null);
   const [client, setClient] = useState(null);
   const [order, setOrder] = useState(null);
@@ -58,9 +61,11 @@ function EstimateDetailPage() {
           </div>
         </div>
         <div className="page-actions">
-          <button className="btn-secondary" onClick={handleRevise} disabled={revising}>
-            {revising ? 'Creating...' : 'Create New Version'}
-          </button>
+          {isPrivileged && (
+            <button className="btn-secondary" onClick={handleRevise} disabled={revising}>
+              {revising ? 'Creating...' : 'Create New Version'}
+            </button>
+          )}
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`estimates/${estimate.id}/quote.pdf`)} target="_blank" rel="noreferrer">
             Download Quote PDF
           </a>
@@ -70,24 +75,28 @@ function EstimateDetailPage() {
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Subtotal</div><h3>{formatCurrency(estimate.subtotal)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Discount</div><h3>{formatCurrency(estimate.discount)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Tax ({Number(estimate.tax_percent)}%)</div><h3>{formatCurrency(estimate.tax_amount)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Total Estimate</div><h3>{formatCurrency(estimate.total_cost)}</h3></div></Card>
+        {isPrivileged && (
+          <>
+            <Card><div className="card-body"><div className="detail-meta-label">Subtotal</div><h3>{formatCurrency(estimate.subtotal)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Discount</div><h3>{formatCurrency(estimate.discount)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Tax ({Number(estimate.tax_percent)}%)</div><h3>{formatCurrency(estimate.tax_amount)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Total Estimate</div><h3>{formatCurrency(estimate.total_cost)}</h3></div></Card>
+          </>
+        )}
       </div>
 
       {estimate.line_items?.length > 0 && (
         <Card title="Line Items">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>
+              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{isPrivileged && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {estimate.line_items.map((item) => (
                 <tr key={item.id}>
                   <td>{item.description}</td><td>{item.category || '-'}</td>
                   <td>{Number(item.quantity)}</td><td>{item.unit || '-'}</td>
-                  <td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td>
+                  {isPrivileged && <><td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td></>}
                 </tr>
               ))}
             </tbody>

@@ -81,7 +81,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
 
 def require_role(*allowed_roles: str):
-    """Usage: Depends(require_role("master", "manager"))"""
+    """Usage: Depends(require_role("master"))"""
 
     def _check(user: dict = Depends(get_current_user)) -> dict:
         role = user.get("role", "user")

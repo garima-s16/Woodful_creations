@@ -14,6 +14,7 @@ class PurchaseBase(BaseModel):
     rate: Decimal
     gst_percent: Decimal = Decimal("0")
     payment_status: str = "Paid"
+    receipt_status: str = "Received"  # "Ordered" = not yet received, stock untouched until marked received
 
 
 class PurchaseCreate(PurchaseBase):

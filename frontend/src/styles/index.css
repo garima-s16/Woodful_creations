@@ -6,41 +6,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Core palette - black + warm ivory + refined gold is the primary
-     identity. Wood-brown exists only as a rare supporting accent now,
-     never as the dominant chrome/button color. */
-  --color-ink: #11110f;            /* primary black */
-  --color-charcoal: #1a1916;       /* secondary black */
-  --color-wood: #4a3221;           /* supporting accent only - not primary */
-  --color-tan: #b99b76;            /* muted supporting tone */
-  --color-gold: #c08a45;           /* refined gold accent */
-  --color-gold-soft: #d2ad70;      /* muted gold */
-  --color-ivory: #f6f2ea;          /* warm ivory page background */
-  --color-ivory-dim: #efe8db;
-  --color-white: #fffcf7;          /* white/ivory surfaces */
+  /* Core palette - dark-first. Ink/charcoal are now the primary page
+     and surface backgrounds, not accents. Ivory/white are text-on-dark
+     and rare elevated-surface tones. Gold/wood/tan are the sole warm
+     accent family - never a large fill area, always a highlight. */
+  --color-ink: #0e0d0b;             /* primary page background */
+  --color-charcoal: #17150f;        /* raised surface (cards, panels) */
+  --color-charcoal-elevated: #201c15; /* modals, popovers, hover state */
+  --color-wood: #6b4a30;            /* warm accent - buttons, highlights */
+  --color-tan: #b99b76;             /* muted supporting accent */
+  --color-gold: #c08a45;            /* primary accent - the Woodful signature */
+  --color-gold-soft: #d2ad70;       /* muted gold, hover/secondary accent */
+  --color-ivory: #f3ede1;           /* primary text-on-dark */
+  --color-ivory-dim: #e4dcc9;
+  --color-white: #fffcf7;           /* rare - highest-emphasis text only */
 
-  /* Semantic surface roles - black is the dominant brand/chrome color */
+  /* Semantic surface roles */
   --primary-color: var(--color-ink);
   --secondary-color: var(--color-charcoal);
   --accent-color: var(--color-gold);
   --dark-bg: var(--color-ink);
-  --light-bg: var(--color-ivory);
-  --surface: var(--color-white);
-  --text-primary: var(--color-ink);
-  --text-secondary: #70685d;
-  --text-inverse: var(--color-ivory);
-  --border-color: #ded6c8;
-  --border-strong: #cbbfa5;
+  --light-bg: var(--color-ink);              /* page background is dark now */
+  --surface: var(--color-charcoal);          /* card/panel background */
+  --surface-elevated: var(--color-charcoal-elevated);
+  --text-primary: var(--color-ivory);
+  --text-secondary: #a89d89;
+  --text-inverse: var(--color-ink);          /* text on a gold/ivory fill */
+  --border-color: rgba(243, 237, 225, 0.10);
+  --border-strong: rgba(243, 237, 225, 0.18);
 
-  /* Status */
-  --success: #4b6b4a;
-  --success-bg: #eaf0e6;
-  --warning: #a8712c;
-  --warning-bg: #fbf0dd;
-  --danger: #9c3d31;
-  --danger-bg: #f8e9e6;
-  --info: #3c5a6b;
-  --info-bg: #e7eef1;
+  /* Status - darkened fills so a badge reads as a warm tinted chip
+     against a dark page, not a blown-out light patch */
+  --success: #8fb28d;
+  --success-bg: #1b241a;
+  --warning: #d2a15c;
+  --warning-bg: #2b2213;
+  --danger: #d98376;
+  --danger-bg: #2b1917;
+  --info: #8fb0c2;
+  --info-bg: #16232a;
 
   /* Typography */
   --font-display: 'Fraunces', Georgia, serif;
@@ -60,9 +64,10 @@
   --radius-sm: 3px;
   --radius-md: 6px;
   --radius-lg: 10px;
-  --shadow-sm: 0 1px 2px rgba(23, 20, 15, 0.06);
-  --shadow-md: 0 4px 16px rgba(23, 20, 15, 0.08);
-  --shadow-lg: 0 12px 32px rgba(23, 20, 15, 0.12);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+  --glow-gold: 0 0 0 1px rgba(192, 138, 69, 0.25), 0 4px 20px rgba(192, 138, 69, 0.12);
   --transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -105,7 +110,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--color-ink);
+  color: var(--text-primary);
 }
 
 a {

@@ -34,7 +34,7 @@ def get_location_tree(db: Session = Depends(get_db), auth=Depends(get_current_us
 
 @router.post("/", response_model=LocationResponse, status_code=201)
 def create_location(data: LocationCreate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     if data.parent_id is not None:
         if not db.query(Location).filter(Location.id == data.parent_id).first():
             raise HTTPException(status_code=404, detail="Parent location not found")

@@ -35,6 +35,7 @@ export const SettingsIcon = (p) => <svg {...base} {...p}><circle cx="12" cy="12"
 export const UserIcon = (p) => <svg {...base} {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></svg>;
 export const AuditIcon = (p) => <svg {...base} {...p}><path d="M6 2h9l5 5v15H6z" /><path d="M15 2v5h5" /><path d="M9 12h6M9 16h6" /></svg>;
 export const HomeIcon = (p) => <svg {...base} {...p}><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></svg>;
+export const MobileAppIcon = (p) => <svg {...base} {...p}><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></svg>;
 
 export const ChevronIcon = (p) => <svg {...base} width={14} height={14} {...p}><path d="M6 9l6 6 6-6" /></svg>;
 export const MenuIcon = (p) => <svg {...base} {...p}><path d="M3 6h18M3 12h18M3 18h18" /></svg>;
@@ -46,4 +47,5 @@ export const CartIcon = (p) => <svg {...base} {...p}><circle cx="9" cy="20" r="1
 export const GridIcon = (p) => <svg {...base} {...p}><rect x="3" y="3" width="8" height="8" rx="1" /><rect x="13" y="3" width="8" height="8" rx="1" /><rect x="3" y="13" width="8" height="8" rx="1" /><rect x="13" y="13" width="8" height="8" rx="1" /></svg>;
 export const ListIcon = (p) => <svg {...base} {...p}><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></svg>;
 export const PlusIcon = (p) => <svg {...base} {...p}><path d="M12 5v14M5 12h14" /></svg>;
+export const ChatIcon = (p) => <svg {...base} {...p}><path d="M21 12a8 8 0 01-8 8H5l3-3.3A7.9 7.9 0 013 12a8 8 0 018-8h2a8 8 0 018 8z" /></svg>;
 export const SlidersIcon = (p) => <svg {...base} {...p}><path d="M4 6h10M17 6h3M4 18h3M10 18h10M4 12h16" /><circle cx="16" cy="6" r="2" /><circle cx="7" cy="18" r="2" /></svg>;

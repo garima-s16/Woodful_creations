@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { candidatesAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -7,6 +8,8 @@ import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function CandidatesPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const navigate = useNavigate();
   const [candidates, setCandidates] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -71,7 +74,7 @@ function CandidatesPage() {
     <div className="page">
       <div className="page-header">
         <h1>Candidates</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={candidates} loading={pageLoading} onRowClick={(row) => navigate(`/candidates/${row.id}`)} emptyMessage="No candidates yet. Add your first candidate to start the hiring pipeline." />

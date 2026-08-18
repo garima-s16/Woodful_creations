@@ -11,7 +11,7 @@ from app.schemas.user_admin import UserCreateAdmin, UserUpdateAdmin, UserAdminRe
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-ALLOWED_ROLES = {"master", "manager", "user"}
+ALLOWED_ROLES = {"master", "user"}
 
 
 @router.get("/", response_model=List[UserAdminResponse])

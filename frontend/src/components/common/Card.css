@@ -13,14 +13,14 @@
   align-items: center;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--color-ivory);
+  background-color: var(--color-charcoal-elevated);
 }
 
 .card-header h3 {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--text-primary);
 }
 
 .card-actions {

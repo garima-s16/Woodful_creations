@@ -2,7 +2,7 @@
 source workbooks (Stock, Staff & Tasks, Order & Sales). Kept as simple
 name/description rows, editable by master users, matching the "Settings"
 sheet pattern in each workbook."""
-from sqlalchemy import Column, String, Integer
+from sqlalchemy import Column, String
 from app.models.base import BaseModel
 
 

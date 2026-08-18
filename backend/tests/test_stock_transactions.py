@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from app.core.db import SessionLocal, engine, Base
 from app.models import Material, Purchase, Issue
 from app.models_extra import StockMovement

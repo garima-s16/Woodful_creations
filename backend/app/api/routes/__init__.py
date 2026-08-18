@@ -5,6 +5,10 @@ from app.api.routes import materials
 from app.api.routes import material_categories
 from app.api.routes import supplier_materials
 from app.api.routes import locations
+from app.api.routes import notifications
+from app.api.routes import stock_transactions
+from app.api.routes import purchase_imports
+from app.api.routes import personal_cart
 from app.api.routes import purchases
 from app.api.routes import issues
 from app.api.routes import clients
@@ -36,6 +40,10 @@ all_routers = [
     material_categories.router,
     supplier_materials.router,
     locations.router,
+    notifications.router,
+    stock_transactions.router,
+    purchase_imports.router,
+    personal_cart.router,
     purchases.router,
     issues.router,
     clients.router,

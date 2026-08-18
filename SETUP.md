@@ -26,14 +26,26 @@ To run either side alone: `start_backend.sh` / `start_frontend.sh` (and `.bat` e
 
 ### First admin user
 
-No admin account ships with the repo. After the backend has started at least once (so the database exists), bootstrap one:
+No admin account ships with the repo. Two ways to get one:
 
-```bash
-cd backend
-python scripts/setup_local.py
-```
+1. **Interactive, one account:** after the backend has started at least once (so the database exists):
 
-Follow the prompts to set a username and password.
+   ```bash
+   cd backend
+   python scripts/setup_local.py
+   ```
+
+   Follow the prompts to set a username and password.
+
+2. **Seeded, with realistic demo data:** `scripts/seed_sample_data.py` populates suppliers, materials, clients, orders, employees, and two named master accounts (`garima@woodful.local`, `nikhil@woodful.local`) in one pass. The master accounts need `SEED_MASTER_PASSWORD` set first, or they're skipped (never created with an insecure default):
+
+   ```bash
+   cd backend
+   export SEED_MASTER_PASSWORD="choose a password"   # Windows: set SEED_MASTER_PASSWORD=...
+   python scripts/seed_sample_data.py
+   ```
+
+   Safe to re-run — every seed function checks for existing rows first, so running it twice never creates duplicates.
 
 ## Option B — Docker Compose
 

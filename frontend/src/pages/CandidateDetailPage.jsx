@@ -1,15 +1,19 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { candidatesAPI, interviewsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
 
 function CandidateDetailPage() {
   const { candidateId } = useParams();
+  const { user } = useSelector((state) => state.auth);
+  const isStrictlyMaster = user?.role === 'master';
   const [candidate, setCandidate] = useState(null);
   const [interviews, setInterviews] = useState([]);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -19,7 +23,7 @@ function CandidateDetailPage() {
 
   const load = useCallback(() => {
     candidatesAPI.get(candidateId).then((res) => setCandidate(res.data)).catch(() => setError('Unable to load this candidate.'));
-    interviewsAPI.list({ candidate_id: candidateId }).then((res) => setInterviews(res.data));
+    interviewsAPI.list({ candidate_id: candidateId }).then((res) => setInterviews(res.data)).catch(() => setInterviews([]));
   }, [candidateId]);
 
   useEffect(load, [load]);
@@ -40,12 +44,16 @@ function CandidateDetailPage() {
     }
   };
 
-  const handleDeleteResume = async () => {
+  const [confirmingResumeDelete, setConfirmingResumeDelete] = useState(false);
+  const handleDeleteResume = () => setConfirmingResumeDelete(true);
+  const confirmDeleteResume = async () => {
     try {
       await candidatesAPI.deleteResume(candidateId);
+      setConfirmingResumeDelete(false);
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to remove resume');
+      setConfirmingResumeDelete(false);
     }
   };
 
@@ -111,7 +119,7 @@ function CandidateDetailPage() {
                         {candidate.resume_original_filename}
                       </a>
                       {' '}
-                      <button className="btn-link" onClick={handleDeleteResume}>Remove</button>
+                      {isStrictlyMaster && <button className="btn-link" onClick={handleDeleteResume}>Remove</button>}
                     </>
                   ) : candidate.resume_url ? (
                     <a href={candidate.resume_url} target="_blank" rel="noreferrer">View Resume</a>
@@ -166,6 +174,13 @@ function CandidateDetailPage() {
           onSubmit={handleSchedule} loading={loading} submitText="Schedule Interview"
         />
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmingResumeDelete}
+        message="Remove this candidate's resume? This cannot be undone."
+        onConfirm={confirmDeleteResume}
+        onCancel={() => setConfirmingResumeDelete(false)}
+      />
     </div>
   );
 }

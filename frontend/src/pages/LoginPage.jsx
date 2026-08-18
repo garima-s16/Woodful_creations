@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authAPI } from '../utils/api';
@@ -99,7 +100,12 @@ function LoginPage() {
         </div>
 
         <div className="login-form-panel">
-          <div className="login-form-wrap">
+          <motion.div
+            className="login-form-wrap"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+          >
             <h1>Sign In</h1>
             <p className="login-form-subtitle">Enter your credentials to access your account.</p>
 
@@ -142,13 +148,28 @@ function LoginPage() {
                 </div>
               </div>
 
-              {error && <div className="error-message">{error}</div>}
+              <AnimatePresence>
+                {error && (
+                  <motion.div
+                    className="error-message"
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    {error}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              <button type="submit" className="login-button" disabled={loading}>
+              <motion.button
+                type="submit" className="login-button" disabled={loading}
+                whileTap={{ scale: 0.98 }}
+              >
                 {loading ? 'Signing in...' : 'Sign In'}
-              </button>
+              </motion.button>
             </form>
-          </div>
+          </motion.div>
         </div>
       </div>
       <Footer />

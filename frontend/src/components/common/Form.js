@@ -1,7 +1,7 @@
 import React from 'react';
 import './Form.css';
 
-function FieldInput({ field, value, error, onChange, formData }) {
+function FieldInput({ field, value, error, onChange, onBlur, formData }) {
   if (field.type === 'computed') {
     // Read-only, derived from other field values (e.g. leave days from
     // start/end date) - never user-editable, so it can never end up
@@ -18,7 +18,7 @@ function FieldInput({ field, value, error, onChange, formData }) {
   if (field.type === 'textarea') {
     return (
       <textarea
-        id={field.name} name={field.name} value={value || ''} onChange={onChange}
+        id={field.name} name={field.name} value={value || ''} onChange={onChange} onBlur={onBlur}
         placeholder={field.placeholder} rows={field.rows || 4}
         className={`form-input ${error ? 'error' : ''}`}
       />
@@ -27,7 +27,7 @@ function FieldInput({ field, value, error, onChange, formData }) {
   if (field.type === 'select') {
     return (
       <select
-        id={field.name} name={field.name} value={value || ''} onChange={onChange}
+        id={field.name} name={field.name} value={value || ''} onChange={onChange} onBlur={onBlur}
         className={`form-input ${error ? 'error' : ''}`}
       >
         <option value="">Select {field.label}</option>
@@ -40,13 +40,20 @@ function FieldInput({ field, value, error, onChange, formData }) {
   return (
     <input
       type={field.type || 'text'} id={field.name} name={field.name} value={value || ''}
-      onChange={onChange} placeholder={field.placeholder}
+      onChange={onChange} onBlur={onBlur} placeholder={field.placeholder}
+      // Without this, a plain <input type="number"> defaults to the
+      // browser's own step=1 HTML5 validation, which silently blocks
+      // submitting a decimal value (e.g. 2.5 kg) - the browser shows
+      // its own "please enter a valid value" prompt and the form never
+      // reaches the API at all. step="any" removes that restriction;
+      // whole numbers remain just as valid as before.
+      step={field.type === 'number' ? 'any' : undefined}
       className={`form-input ${error ? 'error' : ''}`}
     />
   );
 }
 
-function FieldGroup({ field, formData, errors, handleChange }) {
+function FieldGroup({ field, formData, errors, handleChange, handleBlur }) {
   const label = field.getLabel ? field.getLabel(formData) : field.label;
   const hint = field.getHint ? field.getHint(formData) : field.hint;
   return (
@@ -54,7 +61,10 @@ function FieldGroup({ field, formData, errors, handleChange }) {
       <label htmlFor={field.name} className="form-label">
         {label} {field.required && <span className="required">*</span>}
       </label>
-      <FieldInput field={field} value={formData[field.name]} error={errors[field.name]} onChange={handleChange} formData={formData} />
+      <FieldInput
+        field={field} value={formData[field.name]} error={errors[field.name]}
+        onChange={handleChange} onBlur={handleBlur(field)} formData={formData}
+      />
       {hint && <span className="form-hint">{hint}</span>}
       {errors[field.name] && <span className="error-message">{errors[field.name]}</span>}
     </div>
@@ -79,6 +89,17 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initialValues)]);
 
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(initialValues);
+  React.useEffect(() => {
+    if (!isDirty) return undefined;
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
   const sections = React.useMemo(() => {
     const hasSections = fields.some((f) => f.section);
     if (!hasSections) return null;
@@ -98,12 +119,35 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
+  const handleBlur = (field) => () => {
+    const value = formData[field.name];
+    if (field.visibleIf && !field.visibleIf(formData)) return;
+    if (field.required && !value) {
+      setErrors((prev) => ({ ...prev, [field.name]: `${field.label} is required` }));
+      return;
+    }
+    if (field.validate && value) {
+      const message = field.validate(value, formData);
+      setErrors((prev) => ({ ...prev, [field.name]: message || '' }));
+    }
+  };
+
   const validate = (fieldsToCheck) => {
     const newErrors = {};
     fieldsToCheck.forEach((field) => {
       if (field.visibleIf && !field.visibleIf(formData)) return; // hidden fields aren't required
-      if (field.required && !formData[field.name]) {
+      const value = formData[field.name];
+      if (field.required && !value) {
         newErrors[field.name] = `${field.label} is required`;
+        return;
+      }
+      // A field-specific validator (e.g. GSTIN length/format) only
+      // runs when the field actually has a value - required-ness is
+      // handled above, so an optional empty field never fails a
+      // format check meant for when it IS filled in.
+      if (field.validate && value) {
+        const message = field.validate(value, formData);
+        if (message) newErrors[field.name] = message;
       }
     });
     return newErrors;
@@ -123,7 +167,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
     return (
       <form className="form" onSubmit={handleSubmit}>
         {fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
-          <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} />
+          <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} handleBlur={handleBlur} />
         ))}
         <button type="submit" className="btn-submit" disabled={loading}>
           {loading ? 'Please wait...' : submitText}
@@ -162,7 +206,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
       {!isReview && (
         <div className="wizard-panel">
           {currentSection.fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
-            <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} />
+            <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} handleBlur={handleBlur} />
           ))}
         </div>
       )}

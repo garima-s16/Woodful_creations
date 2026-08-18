@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { clientsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
@@ -12,6 +14,8 @@ const PAGE_SIZE = 25;
 
 function ClientsPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isStrictlyMaster = user?.role === 'master';
   const [clients, setClients] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -77,6 +81,20 @@ function ClientsPage() {
     }
   };
 
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const handleDelete = (clientRow) => setPendingDelete(clientRow);
+  const confirmDelete = async () => {
+    setError('');
+    try {
+      await clientsAPI.remove(pendingDelete.id);
+      setPendingDelete(null);
+      load(search, page);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete client');
+      setPendingDelete(null);
+    }
+  };
+
   const columns = [
     { key: 'client_code', label: 'Client ID' }, { key: 'name', label: 'Name' },
     { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'city', label: 'City' },
@@ -85,6 +103,11 @@ function ClientsPage() {
     {
       key: 'edit_action', label: '', render: (v, row) => (
         <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingClient(row); }}>Edit</button>
+      ),
+    },
+    {
+      key: 'delete_action', label: '', render: (v, row) => (
+        isStrictlyMaster ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleDelete(row); }}>Delete</button> : null
       ),
     },
   ];
@@ -155,6 +178,13 @@ function ClientsPage() {
           />
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        message={pendingDelete ? `Delete ${pendingDelete.name}? This cannot be undone.` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

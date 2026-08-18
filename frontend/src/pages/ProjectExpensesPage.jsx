@@ -10,6 +10,7 @@ import { today } from '../utils/dates';
 
 function ProjectExpensesPage() {
   const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [expenses, setExpenses] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -67,7 +68,7 @@ function ProjectExpensesPage() {
     { key: 'amount', label: 'Amount', render: (v) => formatCurrency(v) },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingExpense(row); }}>Edit</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingExpense(row); }}>Edit</button> : null
       ),
     },
   ];
@@ -88,7 +89,7 @@ function ProjectExpensesPage() {
     <div className="page">
       <div className="page-header">
         <h1>Project Expenses</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Expense</button>
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Expense</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={expenses} emptyMessage="No project expenses recorded yet." />

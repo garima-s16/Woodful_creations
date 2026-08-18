@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 @router.get("/", response_model=List[InterviewResponse])
 def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     query = db.query(Interview)
     if candidate_id:
         query = query.filter(Interview.candidate_id == candidate_id)
@@ -24,7 +24,7 @@ def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Dep
 
 @router.post("/", response_model=InterviewResponse, status_code=201)
 def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db),
-                        auth=Depends(require_role("master", "manager"))):
+                        auth=Depends(require_role("master"))):
     for _ in range(5):
         interview = Interview(**data.dict(), business_id=generate_short_id())
         db.add(interview)
@@ -40,7 +40,7 @@ def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db),
 
 @router.put("/{interview_id}", response_model=InterviewResponse)
 def update_interview(interview_id: int, data: InterviewUpdate, db: Session = Depends(get_db),
-                      auth=Depends(require_role("master", "manager"))):
+                      auth=Depends(require_role("master"))):
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")

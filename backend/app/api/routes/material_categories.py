@@ -25,7 +25,7 @@ def list_categories(db: Session = Depends(get_db), auth=Depends(get_current_user
 
 @router.post("/", response_model=MaterialCategoryResponse, status_code=201)
 def create_category(data: MaterialCategoryCreate, db: Session = Depends(get_db),
-                     auth=Depends(require_role("master", "manager"))):
+                     auth=Depends(require_role("master"))):
     if db.query(MaterialCategory).filter(MaterialCategory.name == data.name).first():
         raise HTTPException(status_code=400, detail=f'A category named "{data.name}" already exists.')
     category = MaterialCategory(**data.dict(), business_id=generate_short_id())
@@ -41,7 +41,7 @@ def create_category(data: MaterialCategoryCreate, db: Session = Depends(get_db),
 
 @router.post("/subcategories", response_model=MaterialSubcategoryResponse, status_code=201)
 def create_subcategory(data: MaterialSubcategoryCreate, db: Session = Depends(get_db),
-                        auth=Depends(require_role("master", "manager"))):
+                        auth=Depends(require_role("master"))):
     category = db.query(MaterialCategory).filter(MaterialCategory.id == data.category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -72,7 +72,7 @@ def get_subcategory(subcategory_id: int, db: Session = Depends(get_db), auth=Dep
 @router.post("/subcategories/{subcategory_id}/attributes",
              response_model=MaterialAttributeDefinitionResponse, status_code=201)
 def create_attribute_definition(subcategory_id: int, data: MaterialAttributeDefinitionCreate,
-                                 db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
+                                 db: Session = Depends(get_db), auth=Depends(require_role("master"))):
     """Defines a specification field for this subcategory - e.g. adding
     "Voltage" (number, unit "V") to a new "LED Strip" subcategory. Every
     material later created under this subcategory can then have a real

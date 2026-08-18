@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
-import { materialsAPI, purchasesAPI, issuesAPI, supplierMaterialsAPI } from '../utils/api';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { materialsAPI, purchasesAPI, issuesAPI, supplierMaterialsAPI, stockAPI, locationsAPI } from '../utils/api';
 import { addToCart } from '../redux/slices/cartSlice';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import Modal from '../components/common/Modal';
+import Form from '../components/common/Form';
+import Alert from '../components/common/Alert';
 import { statusClass } from '../utils/statusColors';
 import { formatCurrency } from '../utils/currency';
 
@@ -12,23 +15,69 @@ const TABS = ['Overview', 'Suppliers', 'Purchases', 'Issues'];
 
 function MaterialDetailPage() {
   const { materialId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [material, setMaterial] = useState(null);
   const [purchases, setPurchases] = useState([]);
   const [issues, setIssues] = useState([]);
   const [supplierLinks, setSupplierLinks] = useState([]);
-  const [tab, setTab] = useState('Overview');
+  const VALID_TABS = ['Overview', 'Suppliers', 'Purchases', 'Issues'];
+  const requestedTab = searchParams.get('tab');
+  const [tab, setTab] = useState(VALID_TABS.includes(requestedTab) ? requestedTab : 'Overview');
   const [addedToCart, setAddedToCart] = useState(false);
+  const [allLocations, setAllLocations] = useState([]);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState('');
 
   const load = useCallback(() => {
     materialsAPI.get(materialId).then((res) => setMaterial(res.data)).catch(() => setMaterial(null));
-    purchasesAPI.list({ material_id: materialId }).then((res) => setPurchases(res.data));
-    issuesAPI.list({ material_id: materialId }).then((res) => setIssues(res.data));
+    purchasesAPI.list({ material_id: materialId }).then((res) => setPurchases(res.data)).catch(() => setPurchases([]));
+    issuesAPI.list({ material_id: materialId }).then((res) => setIssues(res.data)).catch(() => setIssues([]));
     supplierMaterialsAPI.byMaterial(materialId).then((res) => setSupplierLinks(res.data)).catch(() => setSupplierLinks([]));
+    locationsAPI.list().then((res) => setAllLocations(res.data)).catch(() => setAllLocations([]));
   }, [materialId]);
 
   useEffect(load, [load]);
+
+  const handleTransfer = async (formData) => {
+    setStockLoading(true);
+    setStockError('');
+    try {
+      await stockAPI.transfer({
+        material_id: Number(materialId), quantity: Number(formData.quantity),
+        to_location_id: Number(formData.to_location_id), remarks: formData.remarks,
+      });
+      setShowTransfer(false);
+      load();
+    } catch (err) {
+      setStockError(err.response?.data?.detail || 'Transfer failed');
+    } finally {
+      setStockLoading(false);
+    }
+  };
+
+  const handleAdjust = async (formData) => {
+    setStockLoading(true);
+    setStockError('');
+    try {
+      const delta = formData.direction === 'decrease' ? -Math.abs(Number(formData.quantity)) : Math.abs(Number(formData.quantity));
+      await stockAPI.adjust({
+        material_id: Number(materialId), adjustment_type: formData.adjustment_type,
+        quantity_delta: delta, reason: formData.reason,
+      });
+      setShowAdjust(false);
+      load();
+    } catch (err) {
+      setStockError(err.response?.data?.detail || 'Adjustment failed');
+    } finally {
+      setStockLoading(false);
+    }
+  };
 
   const handleAddToCart = () => {
     const preferred = supplierLinks.find((s) => s.is_preferred) || supplierLinks[0];
@@ -56,20 +105,26 @@ function MaterialDetailPage() {
             {material.business_id && <span className="business-id-badge">{material.business_id}</span>}
           </div>
         </div>
-        <button className="btn-primary" onClick={handleAddToCart}>
-          {addedToCart ? 'Added!' : 'Add to Purchase Cart'}
-        </button>
+        <div className="detail-header-actions">
+          <button className="btn-secondary" onClick={() => setShowTransfer(true)}>Transfer</button>
+          <button className="btn-secondary" onClick={() => setShowAdjust(true)}>Adjust Stock</button>
+          <button className="btn-primary" onClick={handleAddToCart}>
+            {addedToCart ? 'Added!' : 'Add to Purchase Cart'}
+          </button>
+        </div>
       </div>
+
+      {stockError && <Alert type="error" message={stockError} onClose={() => setStockError('')} />}
 
       <div className="kpi-row">
         <Card><div className="card-body"><div className="detail-meta-label">Available Stock</div><h3>{material.current_stock} {material.unit}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Reorder Level</div><h3>{material.minimum_stock} {material.unit}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Average Rate</div><h3>{formatCurrency(material.average_rate)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Stock Value</div><h3>{formatCurrency(material.stock_value)}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Average Rate</div><h3>{material.average_rate != null ? formatCurrency(material.average_rate) : 'Restricted'}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Stock Value</div><h3>{material.stock_value != null ? formatCurrency(material.stock_value) : 'Restricted'}</h3></div></Card>
       </div>
 
       <div className="tab-bar">
-        {TABS.map((t) => (
+        {(isPrivileged ? TABS : TABS.filter((t) => t !== 'Purchases')).map((t) => (
           <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
@@ -113,8 +168,8 @@ function MaterialDetailPage() {
           <Table
             columns={[
               { key: 'supplier_name', label: 'Supplier' },
-              { key: 'supplier_price', label: 'Price', render: (v) => v ? formatCurrency(v) : '-' },
-              { key: 'last_purchase_price', label: 'Last Purchase Price', render: (v) => v ? formatCurrency(v) : '-' },
+              { key: 'supplier_price', label: 'Price', render: (v) => v ? formatCurrency(v) : (isPrivileged ? '-' : 'Restricted') },
+              { key: 'last_purchase_price', label: 'Last Purchase Price', render: (v) => v ? formatCurrency(v) : (isPrivileged ? '-' : 'Restricted') },
               { key: 'moq', label: 'MOQ', render: (v) => v || '-' },
               { key: 'lead_time_days', label: 'Lead Time', render: (v) => v ? `${v} days` : '-' },
               { key: 'is_preferred', label: 'Preferred', render: (v) => v ? <span className="status-badge status-ok">Preferred</span> : '' },
@@ -125,7 +180,7 @@ function MaterialDetailPage() {
         )
       )}
 
-      {tab === 'Purchases' && (
+      {tab === 'Purchases' && isPrivileged && (
         <Table
           columns={[
             { key: 'purchase_code', label: 'Purchase' },
@@ -137,6 +192,9 @@ function MaterialDetailPage() {
           data={purchases}
           emptyMessage="No purchase history for this material yet."
         />
+      )}
+      {tab === 'Purchases' && !isPrivileged && (
+        <p className="page-summary">Purchase history is restricted to master accounts.</p>
       )}
 
       {tab === 'Issues' && (
@@ -151,6 +209,44 @@ function MaterialDetailPage() {
           emptyMessage="No issue history for this material yet."
         />
       )}
+
+      <Modal isOpen={showTransfer} title={`Transfer ${material.name}`} onClose={() => setShowTransfer(false)}>
+        <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Current stock: {material.current_stock} {material.unit} at {material.location || 'no location set'}.
+        </p>
+        <Form
+          fields={[
+            { name: 'to_location_id', label: 'Transfer To', type: 'select', required: true, options: allLocations.map((l) => ({ value: l.id, label: l.full_path })) },
+            { name: 'quantity', label: `Quantity (${material.unit})`, type: 'number', required: true },
+            { name: 'remarks', label: 'Remarks', type: 'textarea' },
+          ]}
+          onSubmit={handleTransfer} loading={stockLoading} submitText="Confirm Transfer"
+        />
+      </Modal>
+
+      <Modal isOpen={showAdjust} title={`Adjust Stock - ${material.name}`} onClose={() => setShowAdjust(false)}>
+        <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Current stock: {material.current_stock} {material.unit}. Every adjustment is recorded with a reason.
+        </p>
+        <Form
+          fields={[
+            { name: 'adjustment_type', label: 'Type', type: 'select', required: true, options: [
+              { value: 'Physical Count Increase', label: 'Physical Count Increase' },
+              { value: 'Physical Count Decrease', label: 'Physical Count Decrease' },
+              { value: 'Damage', label: 'Damage' },
+              { value: 'Wastage', label: 'Wastage' },
+              { value: 'Theft/Loss', label: 'Theft/Loss' },
+              { value: 'Correction', label: 'Correction' },
+            ] },
+            { name: 'direction', label: 'Direction', type: 'select', required: true, options: [
+              { value: 'increase', label: 'Increase stock' }, { value: 'decrease', label: 'Decrease stock' },
+            ] },
+            { name: 'quantity', label: `Quantity (${material.unit})`, type: 'number', required: true },
+            { name: 'reason', label: 'Reason', type: 'textarea', required: true },
+          ]}
+          onSubmit={handleAdjust} loading={stockLoading} submitText="Confirm Adjustment"
+        />
+      </Modal>
     </div>
   );
 }

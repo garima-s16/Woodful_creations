@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -10,6 +11,8 @@ import LineItemEditor, { emptyRow } from '../components/LineItemEditor';
 
 function EstimatesPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [estimates, setEstimates] = useState([]);
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -82,8 +85,8 @@ function EstimatesPage() {
   const columns = [
     { key: 'estimate_code', label: 'Estimate ID' },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
-    { key: 'subtotal', label: 'Subtotal', render: (v) => formatCurrency(v) },
-    { key: 'total_cost', label: 'Total', render: (v) => formatCurrency(v) },
+    { key: 'subtotal', label: 'Subtotal', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
+    { key: 'total_cost', label: 'Total', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
     { key: 'status', label: 'Status' },
     {
       key: 'quote_pdf', label: 'Quote', render: (v, row) => (
@@ -92,7 +95,7 @@ function EstimatesPage() {
     },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEstimate(row); }}>Edit</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEstimate(row); }}>Edit</button> : null
       ),
     },
   ];
@@ -123,7 +126,7 @@ function EstimatesPage() {
     <div className="page">
       <div className="page-header">
         <h1>Estimates</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>New Estimate</button>
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>New Estimate</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />

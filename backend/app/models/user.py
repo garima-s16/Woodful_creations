@@ -1,5 +1,4 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey
-from datetime import datetime
 
 from app.models.base import BaseModel
 

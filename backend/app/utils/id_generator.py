@@ -26,7 +26,6 @@ import re
 import secrets
 import string
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 SHORT_ID_ALPHABET = string.ascii_uppercase + string.digits
 SHORT_ID_LENGTH = 10

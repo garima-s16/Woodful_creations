@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
@@ -25,13 +25,22 @@ class Material(BaseModel):
     thickness_size = Column(String(50), nullable=True)
     unit = Column(String(20), nullable=False)
 
-    opening_stock = Column(Integer, nullable=False, default=0)
-    total_purchased = Column(Integer, nullable=False, default=0)
-    total_issued = Column(Integer, nullable=False, default=0)
-    current_stock = Column(Integer, nullable=False, default=0, index=True)
-    minimum_stock = Column(Integer, nullable=False, default=0)
+    # Numeric, not Integer - a material measured in kg/litres/metres
+    # needs real decimal precision (2.5 kg of adhesive), not silent
+    # rounding. Every write to these must flow through StockService
+    # using Decimal arithmetic, never int() truncation.
+    opening_stock = Column(Numeric(12, 2), nullable=False, default=0)
+    total_purchased = Column(Numeric(12, 2), nullable=False, default=0)
+    total_issued = Column(Numeric(12, 2), nullable=False, default=0)
+    current_stock = Column(Numeric(12, 2), nullable=False, default=0, index=True)
+    minimum_stock = Column(Numeric(12, 2), nullable=False, default=0)
 
     average_rate = Column(Numeric(12, 2), nullable=False, default=0)
+    # Default True - every existing material stays exactly as visible/
+    # usable as before. An inactive material is kept for its purchase/
+    # issue history, not deleted, but is excluded from active-catalog
+    # listings and reorder suggestions.
+    is_active = Column(Boolean, nullable=False, default=True)
 
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
     # Kept for backward compatibility - existing consumers read this

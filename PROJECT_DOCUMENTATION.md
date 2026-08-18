@@ -26,17 +26,25 @@ Because this is an Indian business, that shows up directly in the code rather th
 
 **Every write is meant to leave an audit trail.** `core/audit.py`'s `log_action()` writes to `audit_logs` with the user, action, module, and before/after values, and is called from routes on top of whatever they're already doing. Audit log records are only visible to `master` role users (`api/routes/audit_logs.py`). If you add a new route that mutates data, check a neighboring route in the same file to see whether it calls `log_action`, and follow suit — it's opt-in per route, not automatic.
 
-**The chat assistant is not actually a language model.** This is probably the single most surprising thing to a new dev, so it's worth saying plainly: despite living next to an `OPENAI_API_KEY` setting and being called a "chatbot" in commit messages, `services/chat_service.py` is a rule-based, keyword-matching system — it pattern-matches phrases like "record a payment" or "this order" against the message, pulls real numbers by querying the database directly, and returns either a plain-text answer or a `records` list the frontend renders as clickable cards. The docstring at the top of that file says outright that this is a working placeholder for a future real NLU upgrade, not a finished AI integration. Two design decisions in there are worth preserving if you extend it: it's context-aware (the frontend passes what record the user is currently viewing, so "summarize this order" resolves against that specific order rather than a generic aggregate), and it never writes data on its own — when it recognizes something like a payment-logging request, it returns a proposed action for the user to explicitly confirm, and only then does the frontend call the real `POST /api/payments/` endpoint, which goes through the same RBAC and audit logging as if a human had filled in the form. Don't let the assistant bypass either of those on a future change.
+**The chat assistant is not actually a language model.** This is probably the single most surprising thing to a new dev, so it's worth saying plainly: despite living next to an `OPENAI_API_KEY` setting and being called a "chatbot," `services/chat_service.py` is a rule-based, keyword-matching system — it pattern-matches phrases against the message, resolves entities against the real database (never invented), and returns either a plain-text answer, a `records` list the frontend renders as clickable cards, or a `proposed_action` the user must explicitly confirm before anything is written. It genuinely understands more than a first glance suggests, though: it resolves natural-language material commands ("add one HDHMR sheet of 6mm to my material list", "add 5 HDHMR 18mm sheets to my purchase cart") into `create_material`/`add_to_cart` proposed actions via `parse_add_material_command()`, it resolves "my tasks"/"my leaves" through the real `User.employee_id` link (never by matching names), and it resolves a named person's tasks/leaves via a live `Employee.name` search. Context is generic — `ChatContext.record_type`/`record_id` is a single pair resolved by `context.resolved()`, not one field added per page type (the five older `order_id`/`material_id`/etc. fields still exist for backward compatibility and are checked as a fallback). It never writes data on its own: when it recognizes something like "add this material" or "record a payment," it returns a proposed action for the user to explicitly confirm, and only then does the frontend's `ACTION_EXECUTORS` registry in `ChatWidget.jsx` call the real endpoint (or, for `add_to_cart`, dispatch to Redux directly, since the cart has no backend of its own) — going through the same RBAC and audit logging as if a human had filled in the form. Don't let the assistant bypass any of that on a future change. The panel itself is a persistent floating widget, bottom-right, on every page — this was deliberately kept as the single AI entry point after an earlier attempt at a second persistent top-of-app command bar was explicitly reverted; see `docs/UI_UX_BACKLOG.md`'s Resolved section for why.
+
+**Materials have a real Category → Subcategory → dynamic-attribute hierarchy, layered on top of (not replacing) the older flat fields.** `MaterialCategory` → `MaterialSubcategory` → `MaterialAttributeDefinition` (per-subcategory spec fields like Thickness/Brand, typed as text/number/select) → `MaterialAttributeValue` (the actual value on one material). `Material.category`/`brand_grade`/`thickness_size` are the original flat string columns; they're kept for backward compatibility and are still what most of the app reads directly, but when `subcategory_id` is set on a material, `category` is server-synced from the subcategory's parent category name — check `_resolve_category_name()` in `api/routes/materials.py` before assuming these two representations could drift apart. The same pattern applies to `Location`: a real self-referential tree (`Location.parent_id`, arbitrary depth — Warehouse → Area → Rack, or however deep a business actually needs) alongside the legacy flat `Material.location` string, synced the same way via `_resolve_location_path()`. The Material Catalog's filters (`MaterialsPage.jsx`) are genuinely dynamic — picking a category/subcategory loads that subcategory's real attribute definitions and renders filter controls from them, backed by a real `attribute_filters` JSON query param on `GET /api/materials/` that ANDs across multiple selected attributes. A material can have many suppliers (not just the one `Material.supplier_id` primary) via `SupplierMaterial`, carrying its own price/MOQ/lead-time/preferred-status per pairing — `SupplierMaterial.last_purchase_price` auto-updates whenever a `Purchase` is recorded against that exact supplier+material pair (see `StockService.record_purchase`), but a purchase from an *unlinked* supplier does not silently create a new link.
+
+**There is a real notification system, event-driven, not a demo table.** `Notification` rows are only ever created by `NotificationService` from an actual condition in the database at the moment it's checked (low/out-of-stock materials via the same `Material.stock_status` every other part of the app already uses, a payment overdue via the same 30-day rule the Orders page's `overdue_only` filter already uses, a purchase received fired directly from `StockService.record_purchase`). There is no background job scheduler in this app — checks run on-demand, triggered by `GET /api/notifications/` itself (i.e., whenever the bell's panel is opened), made safe to call repeatedly by `dedup_key`: before creating a notification, the service checks for an existing *unread* one with the same key and skips if found, so opening the panel five times doesn't spam five low-stock notifications for the same material. Marking one read clears that suppression, so a genuinely recurring situation gets a fresh notification later rather than being permanently silenced.
 
 **Migrations run automatically, and failures are intentionally non-fatal at startup.** `core/auto_migrate.py` runs Alembic on every backend boot so nobody has to remember a manual migration step in dev. Look at the try/except around it in `app/main.py`: if a migration fails, the server logs the exception and starts anyway, rather than refusing to boot. That's a deliberate tradeoff so one bad migration doesn't take the whole API down, but it means a migration failure shows up later as confusing "table/column doesn't exist" errors on whatever endpoint touches the new schema, not as a startup crash. If something is broken in a way that smells like a stale schema, check the startup log for a migration failure before debugging the endpoint itself.
 
 ## Where the project currently stands
 
-Looking at the commit history, the most recent sustained work (the last handful of commits before this documentation was written) was: rolling the `business_id` opaque-ID scheme out across eleven entities and wiring it into search, PDF, and Excel output; reworking the dashboard's "Quick Actions" and what the code calls an "honest Attention Required" section (surfacing things that actually need attention rather than a vague summary); restructuring the chat assistant to return structured, clickable record results instead of plain text; and a brand redesign of the generated PDF/Excel documents with real formula-driven totals instead of hardcoded numbers. Before that, there was a run of bug-fixing and cleanup (dead code removal, currency formatting fixes, runtime error fixes) following an earlier stretch that built out most of the HR side — leave management, candidate/interview tracking, RBAC, attendance — and before that, the core order/client/estimate/payment workflow.
+The core order/client/estimate/payment/HR skeleton described above is mature and has had several rounds of real bug fixes against it. On top of that foundation, the most recent sustained work built out an inventory/procurement layer that didn't exist before: the Category/Subcategory/dynamic-attribute material hierarchy, the Location tree, `SupplierMaterial` multi-supplier pricing, a real Purchase Cart with server-computed shortage math (required vs. in-stock vs. to-purchase — never blindly converts a requested quantity into a purchase quantity), the notification system, the chatbot's material-action capability (`create_material`/`add_to_cart` via natural language), and PWA/mobile installability (manifest, icons, service worker, safe-area handling for iPhone/Android). `Order` also gained real `OrderItem`/`EstimateLineItem` line items (server-computed amounts, never trusted from client input) and a computed `payment_status` (derived from the existing `balance`/`total_received`, not a separately-maintained column).
 
-Practically, that means: the estimate → order → payment → HR skeleton is mature and has had several rounds of real bug fixes against it — read `Order.recompute_totals()`'s docstring for a flavor of the kind of subtle bug this codebase has already hit once. The `business_id` rollout and the document/export redesign are the newest and least battle-tested layers — if you're hunting for where a fresh bug is likely to be hiding, those are a reasonable first guess. The chat assistant, despite the "AI" framing in commit messages, is functionally a keyword matcher and should be treated as an early-stage feature, not a finished one, when someone asks why it "didn't understand" something.
+A recurring theme worth knowing about if you're extending any of this: several of these systems were built as genuine backward-compatible additions on top of older flat fields, not replacements — `Material.category`/`location` (flat strings) coexist with the new `subcategory_id`/`location_id`, synced server-side rather than left to drift. If you add a new structured field to something that already has a flat equivalent, follow that same pattern (sync on write, keep both readable) rather than a one-time migration that could silently break whatever still reads the old field.
 
-There is a `backend/tests/` suite with roughly one file per feature area (leaves, stock, payments, salary slips, estimate versioning, business_id, a full integration "business journey" test, and more) — run it after any backend change before assuming something works. It's the closest thing this project has to a specification of intended behavior in ambiguous cases.
+The newest and least battle-tested layers are, in rough order: the notification system (built and tested against real events, but never run against production traffic), the Excel purchase import (real round-trip tested against its own generated template, but only ever exercised with clean test data - never a messy real-world spreadsheet), and the chatbot's material-action parsing (`parse_add_material_command()` in `chat_service.py` — tested against every example phrasing in the product brief that introduced it, but natural-language parsing by definition has edges nobody's tried yet; "add 4 sheets to Ishu's project" is explicitly recognized and given an honest "not yet supported, use the Issues page" response rather than silently mishandled). The material hierarchy's frontend (`MaterialAttributesEditor.jsx`) now supports both create and edit - worth knowing if you touch it: the edit path pre-populates from the material's existing subcategory/attribute values, and it must call `onChange()` immediately after doing so, not just update its own display state - an earlier version of this component didn't, which meant saving an edited material without touching the Category/Specifications fields would have silently wiped its existing category and specs. The chat assistant overall, despite understanding more than a first glance suggests, is still functionally a keyword/pattern matcher, not an LLM, and should be treated accordingly when someone asks why it "didn't understand" a phrasing that wasn't anticipated.
+
+`docs/UI_UX_BACKLOG.md` tracks known UI/UX gaps found during this work that were deliberately deferred rather than fixed on the spot — each entry has severity, why it was deferred, and a planned resolution. Check it before assuming something is simply broken; it may already be a tracked, intentional gap with reasoning attached (e.g. why "why is this project over budget?" isn't offered as a chatbot suggestion on every order, or why the Material edit form doesn't yet support attribute values).
+
+There is a `backend/tests/` suite with roughly one file per feature area (leaves, stock, payments, salary slips, estimate versioning, business_id, material hierarchy, supplier-material relationships, location hierarchy, notifications, chat material actions, chat generic context, a full integration "business journey" test, and more) — run it after any backend change before assuming something works. It's the closest thing this project has to a specification of intended behavior in ambiguous cases.
 
 ## Code tree
 
@@ -51,6 +59,11 @@ Woodful_creations/
 ├── start_all.sh / .bat        Start backend + frontend together
 ├── start_backend.sh / .bat    Start backend only
 ├── start_frontend.sh / .bat   Start frontend only
+│
+├── docs/
+│   └── UI_UX_BACKLOG.md         Known UI/UX gaps found during development, deliberately
+│                                deferred rather than fixed on the spot - severity, why
+│                                deferred, planned resolution for each
 │
 ├── database/
 │   └── README.md              Explains schema lives in code (models + migrations), not raw SQL
@@ -81,19 +94,30 @@ Woodful_creations/
 │   │   │   └── exceptions.py   Custom exception classes / error handling
 │   │   │
 │   │   ├── models/             SQLAlchemy models, one file per entity (client.py, order.py,
-│   │   │                       employee.py, etc.) — the schema itself lives here, not in SQL
+│   │   │                       employee.py, etc.) — the schema itself lives here, not in SQL.
+│   │   │                       Newer additions: material_category.py (Category/Subcategory),
+│   │   │                       material_attribute.py (dynamic attribute defs/values),
+│   │   │                       supplier_material.py (multi-supplier pricing M2M),
+│   │   │                       location.py (self-referential location tree),
+│   │   │                       notification.py
 │   │   │
 │   │   ├── schemas/             Pydantic request/response schemas, mirrors models/ —
 │   │   │                        fix "API accepts/returns the wrong shape" issues here
 │   │   │
 │   │   ├── api/routes/          One file per feature area — fix "wrong behavior on a
 │   │   │                        specific endpoint" here first, check for require_role()
-│   │   │                        and log_action() calls before changing what a route allows
+│   │   │                        and log_action() calls before changing what a route allows.
+│   │   │                        Newer additions: material_categories.py, supplier_materials.py,
+│   │   │                        locations.py, notifications.py
 │   │   │
 │   │   ├── services/            Business logic shared across routes: order_service.py
-│   │   │                        (recompute_totals and friends), stock_service.py,
-│   │   │                        chat_service.py (the rule-based assistant),
-│   │   │                        email_service.py — fix cross-cutting business logic here
+│   │   │                        (recompute_totals and friends), stock_service.py
+│   │   │                        (also where PURCHASE_RECEIVED notifications and
+│   │   │                        SupplierMaterial.last_purchase_price sync happen),
+│   │   │                        chat_service.py (the rule-based assistant — material-action
+│   │   │                        parsing, generic context resolution, task/leave queries),
+│   │   │                        notification_service.py (event-driven notification
+│   │   │                        generation with dedup), email_service.py
 │   │   │
 │   │   ├── utils/               Helpers: pdf_generator.py, exporters.py (Excel/Word),
 │   │   │                        id_generator.py (sequential codes + business_id),
@@ -103,7 +127,10 @@ Woodful_creations/
 │   │   └── assets/logo.png      Logo used in generated PDFs/exports
 │   │
 │   ├── scripts/                 One-off/manual scripts: setup_local.py (bootstrap the first
-│   │                            admin), create_master_user.py, init_db.py, seed_sample_data.py
+│   │                            admin), create_master_user.py, init_db.py,
+│   │                            seed_sample_data.py (idempotent - safe to re-run; also
+│   │                            seeds two named master accounts via SEED_MASTER_PASSWORD,
+│   │                            see SETUP.md)
 │   │
 │   ├── tests/                   Pytest suite, roughly one file per feature — the closest
 │   │                            thing to a spec of intended behavior; run before assuming
@@ -113,35 +140,55 @@ Woodful_creations/
 │   └── woodful.db               Local SQLite database file (dev only)
 │
 └── frontend/
-    ├── index.html / public/     Static HTML shell, favicon, manifest
+    ├── index.html / public/     Static HTML shell, favicon, manifest.json, service-worker.js,
+    │                            apple-touch-icon.png / icon-*.png (PWA install icons,
+    │                            including a maskable icon with proper safe-zone padding
+    │                            for Android's adaptive icon masking)
     ├── Dockerfile               Frontend container build
     ├── package.json             Node dependencies + npm scripts
     ├── .env.example             Template for frontend/.env
     │
     └── src/
-        ├── index.jsx            React entrypoint
+        ├── index.jsx            React entrypoint — also registers the service worker
+        │                        (serviceWorkerRegistration.js), production-only
         ├── App.jsx              Route definitions — fix "wrong page loads" / routing here
         │
         ├── pages/                One file per screen, named after the feature it shows
         │                         (OrdersPage.jsx, ClientDetailPage.jsx, etc.) — most
-        │                         feature bugs are fixed here
+        │                         feature bugs are fixed here. Newer additions:
+        │                         LocationsPage.jsx (location tree browser/manager),
+        │                         MobileAppPage.jsx (master-only QR code to install the PWA)
         │
         ├── components/           Reusable/shared UI:
         │   ├── Navbar.jsx, Sidebar.jsx, Footer.jsx     App shell/layout
         │   ├── ProtectedRoute.jsx                       Gates whether a route renders at all
         │   │                                            (logged in/out only — not role-aware)
         │   ├── GlobalSearch.jsx                         Search bar
-        │   ├── ChatWidget.jsx, AssistantMascot.jsx      Chat assistant UI
+        │   ├── ChatWidget.jsx, AssistantMascot.jsx      Chat assistant UI — bottom-right,
+        │   │                                            persistent, the single AI entry point
+        │   ├── NotificationBell.jsx                     Notification bell + panel (Navbar)
+        │   ├── CartDrawer.jsx, MaterialCard.jsx          Purchase Cart UI (real shortage math)
+        │   ├── MaterialAttributesEditor.jsx              Category/Subcategory/dynamic-attribute
+        │   │                                             picker for material creation
         │   ├── QuickActions.jsx, BrandBackdrop.jsx      Dashboard/branding widgets
         │   ├── icons/index.jsx                           Icon set
         │   └── common/           Generic building blocks: Table, Form, Modal, Card,
         │                         Pagination, Alert, KpiCard (+ matching .css files) —
-        │                         fix shared UI/styling bugs here, affects many pages at once
+        │                         fix shared UI/styling bugs here, affects many pages at once.
+        │                         Form.js supports multi-step wizards (a `section` property
+        │                         on any field switches a flat form into a wizard) and
+        │                         `visibleIf` for conditional fields.
         │
         ├── redux/
         │   ├── store.js                 Redux store setup
-        │   └── slices/authSlice.js      Auth state — fix "user gets logged out" /
-        │                                session state bugs here
+        │   └── slices/
+        │       ├── authSlice.js         Auth state — fix "user gets logged out" /
+        │       │                        session state bugs here
+        │       ├── cartSlice.js         Purchase Cart state (client-side only, no backend -
+        │       │                        localStorage-persisted)
+        │       └── chatUiSlice.js       Coordination plumbing for scoped "Ask AI" triggers
+        │                                to open the one floating chat widget with a
+        │                                prefilled message - not a second AI surface
         │
         ├── utils/
         │   ├── api.js            Axios instance + API call wrappers — fix "wrong endpoint
@@ -163,7 +210,10 @@ Woodful_creations/
 - **Login/session broken** — `core/security.py`, `api/routes/auth.py` on the backend; `redux/slices/authSlice.js`, `ProtectedRoute.jsx` on the frontend.
 - **Database schema needs to change** — add a new file in `backend/alembic/versions/`, update the matching model in `app/models/`; run it locally and confirm the app starts cleanly (see the auto-migrate note above about silent startup failures).
 - **PDF/Excel export looks wrong** — `backend/app/utils/pdf_generator.py`, `exporters.py`, `document_style.py`.
-- **Chat assistant "doesn't understand" a question** — it's keyword matching, not an LLM; check `services/chat_service.py`'s keyword lists rather than assuming it should generalize.
+- **Chat assistant "doesn't understand" a question** — it's keyword/pattern matching, not an LLM; check `services/chat_service.py`'s keyword lists and `parse_add_material_command()` rather than assuming it should generalize.
+- **A material's category/specs/location look wrong or a filter isn't showing what it should** — check both the legacy flat field (`Material.category`/`location`) and the structured one (`subcategory_id`/`location_id`); `_resolve_category_name()`/`_resolve_location_path()` in `api/routes/materials.py` are what keep them in sync, so a mismatch there is the first thing to check.
+- **A notification isn't appearing, or the same one keeps reappearing** — `services/notification_service.py`; check `dedup_key` logic first for duplicates, and remember checks only run on-demand (when `GET /api/notifications/` is called), not on a timer.
+- **Something about "Add to Home Screen" / the app not installing on a phone** — `frontend/public/manifest.json`, `index.html`'s `apple-touch-icon`/`mobile-web-app-capable` tags, `serviceWorkerRegistration.js`. Only registers in production builds.
 - **A shared UI element (table, form, modal) looks/behaves wrong everywhere** — `frontend/src/components/common/`.
 - **Setup/install fails** — `SETUP.md`, `setup.sh`/`setup.bat`, `backend/requirements.txt`, `frontend/package.json`.
 - **App won't start, or things error with "table/column doesn't exist"** — check the startup log for a migration failure first (`core/auto_migrate.py` lets the server start even if migrations failed), then look at `backend/alembic/versions/` for a migration that hasn't been applied or conflicts with the current models.

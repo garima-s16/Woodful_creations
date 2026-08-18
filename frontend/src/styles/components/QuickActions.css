@@ -22,7 +22,7 @@
 
 .quick-action-btn:hover {
   border-color: var(--color-gold);
-  background: var(--color-ivory);
+  background: var(--color-charcoal-elevated);
   transform: translateY(-1px);
 }
 

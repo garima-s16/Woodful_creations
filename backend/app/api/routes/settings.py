@@ -3,7 +3,8 @@ sheet in each of the three source workbooks. One family of endpoints per
 lookup type: /api/settings/{lookup_type}."""
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.core.audit import log_action
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -62,7 +63,7 @@ def list_lookup_values(lookup_type: str, db: Session = Depends(get_db), auth=Dep
 
 @router.post("/{lookup_type}", response_model=LookupResponse, status_code=201)
 def add_lookup_value(lookup_type: str, item: LookupCreate, db: Session = Depends(get_db),
-                      auth=Depends(require_role("master", "manager"))):
+                      auth=Depends(require_role("master"))):
     model = _model_or_404(lookup_type)
     if db.query(model).filter(model.name == item.name).first():
         raise HTTPException(status_code=400, detail="This value already exists")
@@ -75,7 +76,7 @@ def add_lookup_value(lookup_type: str, item: LookupCreate, db: Session = Depends
 
 @router.put("/{lookup_type}/{item_id}", response_model=LookupResponse)
 def update_lookup_value(lookup_type: str, item_id: int, item: LookupUpdate,
-                         db: Session = Depends(get_db), auth=Depends(require_role("master", "manager"))):
+                         db: Session = Depends(get_db), auth=Depends(require_role("master"))):
     model = _model_or_404(lookup_type)
     row = db.query(model).filter(model.id == item_id).first()
     if not row:
@@ -89,11 +90,14 @@ def update_lookup_value(lookup_type: str, item_id: int, item: LookupUpdate,
 
 
 @router.delete("/{lookup_type}/{item_id}", status_code=204)
-def delete_lookup_value(lookup_type: str, item_id: int, db: Session = Depends(get_db),
-                         auth=Depends(require_role("master", "manager"))):
+def delete_lookup_value(lookup_type: str, item_id: int, request: Request, db: Session = Depends(get_db),
+                         auth=Depends(require_role("master"))):
     model = _model_or_404(lookup_type)
     row = db.query(model).filter(model.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Value not found")
+    row_name = getattr(row, "name", None)
     db.delete(row)
     db.commit()
+    log_action(db, request, user_id=auth.get("user_id"), action="delete_lookup_value", module_name="settings",
+               record_id=item_id, old_value={"lookup_type": lookup_type, "name": row_name})

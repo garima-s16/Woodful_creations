@@ -14,7 +14,7 @@
 }
 
 .data-table thead {
-  background-color: var(--color-ivory);
+  background-color: var(--color-charcoal-elevated);
   border-bottom: 1px solid var(--border-strong);
 }
 
@@ -40,7 +40,7 @@
 }
 
 .data-table tbody tr:hover {
-  background-color: var(--color-ivory-dim);
+  background-color: var(--color-charcoal-elevated);
 }
 
 .data-table tbody tr.clickable {
@@ -70,7 +70,7 @@
   display: block;
   height: 14px;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--border-color) 25%, var(--color-ivory-dim) 50%, var(--border-color) 75%);
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--color-charcoal-elevated) 50%, var(--border-color) 75%);
   background-size: 200% 100%;
   animation: skeletonShimmer 1.4s ease-in-out infinite;
 }

@@ -19,7 +19,7 @@ const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Product
 function OrderDetailPage() {
   const { orderId } = useParams();
   const { user } = useSelector((state) => state.auth);
-  const canViewFinancials = user?.role === 'master' || user?.role === 'manager';
+  const canViewFinancials = user?.role === 'master';
   const [order, setOrder] = useState(null);
   const [client, setClient] = useState(null);
   const [materials, setMaterials] = useState([]);
@@ -28,6 +28,7 @@ function OrderDetailPage() {
   const [expenses, setExpenses] = useState(null);
   const [issues, setIssues] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [aiReports, setAiReports] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
   const [profitability, setProfitability] = useState(null);
   const [error, setError] = useState('');
@@ -99,6 +100,7 @@ function OrderDetailPage() {
     employeesAPI.list().then((res) => setEmployees(res.data));
     issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data));
     dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data));
+    ordersAPI.aiReports(orderId).then((res) => setAiReports(res.data)).catch(() => setAiReports([]));
     productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data));
 
     paymentsAPI.list({ order_id: orderId }).then((res) => setPayments(res.data)).catch(() => setPayments('forbidden'));
@@ -138,6 +140,17 @@ function OrderDetailPage() {
               <span className="detail-meta-label">Delivery</span>
               <span className={`status-badge ${statusClass(order.delivery_status)}`}>{order.delivery_status}</span>
             </div>
+            {(() => {
+              const nextAction = [...tasks]
+                .filter((t) => t.status !== 'DONE')
+                .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+              return nextAction ? (
+                <div className="detail-meta-item">
+                  <span className="detail-meta-label">Next Action</span>
+                  <span className="detail-meta-value">{nextAction.task_description}</span>
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
         <div className="page-actions">
@@ -153,10 +166,14 @@ function OrderDetailPage() {
       </div>
 
       <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Order Value</div><h3>{formatCurrency(order.order_value)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{formatCurrency(order.total_received)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(order.balance)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Payment Status</div><h3><span className={`status-badge ${statusClass(order.payment_status)}`}>{order.payment_status}</span></h3></div></Card>
+        {canViewFinancials && (
+          <>
+            <Card><div className="card-body"><div className="detail-meta-label">Order Value</div><h3>{formatCurrency(order.order_value)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Amount Received</div><h3>{formatCurrency(order.total_received)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Outstanding Balance</div><h3>{formatCurrency(order.balance)}</h3></div></Card>
+            <Card><div className="card-body"><div className="detail-meta-label">Payment Status</div><h3><span className={`status-badge ${statusClass(order.payment_status)}`}>{order.payment_status}</span></h3></div></Card>
+          </>
+        )}
         <Card><div className="card-body"><div className="detail-meta-label">Progress</div><h3>{order.progress_percent}%</h3></div></Card>
       </div>
 
@@ -205,18 +222,41 @@ function OrderDetailPage() {
         <Card title="Order Scope">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>
+              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{canViewFinancials && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {order.items.map((item) => (
                 <tr key={item.id}>
                   <td>{item.description}</td><td>{item.category || '-'}</td>
                   <td>{Number(item.quantity)}</td><td>{item.unit || '-'}</td>
-                  <td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td>
+                  {canViewFinancials && <><td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td></>}
                 </tr>
               ))}
             </tbody>
           </table>
+        </Card>
+      )}
+
+      {tab === 'Overview' && aiReports.length > 0 && (
+        <Card title="AI Insights">
+          <div className="card-body">
+            {aiReports.slice(0, 3).map((r) => (
+              <div key={r.id} className="detail-meta-item" style={{ marginBottom: 12 }}>
+                <span className={`status-badge ${r.risk_level === 'AT_RISK' ? 'status-danger' : 'status-ok'}`}>
+                  {r.risk_level === 'AT_RISK' ? 'At Risk' : 'On Track'}
+                </span>
+                <span className="detail-meta-label">{new Date(r.created_at).toLocaleString()}</span>
+                {r.findings.blocked_tasks?.length > 0 && (
+                  <span className="detail-meta-value">
+                    Blocked: {r.findings.blocked_tasks.map((t) => t.description).join(', ')}
+                  </span>
+                )}
+                {r.findings.delivery_at_risk && (
+                  <span className="detail-meta-value">Delivery date is close with work still open.</span>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -305,6 +345,7 @@ function OrderDetailPage() {
                   <div className="detail-meta-item"><span className="detail-meta-label">Total Received</span><span className="detail-meta-value">{formatCurrency(profitability.total_received)}</span></div>
                   <div className="detail-meta-item"><span className="detail-meta-label">Pending Payment</span><span className="detail-meta-value">{formatCurrency(profitability.pending_payment)}</span></div>
                   <div className="detail-meta-item"><span className="detail-meta-label">Project Expenses</span><span className="detail-meta-value">{formatCurrency(profitability.project_expenses)}</span></div>
+                  <div className="detail-meta-item"><span className="detail-meta-label">Material Cost (Issued)</span><span className="detail-meta-value">{formatCurrency(profitability.material_cost)}</span></div>
                   <div className="detail-meta-item"><span className="detail-meta-label">Estimated Gross Profit</span><span className="detail-meta-value">{formatCurrency(profitability.estimated_gross_profit)}</span></div>
                   <div className="detail-meta-item"><span className="detail-meta-label">Gross Margin</span><span className="detail-meta-value">{(profitability.gross_margin_percent * 100).toFixed(1)}%</span></div>
                 </div>

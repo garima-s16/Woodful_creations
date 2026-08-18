@@ -12,6 +12,7 @@ import { today } from '../utils/dates';
 function PaymentsPage() {
   const { user } = useSelector((state) => state.auth);
   const isTrueMaster = user?.role === 'master';
+  const isPrivileged = user?.role === 'master';
   const [payments, setPayments] = useState([]);
   const [orders, setOrders] = useState([]);
   const location = useLocation();
@@ -135,7 +136,7 @@ function PaymentsPage() {
         <h1>Payments</h1>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('payments.xlsx')} target="_blank" rel="noreferrer">Export</a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Payment</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Payment</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

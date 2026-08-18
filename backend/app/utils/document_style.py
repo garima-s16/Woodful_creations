@@ -7,14 +7,31 @@ Palette matches the actual application design system (near-black ink,
 warm ivory, refined gold) - not the generic reportlab default blue.
 """
 import os
-from decimal import Decimal
 
-from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.platypus import Table, TableStyle, Paragraph, Image, Spacer
+
+
+def pdf_text(value) -> str:
+    """Escapes user-controlled text before it goes into a reportlab
+    Paragraph string. Paragraph interprets its content as a limited
+    XML/HTML markup subset - unescaped &, <, > in a client name,
+    remark, or bank name would either break the parser (crashing PDF
+    generation) or, worse, let a user inject fake formatting tags
+    (e.g. a name containing "<b>...") into a generated document.
+    Always wrap user-supplied text with this before interpolating it
+    into an f-string passed to Paragraph()."""
+    if value is None:
+        return ""
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 INK = colors.HexColor("#11110F")
 CHARCOAL = colors.HexColor("#1A1916")
@@ -100,12 +117,12 @@ def build_header(document_title: str, reference: str, date_label: str, business_
     else:
         logo = Paragraph("WOODFUL CREATIONS", styles["doc_title"])
 
-    id_line = f'<br/><font size="7.5" color="#C08A45">ID: {business_id}</font>' if business_id else ""
+    id_line = f'<br/><font size="7.5" color="#C08A45">ID: {pdf_text(business_id)}</font>' if business_id else ""
     header_table = Table(
         [[logo, Paragraph(
-            f'<para align="right"><font size="14" color="#11110F"><b>{document_title}</b></font><br/>'
-            f'<font size="9" color="#70685D">{reference}</font><br/>'
-            f'<font size="9" color="#70685D">{date_label}</font>{id_line}</para>',
+            f'<para align="right"><font size="14" color="#11110F"><b>{pdf_text(document_title)}</b></font><br/>'
+            f'<font size="9" color="#70685D">{pdf_text(reference)}</font><br/>'
+            f'<font size="9" color="#70685D">{pdf_text(date_label)}</font>{id_line}</para>',
             styles["body"],
         )]],
         colWidths=[3 * inch, 4 * inch],
@@ -127,8 +144,8 @@ def section_table(rows, col_widths):
     """A clean two-column key/value block (client info, project info,
     etc.) - ivory label backing, no gridlines, not a database table."""
     styles = get_styles()
-    data = [[Paragraph(f'<font color="#70685D" size="8">{label}</font><br/>'
-                        f'<font color="#11110F" size="9.5">{value or "-"}</font>', styles["body"])
+    data = [[Paragraph(f'<font color="#70685D" size="8">{pdf_text(label)}</font><br/>'
+                        f'<font color="#11110F" size="9.5">{pdf_text(value) or "-"}</font>', styles["body"])
              for label, value in row] for row in rows]
     t = Table(data, colWidths=col_widths)
     t.setStyle(TableStyle([

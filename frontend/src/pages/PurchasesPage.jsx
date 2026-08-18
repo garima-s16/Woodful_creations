@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
@@ -10,6 +11,8 @@ import { today } from '../utils/dates';
 
 function PurchasesPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [purchases, setPurchases] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -21,11 +24,21 @@ function PurchasesPage() {
 
   const load = () => {
     setPageLoading(true);
-    purchasesAPI.list().then((res) => setPurchases(res.data)).finally(() => setPageLoading(false));
+    purchasesAPI.list().then((res) => setPurchases(res.data)).catch(() => setError('You do not have permission to view purchases.')).finally(() => setPageLoading(false));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
     materialsAPI.list().then((res) => setMaterials(res.data));
   };
   useEffect(load, []);
+
+  const handleReceive = async (purchaseId) => {
+    setError('');
+    try {
+      await purchasesAPI.receive(purchaseId);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to mark this purchase as received');
+    }
+  };
 
   const handleCreate = async (formData) => {
     setLoading(true);
@@ -56,6 +69,14 @@ function PurchasesPage() {
     { key: 'quantity', label: 'Quantity' }, { key: 'unit', label: 'Unit' }, { key: 'rate', label: 'Rate' },
     { key: 'invoice_total', label: 'Invoice Total', render: (v) => formatCurrency(v) },
     { key: 'payment_status', label: 'Payment Status' },
+    { key: 'receipt_status', label: 'Receipt Status', render: (v) => (
+      <span className={`status-badge ${v === 'Ordered' ? 'status-warning' : 'status-ok'}`}>{v}</span>
+    ) },
+    { key: 'actions', label: '', render: (_, row) => (
+      row.receipt_status === 'Ordered'
+        ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleReceive(row.id); }}>Mark Received</button>
+        : null
+    ) },
   ];
 
   const fields = [
@@ -69,6 +90,10 @@ function PurchasesPage() {
     { name: 'payment_status', label: 'Payment Status', type: 'select', section: 'Payment', options: [
       { value: 'Paid', label: 'Paid' }, { value: 'Part Paid', label: 'Part Paid' }, { value: 'Credit', label: 'Credit' },
     ] },
+    { name: 'receipt_status', label: 'Receipt Status', type: 'select', section: 'Payment', options: [
+      { value: 'Received', label: 'Received - stock updates immediately' },
+      { value: 'Ordered', label: 'Ordered - not yet arrived, stock stays unchanged until received' },
+    ] },
   ];
 
   return (
@@ -77,7 +102,7 @@ function PurchasesPage() {
         <h1>Purchases (Stock In)</h1>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('purchases.xlsx')} target="_blank" rel="noreferrer">Export</a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Purchase</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Purchase</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon } from './icons';
 import GlobalSearch from './GlobalSearch';
+import NotificationBell from './NotificationBell';
 import '../styles/Navbar.css';
 
 const ROLE_LABELS = { master: 'Master Admin', manager: 'Manager', user: 'Team Member' };
@@ -55,6 +56,7 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
             <CartIcon width={19} height={19} />
             {cartCount > 0 && <span className="cart-toggle-badge">{cartCount}</span>}
           </button>
+          <NotificationBell />
           <div className="user-menu" ref={menuRef}>
             <button
               className="profile-button"

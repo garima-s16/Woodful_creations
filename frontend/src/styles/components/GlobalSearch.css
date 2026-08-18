@@ -58,7 +58,7 @@
 }
 
 .global-search-result:last-child { border-bottom: none; }
-.global-search-result:hover { background: var(--color-ivory); }
+.global-search-result:hover { background: var(--color-charcoal-elevated); }
 
 .global-search-result-type {
   font-size: 0.65rem;

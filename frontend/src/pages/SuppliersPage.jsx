@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { suppliersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import KpiCard from '../components/common/KpiCard';
 
 function SuppliersPage() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
+  const isStrictlyMaster = user?.role === 'master';
   const [suppliers, setSuppliers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
@@ -52,13 +57,32 @@ function SuppliersPage() {
     }
   };
 
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const handleDelete = (supplier) => setPendingDelete(supplier);
+  const confirmDelete = async () => {
+    setError('');
+    try {
+      await suppliersAPI.remove(pendingDelete.id);
+      setPendingDelete(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete supplier');
+      setPendingDelete(null);
+    }
+  };
+
   const columns = [
     { key: 'supplier_code', label: 'Supplier ID' }, { key: 'name', label: 'Name' },
     { key: 'category', label: 'Category' }, { key: 'contact_person', label: 'Contact Person' },
     { key: 'phone', label: 'Phone' }, { key: 'payment_terms', label: 'Payment Terms' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingSupplier(row); }}>Edit</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingSupplier(row); }}>Edit</button> : null
+      ),
+    },
+    {
+      key: 'delete_action', label: '', render: (v, row) => (
+        isStrictlyMaster ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleDelete(row); }}>Delete</button> : null
       ),
     },
   ];
@@ -68,7 +92,11 @@ function SuppliersPage() {
     { name: 'category', label: 'Category', section: 'Supplier Identity' },
     { name: 'contact_person', label: 'Contact Person', section: 'Contact Details' },
     { name: 'phone', label: 'Phone', section: 'Contact Details' },
-    { name: 'gstin', label: 'GSTIN', section: 'Commercial Terms' },
+    {
+      name: 'gstin', label: 'GSTIN', section: 'Commercial Terms',
+      hint: '15-character GST identification number',
+      validate: (value) => (value.length !== 15 ? 'GSTIN must contain 15 characters.' : null),
+    },
     { name: 'payment_terms', label: 'Payment Terms', section: 'Commercial Terms' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Commercial Terms' },
   ];
@@ -82,7 +110,7 @@ function SuppliersPage() {
           <h1>Suppliers</h1>
           <p className="page-summary">Track supplier relationships and purchase history.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Supplier</button>
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Supplier</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <div className="kpi-row">
@@ -97,6 +125,13 @@ function SuppliersPage() {
           <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingSupplier} />
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        message={pendingDelete ? `Delete ${pendingDelete.name}? This cannot be undone.` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

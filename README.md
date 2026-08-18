@@ -1,6 +1,6 @@
 # Woodful Creations
 
-Business management system for woodcraft and furniture businesses — stock/inventory, estimates, attendance, interviews, and client management.
+Business management system for woodcraft and furniture businesses — clients, estimates, orders, materials/inventory (with a real category/subcategory/dynamic-attribute hierarchy, multi-supplier pricing, and a location tree), purchasing (with a smart cart that computes real shortage math), HR (attendance, leave, candidates/interviews, salary slips), a rule-based AI chat assistant that can resolve and propose real actions (create a material, add to cart, record a payment), event-driven notifications, and installable-app support for iPhone and Android.
 
 ## Stack
 

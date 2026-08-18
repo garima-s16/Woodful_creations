@@ -23,6 +23,16 @@ function PurchaseDetailPage() {
 
   useEffect(load, [load]);
 
+  const handleReceive = async () => {
+    setError('');
+    try {
+      await purchasesAPI.receive(purchaseId);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to mark this purchase as received');
+    }
+  };
+
   if (error) return <div className="page"><Alert type="error" message={error} /></div>;
   if (!purchase) return <div className="page">Loading...</div>;
 
@@ -33,9 +43,15 @@ function PurchaseDetailPage() {
           <h1 className="detail-title" style={{ marginTop: 8 }}>{purchase.purchase_code}</h1>
           <div className="detail-subtitle">
             {supplier?.name || 'Supplier'} &middot; {material?.name || 'Material'}
+            {' '}<span className={`status-badge ${purchase.receipt_status === 'Ordered' ? 'status-warning' : 'status-ok'}`}>{purchase.receipt_status}</span>
             {purchase.business_id && <span className="business-id-badge">{purchase.business_id}</span>}
           </div>
         </div>
+        {purchase.receipt_status === 'Ordered' && (
+          <div className="detail-header-actions">
+            <button className="btn-primary" onClick={handleReceive}>Mark Received</button>
+          </div>
+        )}
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
@@ -69,6 +85,10 @@ function PurchaseDetailPage() {
             <div className="detail-meta-item">
               <span className="detail-meta-label">Payment Status</span>
               <span className={`status-badge ${statusClass(purchase.payment_status)}`}>{purchase.payment_status}</span>
+            </div>
+            <div className="detail-meta-item">
+              <span className="detail-meta-label">Receipt Status</span>
+              <span className={`status-badge ${purchase.receipt_status === 'Ordered' ? 'status-warning' : 'status-ok'}`}>{purchase.receipt_status}</span>
             </div>
           </div>
         </div>

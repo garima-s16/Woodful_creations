@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { usersAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 
 function UsersPage() {
+  const { user } = useSelector((state) => state.auth);
+  const isStrictlyMaster = user?.role === 'master';
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -52,14 +56,17 @@ function UsersPage() {
     }
   };
 
-  const handleDeactivate = async (user) => {
-    if (!window.confirm(`Remove ${user.username}'s access? This can be reversed by an administrator.`)) return;
+  const [pendingDeactivate, setPendingDeactivate] = useState(null);
+  const handleDeactivate = (user) => setPendingDeactivate(user);
+  const confirmDeactivate = async () => {
     setError('');
     try {
-      await usersAPI.remove(user.id);
+      await usersAPI.remove(pendingDeactivate.id);
+      setPendingDeactivate(null);
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to remove user');
+      setPendingDeactivate(null);
     }
   };
 
@@ -70,7 +77,7 @@ function UsersPage() {
     { key: 'cannot_be_deleted', label: 'Protected', render: (v) => v ? 'Yes' : 'No' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={() => setEditingUser(row)}>Edit</button>
+        isStrictlyMaster ? <button className="btn-link" onClick={() => setEditingUser(row)}>Edit</button> : null
       ),
     },
     {
@@ -87,7 +94,7 @@ function UsersPage() {
     { name: 'phone', label: 'Phone' },
     { name: 'password', label: 'Temporary Password', type: 'password', required: true, hint: 'The user should change this after first login.' },
     { name: 'role', label: 'Role', type: 'select', required: true, options: [
-      { value: 'user', label: 'User (Limited Access)' }, { value: 'manager', label: 'Manager' }, { value: 'master', label: 'Master (Full Access)' },
+      { value: 'user', label: 'Employee (Limited Access)' }, { value: 'master', label: 'Master (Full Access)' },
     ] },
   ];
 
@@ -95,7 +102,7 @@ function UsersPage() {
     { name: 'full_name', label: 'Full Name', required: true },
     { name: 'phone', label: 'Phone' },
     { name: 'role', label: 'Role', type: 'select', required: true, options: [
-      { value: 'user', label: 'User (Limited Access)' }, { value: 'manager', label: 'Manager' }, { value: 'master', label: 'Master (Full Access)' },
+      { value: 'user', label: 'Employee (Limited Access)' }, { value: 'master', label: 'Master (Full Access)' },
     ] },
     { name: 'is_active', label: 'Status', type: 'select', options: [
       { value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' },
@@ -106,7 +113,7 @@ function UsersPage() {
     <div className="page">
       <div className="page-header">
         <h1>Users</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Add User</button>
+        {isStrictlyMaster && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add User</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={users} loading={pageLoading} emptyMessage="No users found." />
@@ -126,6 +133,15 @@ function UsersPage() {
           />
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDeactivate}
+        title="Remove Access"
+        message={pendingDeactivate ? `Remove ${pendingDeactivate.username}'s access? This can be reversed by an administrator.` : ''}
+        confirmLabel="Remove Access"
+        onConfirm={confirmDeactivate}
+        onCancel={() => setPendingDeactivate(null)}
+      />
     </div>
   );
 }

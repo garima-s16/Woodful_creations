@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { materialsAPI, materialCategoriesAPI, locationsAPI, suppliersAPI, reportsAPI } from '../utils/api';
 import { addToCart } from '../redux/slices/cartSlice';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import MaterialAttributesEditor from '../components/MaterialAttributesEditor';
 import Alert from '../components/common/Alert';
@@ -13,6 +14,7 @@ import Pagination from '../components/common/Pagination';
 import MaterialCard from '../components/common/MaterialCard';
 import { GridIcon, ListIcon, SlidersIcon, SearchIcon, CartIcon } from '../components/icons';
 import { formatCurrency } from '../utils/currency';
+import { statusClass } from '../utils/statusColors';
 import '../styles/components/MaterialCatalog.css';
 
 const PAGE_SIZE = 25;
@@ -27,6 +29,9 @@ const SORT_OPTIONS = [
 function MaterialsPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
+  const isStrictlyMaster = user?.role === 'master';
   const location = useLocation();
 
   const [materials, setMaterials] = useState([]);
@@ -195,6 +200,8 @@ function MaterialsPage() {
         minimum_stock: Number(formData.minimum_stock || 0), average_rate: formData.average_rate,
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null, location: formData.location,
         location_id: formData.location_id ? Number(formData.location_id) : null,
+        subcategory_id: hierarchySelection.subcategoryId,
+        attribute_values: hierarchySelection.attributeValues,
       });
       setEditingMaterial(null);
       applyServerFilters();
@@ -202,6 +209,20 @@ function MaterialsPage() {
       setError(err.response?.data?.detail || 'Failed to update material');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const handleDelete = (material) => setPendingDelete(material);
+  const confirmDelete = async () => {
+    setError('');
+    try {
+      await materialsAPI.remove(pendingDelete.id);
+      setPendingDelete(null);
+      applyServerFilters();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete material');
+      setPendingDelete(null);
     }
   };
 
@@ -225,32 +246,44 @@ function MaterialsPage() {
     { key: 'material_code', label: 'Material ID' }, { key: 'name', label: 'Name' },
     { key: 'category', label: 'Category' }, { key: 'unit', label: 'Unit' },
     { key: 'current_stock', label: 'Available Stock' }, { key: 'minimum_stock', label: 'Reorder Level' },
-    { key: 'stock_status', label: 'Status' },
-    { key: 'average_rate', label: 'Avg Rate', render: (v) => formatCurrency(v) },
-    { key: 'stock_value', label: 'Stock Value', render: (v) => formatCurrency(v) },
+    { key: 'stock_status', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
+    { key: 'average_rate', label: 'Avg Rate', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
+    { key: 'stock_value', label: 'Stock Value', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
     { key: 'location', label: 'Location' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingMaterial(row); }}>Edit</button>
+        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingMaterial(row); }}>Edit</button> : null
+      ),
+    },
+    {
+      key: 'delete_action', label: '', render: (v, row) => (
+        isStrictlyMaster ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleDelete(row); }}>Delete</button> : null
       ),
     },
   ];
 
   const createFields = [
-    { name: 'name', label: 'Name', required: true },
-    { name: 'category', label: 'Category (legacy - optional if using Category/Subcategory above)' },
-    { name: 'brand_grade', label: 'Brand/Grade (legacy - optional if using Specifications above)' },
-    { name: 'thickness_size', label: 'Thickness/Size (legacy - optional if using Specifications above)' },
-    { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
-    { name: 'opening_stock', label: 'Opening Stock', type: 'number' },
-    { name: 'minimum_stock', label: 'Reorder Level', type: 'number' },
-    { name: 'average_rate', label: 'Average Rate', type: 'number' },
-    { name: 'supplier_id', label: 'Primary Supplier', type: 'select', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
-    { name: 'location_id', label: 'Location', type: 'select', options: allLocations.map((l) => ({ value: l.id, label: l.full_path })) },
-    { name: 'location', label: 'Location (legacy free text - optional if using the dropdown above)' },
+    { name: 'name', label: 'Name', required: true, section: 'Identity' },
+    { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets', section: 'Identity' },
+    { name: 'opening_stock', label: 'Opening Stock', type: 'number', section: 'Inventory' },
+    { name: 'minimum_stock', label: 'Reorder Level', type: 'number', section: 'Inventory' },
+    { name: 'average_rate', label: 'Average Rate', type: 'number', section: 'Inventory' },
+    { name: 'supplier_id', label: 'Primary Supplier', type: 'select', options: suppliers.map((s) => ({ value: s.id, label: s.name })), section: 'Supplier & Location' },
+    { name: 'location_id', label: 'Location', type: 'select', options: allLocations.map((l) => ({ value: l.id, label: l.full_path })), section: 'Supplier & Location' },
+    // Legacy fields, kept for backward compatibility but deliberately not
+    // shown alongside the primary fields above - the real
+    // category/specifications entry is MaterialAttributesEditor, rendered
+    // above this form. These only matter for edge cases (a category that
+    // doesn't fit the new hierarchy yet, or migrating old data by hand).
+    { name: 'category', label: 'Category (only if not using Category/Subcategory above)', section: 'Legacy Fields (optional)' },
+    { name: 'brand_grade', label: 'Brand/Grade (only if not using Specifications above)', section: 'Legacy Fields (optional)' },
+    { name: 'thickness_size', label: 'Thickness/Size (only if not using Specifications above)', section: 'Legacy Fields (optional)' },
+    { name: 'location', label: 'Location (free text, only if not using the Location dropdown above)', section: 'Legacy Fields (optional)' },
   ];
 
-  const editFields = createFields.filter((f) => !['material_code', 'opening_stock'].includes(f.name));
+  const editFields = createFields
+    .filter((f) => !['opening_stock'].includes(f.name))
+    .map(({ section, ...rest }) => rest);
 
   const inventoryValue = allMaterials.reduce((sum, m) => sum + (m.stock_value || 0), 0);
   const lowStockCount = allMaterials.filter((m) => m.stock_status === 'LOW STOCK').length;
@@ -270,13 +303,13 @@ function MaterialsPage() {
           <a className="btn-secondary" href={reportsAPI.downloadUrl('stock-dashboard.xlsx')} target="_blank" rel="noreferrer">
             Export Stock Dashboard
           </a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Material</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Material</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
       <div className="kpi-row">
-        <KpiCard label="Inventory Value" value={formatCurrency(inventoryValue)} />
+        {isPrivileged && <KpiCard label="Inventory Value" value={formatCurrency(inventoryValue)} />}
         <KpiCard label="Low Stock" value={lowStockCount} tone={lowStockCount > 0 ? 'warning' : 'success'} />
         <KpiCard label="Out of Stock" value={outOfStockCount} tone={outOfStockCount > 0 ? 'danger' : 'success'} />
       </div>
@@ -402,7 +435,7 @@ function MaterialsPage() {
           <div className="catalog-empty-icon"><CartIcon width={28} height={28} /></div>
           <h3>No materials in the catalog yet</h3>
           <p>Add your first material to start browsing stock, prices, and suppliers in one place.</p>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Material</button>
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Material</button>}
         </div>
       ) : view === 'table' ? (
         <>
@@ -438,15 +471,29 @@ function MaterialsPage() {
         </>
       )}
 
-      <Modal isOpen={showAdd} title="Add Material" onClose={() => setShowAdd(false)}>
+      <Modal isOpen={showAdd} title="Add Material" onClose={() => { setShowAdd(false); setHierarchySelection({ subcategoryId: null, attributeValues: [] }); }}>
         <MaterialAttributesEditor onChange={setHierarchySelection} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
       </Modal>
-      <Modal isOpen={!!editingMaterial} title={`Edit ${editingMaterial?.name || ''}`} onClose={() => setEditingMaterial(null)}>
+      <Modal isOpen={!!editingMaterial} title={`Edit ${editingMaterial?.name || ''}`} onClose={() => { setEditingMaterial(null); setHierarchySelection({ subcategoryId: null, attributeValues: [] }); }}>
         {editingMaterial && (
-          <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingMaterial} />
+          <>
+            <MaterialAttributesEditor
+              onChange={setHierarchySelection}
+              initialSubcategoryId={editingMaterial.subcategory_id}
+              initialAttributeValues={editingMaterial.attribute_values}
+            />
+            <Form fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes" initialValues={editingMaterial} />
+          </>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        message={pendingDelete ? `Delete ${pendingDelete.name}? This cannot be undone.` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

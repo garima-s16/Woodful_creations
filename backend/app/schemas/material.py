@@ -16,15 +16,18 @@ class MaterialBase(BaseModel):
     brand_grade: Optional[str] = None
     thickness_size: Optional[str] = None
     unit: str
-    minimum_stock: int = 0
+    # Decimal, not int - a material measured in kg/litres/metres needs
+    # real decimal precision (e.g. a 2.5 kg reorder threshold).
+    minimum_stock: Decimal = Decimal("0")
     average_rate: Decimal = Decimal("0")
+    is_active: bool = True
     supplier_id: Optional[int] = None
     location: Optional[str] = None
     location_id: Optional[int] = None
 
 
 class MaterialCreate(MaterialBase):
-    opening_stock: int = 0
+    opening_stock: Decimal = Decimal("0")
     attribute_values: List[MaterialAttributeValueInput] = []
 
 
@@ -35,8 +38,9 @@ class MaterialUpdate(BaseModel):
     brand_grade: Optional[str] = None
     thickness_size: Optional[str] = None
     unit: Optional[str] = None
-    minimum_stock: Optional[int] = None
+    minimum_stock: Optional[Decimal] = None
     average_rate: Optional[Decimal] = None
+    is_active: Optional[bool] = None
     supplier_id: Optional[int] = None
     location: Optional[str] = None
     location_id: Optional[int] = None
@@ -46,12 +50,16 @@ class MaterialUpdate(BaseModel):
 class MaterialResponse(MaterialBase):
     id: int
     business_id: Optional[str] = None
-    opening_stock: int
-    total_purchased: int
-    total_issued: int
-    current_stock: int
+    opening_stock: Decimal
+    total_purchased: Decimal
+    total_issued: Decimal
+    current_stock: Decimal
     stock_status: str
-    stock_value: float
+    # Optional, not the base Decimal/float - an employee's response has
+    # these set to None server-side (see materials.py's _scrub_financial_fields),
+    # a genuine redaction, not a value the frontend merely chooses not to show.
+    average_rate: Optional[Decimal] = None
+    stock_value: Optional[float] = None
     attribute_values: List[MaterialAttributeValueResponse] = []
     created_at: datetime
     updated_at: datetime

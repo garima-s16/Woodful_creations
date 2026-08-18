@@ -1,7 +1,8 @@
 from typing import List, Optional
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
+from app.core.audit import log_action
 from sqlalchemy.orm import Session
 
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.client import Client
+from app.models.order import Order
+from app.models.estimate import Estimate
+from app.models.client_activity import ClientActivity
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientWithStats
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
@@ -55,11 +59,12 @@ def get_client(client_id: int, db: Session = Depends(get_db), auth=Depends(get_c
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    is_privileged = auth.get("role", "user") in ("master",)
     total_sales = sum((o.order_value for o in client.orders), Decimal("0"))
     return ClientWithStats(
         **ClientResponse.model_validate(client).model_dump(),
         total_orders=len(client.orders),
-        total_sales=float(total_sales),
+        total_sales=float(total_sales) if is_privileged else None,
     )
 
 
@@ -78,10 +83,18 @@ def update_client(client_id: int, data: ClientUpdate, db: Session = Depends(get_
 
 
 @router.delete("/{client_id}", status_code=204)
-def delete_client(client_id: int, db: Session = Depends(get_db),
-                   auth=Depends(require_role("master", "manager"))):
+def delete_client(client_id: int, request: Request, db: Session = Depends(get_db),
+                   auth=Depends(require_role("master"))):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    if db.query(Order).filter(Order.client_id == client_id).first():
+        raise HTTPException(status_code=400, detail="This client has orders and cannot be deleted.")
+    if db.query(Estimate).filter(Estimate.client_id == client_id).first():
+        raise HTTPException(status_code=400, detail="This client has estimates and cannot be deleted.")
+    client_name = client.name
+    db.query(ClientActivity).filter(ClientActivity.client_id == client_id).delete()
     db.delete(client)
     db.commit()
+    log_action(db, request, user_id=auth.get("user_id"), action="delete_client", module_name="clients",
+               record_id=client_id, old_value={"name": client_name})
