@@ -31,6 +31,8 @@ from app.models.order import Order
 from app.models.estimate import Estimate
 from app.api.routes.estimates import _compute_totals
 from app.models.payment import Payment
+from app.models.notification import Notification
+from app.services.notification_service import NotificationService
 from app.models.project_expense import ProjectExpense
 from app.models.employee import Employee
 from app.models.salary_slip import SalarySlip
@@ -419,6 +421,37 @@ def seed_estimates(db, clients, orders):
     logger.info("Seeded %d payments", len(rows))
 
 
+def seed_payments(db, orders):
+    """Amounts deliberately match each order's advance/other_received
+    values from seed_orders exactly, rather than introduce new numbers -
+    otherwise an order's stored total_received/balance would silently
+    disagree with the sum of its own payment records. This also gives a
+    realistic spread for dashboard testing without needing separate
+    "fully paid" fixtures: WC-2026-005 has zero payments (fully
+    pending), WC-2026-003/004 have only an advance (partially paid),
+    WC-2026-001/002 have an advance plus a progress payment."""
+    if db.query(Payment).count() > 0:
+        return
+    rows = [
+        ("WC-2026-001", "Advance", "Bank Transfer", 32500, "2026-07-20", "Ravi", "First advance on booking"),
+        ("WC-2026-001", "Progress Payment", "UPI", 97500, "2026-08-05", "Ravi", "Progress payment - cutting stage"),
+        ("WC-2026-002", "Advance", "Cash", 21600, "2026-07-22", "Amit", "Advance received"),
+        ("WC-2026-002", "Progress Payment", "Bank Transfer", 64800, "2026-08-08", "Amit", "Progress payment - material purchase"),
+        ("WC-2026-003", "Advance", "UPI", 25000, "2026-07-25", "Amit", "Design advance"),
+        ("WC-2026-004", "Advance", "Cash", 25000, "2026-07-26", "Ravi", "Booking advance"),
+    ]
+    count = 0
+    for order_code, ptype, mode, amount, pdate, received_by, remarks in rows:
+        db.add(Payment(
+            receipt_code=f"RCPT-{count + 1:03d}", order_id=orders[order_code].id,
+            date=_d(pdate), payment_type=ptype, payment_mode=mode,
+            amount=Decimal(str(amount)), received_by=received_by, remarks=remarks,
+        ))
+        count += 1
+    db.commit()
+    logger.info("Seeded %d payments", count)
+
+
 def seed_project_expenses(db, orders):
     if db.query(ProjectExpense).count() > 0:
         return
@@ -731,6 +764,56 @@ def seed_production_jobs(db, employees, orders, materials):
     logger.info("Seeded %d production jobs", len(rows))
 
 
+def seed_notifications(db, materials, orders, employees, tasks):
+    """Grounded entirely in already-seeded real entities - a material
+    genuinely at/below its minimum stock, an order with a genuinely
+    unpaid balance, a real employee's real task - rather than invented
+    numbers that could drift out of sync with the actual seeded data."""
+    if db.query(Notification).count() > 0:
+        return
+    low_stock_material = materials.get("MAT-003")  # MDF 12mm, seeded at 0 stock against a minimum of 10
+    if low_stock_material:
+        NotificationService.notify(
+            db, notification_type="OUT_OF_STOCK", severity="CRITICAL",
+            title=f"{low_stock_material.name} is out of stock",
+            message=f"Current stock is 0, below the minimum of {low_stock_material.minimum_stock}.",
+            related_entity_type="material", related_entity_id=low_stock_material.id,
+            action_path=f"/materials/{low_stock_material.id}",
+        )
+
+    pending_order = orders.get("WC-2026-005")  # Showroom Display - zero payments received
+    if pending_order:
+        NotificationService.notify(
+            db, notification_type="PAYMENT_PENDING", severity="WARNING",
+            title=f"No payment received yet for {pending_order.order_code}",
+            message=f"Order value is Rs {pending_order.order_value:,.0f} with no advance recorded.",
+            related_entity_type="order", related_entity_id=pending_order.id,
+            action_path=f"/orders/{pending_order.id}",
+        )
+
+    urgent_order = orders.get("WC-2026-002")  # Modular Kitchen - marked Urgent priority in seed_orders
+    if urgent_order:
+        NotificationService.notify(
+            db, notification_type="DELIVERY_UPCOMING", severity="WARNING",
+            title=f"{urgent_order.order_code} delivery approaching",
+            message=f"Priority: {urgent_order.priority}. Delivery date: {urgent_order.delivery_date.strftime('%d %b %Y')}.",
+            related_entity_type="order", related_entity_id=urgent_order.id,
+            action_path=f"/orders/{urgent_order.id}",
+        )
+
+    emp_001 = employees.get("EMP-001")
+    emp_001_task = next((t for t in tasks.values() if t.employee_id == emp_001.id), None) if emp_001 else None
+    if emp_001_task:
+        NotificationService.notify(
+            db, notification_type="TASK_ASSIGNED", severity="INFO",
+            title=f"Task assigned: {emp_001_task.task_description}",
+            message=f"Assigned to {emp_001.name}.",
+            related_entity_type="task", related_entity_id=emp_001_task.id,
+            action_path=f"/daily-tasks/{emp_001_task.id}",
+        )
+    logger.info("Seeded notifications")
+
+
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -757,6 +840,7 @@ if __name__ == "__main__":
         tasks = seed_daily_tasks(db, employees, orders)
         seed_task_comments(db, tasks)
         seed_production_jobs(db, employees, orders, materials)
+        seed_notifications(db, materials, orders, employees, tasks)
         logger.info("Seed complete.")
     finally:
         db.close()
