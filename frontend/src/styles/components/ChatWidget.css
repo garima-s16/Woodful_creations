@@ -106,7 +106,11 @@
 
 .chat-panel-input { display: flex; border-top: 1px solid var(--border-color); }
 .chat-panel-input input {
-  flex: 1; border: none; padding: 12px; font-size: 0.85rem; background: var(--surface);
+  flex: 1; border: none; padding: 12px; font-size: 0.85rem;
+  background: var(--surface); color: var(--text-primary); caret-color: var(--color-gold);
+}
+.chat-panel-input input::placeholder {
+  color: var(--text-secondary); opacity: 1;
 }
 .chat-panel-input input:focus {
   outline: none;
