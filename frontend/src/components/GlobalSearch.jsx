@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { searchAPI } from '../utils/api';
+import { SearchIcon } from './icons';
 import '../styles/components/GlobalSearch.css';
 
 function GlobalSearch() {
@@ -49,10 +50,12 @@ function GlobalSearch() {
 
   return (
     <div className="global-search" ref={containerRef}>
+      <SearchIcon className="global-search-icon" width={16} height={16} />
       <input
         type="text"
         className="global-search-input"
         placeholder="Search clients, orders, materials..."
+        aria-label="Global search"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}

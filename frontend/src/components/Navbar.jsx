@@ -6,6 +6,15 @@ import GlobalSearch from './GlobalSearch';
 import NotificationBell from './NotificationBell';
 import '../styles/Navbar.css';
 
+/**
+ * Woodful's icon set (./icons) is used throughout the navbar rather than
+ * lucide-react. The project intentionally does not depend on lucide-react
+ * (see components/icons/index.jsx) since this environment has no network
+ * access to regenerate package-lock.json's integrity hashes, and an
+ * unlocked dependency would silently break `npm ci` in Docker. The
+ * existing icon set already covers every control used here.
+ */
+
 const ROLE_LABELS = { master: 'Master Admin', manager: 'Manager', user: 'Team Member' };
 
 function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
@@ -38,18 +47,16 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
           <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
             <MenuIcon />
           </button>
-          <Link to="/dashboard" className="navbar-brand">
+          <Link to="/dashboard" className="navbar-brand" aria-label="Woodful Creations — go to dashboard">
             <span className="brand-mark">
-              <img src="/logo.png" alt="Woodful Creations" className="brand-logo-img" />
-            </span>
-            <span className="brand-text">
-              <span className="brand-name">Woodful Creations</span>
-              <span className="brand-tagline">Business Management</span>
+              <img src="/logo-transparent.png" alt="Woodful Creations" className="brand-logo-img" />
             </span>
           </Link>
         </div>
 
-        <GlobalSearch />
+        <div className="navbar-center">
+          <GlobalSearch />
+        </div>
 
         <div className="navbar-right">
           <button className="cart-toggle" onClick={onOpenCart} title="Purchase cart" aria-label="Open purchase cart">
