@@ -137,6 +137,7 @@ function RecentActivity({ items }) {
 }
 
 function DashboardPage() {
+  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const isPrivileged = user?.role === 'master';
   const [stock, setStock] = useState(null);
@@ -195,7 +196,7 @@ function DashboardPage() {
       // field query on data already being fetched for the activity feed.
       setPendingPurchases(purchases.filter((p) => p.payment_status !== 'Paid').slice(0, 4));
     });
-  }, []);
+  }, [isPrivileged]);
 
   if (!stock || !orders || !staff) return <div className="page">Loading...</div>;
 
