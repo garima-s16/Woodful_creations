@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -76,21 +76,45 @@ function Sidebar({ isOpen, user }) {
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
   const groupHasActive = (group) => group.items.some((item) => isActive(item.path));
 
-  const [collapsed, setCollapsed] = useState(() => {
-    const initial = {};
-    groups.forEach((group) => {
-      if (!groupHasActive(group)) initial[group.name] = true;
-    });
+  // openGroups is the single source of truth for expand/collapse state.
+  // It is initialized from the current route, and re-synced whenever the
+  // route changes so client-side navigation (which does not remount this
+  // component) always auto-expands the section that owns the active page.
+  const [openGroups, setOpenGroups] = useState(() => {
+    const initial = new Set();
+    const activeGroup = groups.find(groupHasActive);
+    if (activeGroup) initial.add(activeGroup.name);
     return initial;
   });
-  const toggleGroup = (name) => setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }));
+
+  useEffect(() => {
+    const activeGroup = groups.find(groupHasActive);
+    if (!activeGroup) return;
+    setOpenGroups((prev) => {
+      if (prev.has(activeGroup.name)) return prev; // already open, avoid extra renders
+      const next = new Set(prev);
+      next.add(activeGroup.name);
+      return next;
+    });
+    // Re-run whenever the route changes; group definitions are stable per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  const toggleGroup = (name) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       <div className="sidebar-content">
         <nav className="sidebar-nav">
           {groups.map((group) => {
-            const isCollapsed = collapsed[group.name] && !groupHasActive(group);
+            const isCollapsed = !openGroups.has(group.name);
             return (
               <div className="nav-group" key={group.name}>
                 <button

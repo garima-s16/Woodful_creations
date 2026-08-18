@@ -39,57 +39,24 @@
 }
 
 .login-logo-small {
-  height: 34px;
+  height: 30px;
   width: auto;
-  background: var(--color-ivory);
-  border-radius: var(--radius-sm);
-  padding: 5px 10px;
   display: block;
 }
 
 .login-brand-content {
   position: relative;
   z-index: 1;
-  max-width: 460px;
+  max-width: 420px;
 }
 
-.login-headline {
+.login-brand-statement {
   font-family: var(--font-display);
-  font-size: 2.6rem;
-  line-height: 1.15;
+  font-size: 1.15rem;
+  line-height: 1.4;
   font-weight: 600;
   color: var(--color-ivory);
-  margin-bottom: var(--space-4);
-  min-height: 2.4em;
-}
-
-.login-brand-tagline {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: rgba(247, 243, 236, 0.55);
-  margin-bottom: var(--space-5);
-}
-
-.login-dots {
-  display: flex;
-  gap: 8px;
-}
-
-.login-dot {
-  width: 22px;
-  height: 3px;
-  border-radius: 2px;
-  border: none;
-  background: rgba(247, 243, 236, 0.25);
-  cursor: pointer;
-  padding: 0;
-  transition: all var(--transition);
-}
-
-.login-dot.active {
-  background: var(--color-gold);
-  width: 34px;
+  margin: 0;
 }
 
 /* Right panel: form */
@@ -142,13 +109,27 @@
   font-size: 0.92rem;
   font-family: var(--font-body);
   background: var(--surface);
-  transition: border-color var(--transition);
+  color: var(--text-primary);
+  caret-color: var(--color-gold);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.form-group input::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 .form-group input:focus {
   outline: none;
   border-color: var(--color-gold);
   box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15);
+}
+
+.form-group input:disabled {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .password-input-row {
@@ -175,14 +156,21 @@
   transition: color var(--transition);
 }
 
-.password-toggle:hover { color: var(--color-ink); }
+.password-toggle:hover { color: var(--color-gold-soft); }
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
 
 .error-message {
-  background: var(--danger-bg);
-  color: var(--danger);
-  padding: 11px 14px;
+  background: rgba(217, 131, 118, 0.14);
+  color: #a8402e; /* darker shade of the --danger hue, sized for AA contrast on the light login panel (--danger itself is tuned for dark surfaces) */
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
+  line-height: 1.4;
   border-left: 3px solid var(--danger);
 }
 
@@ -207,6 +195,11 @@
   cursor: not-allowed;
 }
 
+.login-button:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   .login-container {
     grid-template-columns: 1fr;
@@ -214,10 +207,21 @@
 
   .login-brand-panel {
     padding: var(--space-6) var(--space-5);
-    min-height: 320px;
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-brand-panel {
+    min-height: 140px;
+    padding: var(--space-5) var(--space-4);
   }
 
-  .login-headline {
-    font-size: 1.9rem;
+  .login-brand-statement {
+    font-size: 1rem;
+  }
+
+  .login-form-panel {
+    padding: var(--space-5) var(--space-4);
   }
 }

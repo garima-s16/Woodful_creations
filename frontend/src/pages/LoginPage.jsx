@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
@@ -7,12 +7,6 @@ import { loginStart, loginSuccess, loginFailure } from '../redux/slices/authSlic
 import BrandBackdrop from '../components/BrandBackdrop';
 import Footer from '../components/Footer';
 import '../styles/LoginPage.css';
-
-const TAGLINES = [
-  { title: 'Precision Crafted,', subtitle: 'Order by Order.' },
-  { title: 'From Timber to', subtitle: 'Finished Furniture.' },
-  { title: 'Every Cut', subtitle: 'Accounted For.' },
-];
 
 function EyeIcon({ visible }) {
   return visible ? (
@@ -35,14 +29,6 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [slide, setSlide] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSlide((s) => (s + 1) % TAGLINES.length);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, []);
 
   const performLogin = async (loginIdentifier, loginPassword) => {
     setError('');
@@ -79,23 +65,10 @@ function LoginPage() {
         <div className="login-brand-panel">
           <BrandBackdrop />
           <div className="login-brand-top">
-            <img src="/logo.png" alt="Woodful Creations" className="login-logo-small" />
+            <img src="/logo-transparent.png" alt="Woodful Creations" className="login-logo-small" />
           </div>
           <div className="login-brand-content">
-            <h2 className="login-headline">
-              {TAGLINES[slide].title}<br />{TAGLINES[slide].subtitle}
-            </h2>
-            <p className="login-brand-tagline">Business Management System</p>
-            <div className="login-dots">
-              {TAGLINES.map((t, i) => (
-                <button
-                  key={t.title}
-                  className={`login-dot ${i === slide ? 'active' : ''}`}
-                  onClick={() => setSlide(i)}
-                  aria-label={`Show tagline ${i + 1}`}
-                />
-              ))}
-            </div>
+            <p className="login-brand-statement">Precision crafted, order by order.</p>
           </div>
         </div>
 
@@ -106,8 +79,8 @@ function LoginPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
-            <h1>Sign In</h1>
-            <p className="login-form-subtitle">Enter your credentials to access your account.</p>
+            <h1>Sign in to Woodful</h1>
+            <p className="login-form-subtitle">Enter your credentials to continue.</p>
 
             <form onSubmit={handleLogin} className="login-form">
               <div className="form-group">
@@ -141,7 +114,6 @@ function LoginPage() {
                     className="password-toggle"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    tabIndex={-1}
                   >
                     <EyeIcon visible={showPassword} />
                   </button>

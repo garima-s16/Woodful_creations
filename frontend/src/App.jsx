@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -51,11 +51,42 @@ import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 
 function AppLayout({ children }) {
-  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
+  const MOBILE_BREAKPOINT = 768;
+  const [isSidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > MOBILE_BREAKPOINT);
+  // Tracks which side of the breakpoint we were last on, so a resize only
+  // forces the sidebar open/closed when actually crossing into a different
+  // layout mode - never on every pixel of a drag-resize, and never
+  // overriding a manual toggle made while staying within the same mode.
+  const isDesktopRef = useRef(window.innerWidth > MOBILE_BREAKPOINT);
   const isCartOpen = useSelector((state) => state.cart.isOpen);
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
+  // Keeps the sidebar usable across a resize. Without this, the sidebar's
+  // open/closed flag is only ever set once on mount: starting on a narrow
+  // (mobile) viewport with the sidebar closed and then resizing up to
+  // desktop width would leave it permanently closed with no way to reopen
+  // it, since the hamburger toggle is hidden on desktop layouts.
+  useEffect(() => {
+    let frame = null;
+    const handleResize = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const isDesktopNow = window.innerWidth > MOBILE_BREAKPOINT;
+        if (isDesktopNow !== isDesktopRef.current) {
+          isDesktopRef.current = isDesktopNow;
+          setSidebarOpen(isDesktopNow);
+        }
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 
   // Runs whenever the logged-in identity changes (login, logout, or a
   // different user's session restoring) - fetches THAT user's own cart
