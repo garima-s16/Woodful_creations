@@ -198,7 +198,10 @@ function OrdersPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Orders</h1>
+        <div>
+          <h1>Orders</h1>
+          <p className="page-summary">Track every order from confirmation through delivery and payment.</p>
+        </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('order-profitability.xlsx')} target="_blank" rel="noreferrer">
             Export Profitability

@@ -88,20 +88,20 @@ function SuppliersPage() {
   ];
 
   const fields = [
-    { name: 'name', label: 'Name', required: true, section: 'Supplier Identity' },
-    { name: 'category', label: 'Category', section: 'Supplier Identity' },
-    { name: 'contact_person', label: 'Contact Person', section: 'Contact Details' },
-    { name: 'phone', label: 'Phone', section: 'Contact Details' },
+    { name: 'name', label: 'Name', required: true },
+    { name: 'category', label: 'Category' },
+    { name: 'phone', label: 'Phone' },
+    { name: 'contact_person', label: 'Contact Person', advanced: true },
     {
-      name: 'gstin', label: 'GSTIN', section: 'Commercial Terms',
+      name: 'gstin', label: 'GSTIN', advanced: true,
       hint: '15-character GST identification number',
       validate: (value) => (value.length !== 15 ? 'GSTIN must contain 15 characters.' : null),
     },
-    { name: 'payment_terms', label: 'Payment Terms', section: 'Commercial Terms' },
-    { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Commercial Terms' },
+    { name: 'payment_terms', label: 'Payment Terms', advanced: true },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', advanced: true },
   ];
 
-  const editFields = fields.filter((f) => f.name !== 'supplier_code').map(({ section, ...f }) => f);
+  const editFields = fields.filter((f) => f.name !== 'supplier_code');
 
   return (
     <div className="page">
@@ -116,7 +116,12 @@ function SuppliersPage() {
       <div className="kpi-row">
         <KpiCard label="Total Suppliers" value={suppliers.length} />
       </div>
-      <Table columns={columns} data={suppliers} loading={pageLoading} onRowClick={(row) => navigate(`/suppliers/${row.id}`)} emptyMessage="No suppliers yet. Add your first supplier to get started." />
+      <Table
+        columns={columns} data={suppliers} loading={pageLoading}
+        onRowClick={(row) => navigate(`/suppliers/${row.id}`)}
+        emptyMessage="No suppliers added yet. Add your first supplier to start managing purchase relationships."
+        emptyAction={isPrivileged ? { label: 'Add Supplier', onClick: () => setShowAdd(true) } : undefined}
+      />
       <Modal isOpen={showAdd} title="Add Supplier" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add Supplier" />
       </Modal>

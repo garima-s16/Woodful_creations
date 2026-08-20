@@ -4,18 +4,21 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   HomeIcon, MaterialIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon, MobileAppIcon,
   OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
-  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon,
+  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, AnalyticsIcon,
 } from './icons';
 import '../styles/components/Sidebar.css';
 
-function Sidebar({ isOpen, user }) {
+function Sidebar({ isOpen, user, onClose }) {
   const location = useLocation();
   const isTrueMaster = user?.role === 'master';
 
   const groups = [
     {
       name: 'Home',
-      items: [{ path: '/dashboard', label: 'Dashboard', icon: HomeIcon }],
+      items: [
+        { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
+        { path: '/analytics', label: 'Analytics', icon: AnalyticsIcon },
+      ],
     },
     {
       name: 'Inventory',
@@ -110,7 +113,11 @@ function Sidebar({ isOpen, user }) {
   };
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+    <>
+      {isOpen && (
+        <div className="sidebar-backdrop" onClick={onClose} aria-hidden="true" />
+      )}
+      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
       <div className="sidebar-content">
         <nav className="sidebar-nav">
           {groups.map((group) => {
@@ -142,6 +149,9 @@ function Sidebar({ isOpen, user }) {
                             key={item.path}
                             to={item.path}
                             className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                            onClick={() => {
+                              if (onClose && window.innerWidth <= 768) onClose();
+                            }}
                           >
                             <Icon className="nav-item-icon" />
                             <span>{item.label}</span>
@@ -157,6 +167,7 @@ function Sidebar({ isOpen, user }) {
         </nav>
       </div>
     </aside>
+    </>
   );
 }
 

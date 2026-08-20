@@ -40,6 +40,7 @@ class Order(BaseModel):
     daily_tasks = relationship("DailyTask", back_populates="order")
     production_jobs = relationship("ProductionJob", back_populates="order")
     estimates = relationship("Estimate", back_populates="order")
+    milestones = relationship("Milestone", back_populates="order", cascade="all, delete-orphan")
     items = relationship("OrderItem", back_populates="order",
                           cascade="all, delete-orphan", order_by="OrderItem.sort_order")
 

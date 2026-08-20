@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI } from '../utils/api';
+import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI, clientActivitiesAPI } from '../utils/api';
 import KpiCard from '../components/common/KpiCard';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
@@ -112,6 +112,35 @@ function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pe
   );
 }
 
+const PRODUCTION_STAGES = ['Not Started', 'In Progress', 'Completed'];
+
+function ProductionPipeline({ summary }) {
+  const counts = Object.fromEntries((summary || []).map((s) => [s.status, s.count]));
+  const total = PRODUCTION_STAGES.reduce((sum, stage) => sum + (counts[stage] || 0), 0);
+  if (!total) {
+    return (
+      <Card title="Production Pipeline">
+        <div className="card-body" style={{ color: 'var(--text-secondary)' }}>No production jobs yet.</div>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Production Pipeline">
+      <div className="card-body production-pipeline">
+        {PRODUCTION_STAGES.map((stage, i) => (
+          <React.Fragment key={stage}>
+            <div className="pipeline-stage">
+              <span className="pipeline-count">{counts[stage] || 0}</span>
+              <span className="pipeline-label">{stage}</span>
+            </div>
+            {i < PRODUCTION_STAGES.length - 1 && <span className="pipeline-arrow">&rarr;</span>}
+          </React.Fragment>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function RecentActivity({ items }) {
   if (!items.length) {
     return (
@@ -148,8 +177,22 @@ function DashboardPage() {
   const [pendingPurchases, setPendingPurchases] = useState([]);
   const [delayedProduction, setDelayedProduction] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
+  const [followUps, setFollowUps] = useState([]);
+
+  const loadFollowUps = () => {
+    clientActivitiesAPI.pendingFollowUps().then((res) => setFollowUps(res.data)).catch(() => {});
+  };
+
+  const handleCompleteFollowUp = (id) => {
+    // Optimistic - the whole point of surfacing these is to let a
+    // user clear their list quickly; wait for the round trip on
+    // every click and it stops feeling worth using.
+    setFollowUps((prev) => prev.filter((f) => f.id !== id));
+    clientActivitiesAPI.completeFollowUp(id).catch(() => loadFollowUps());
+  };
 
   useEffect(() => {
+    loadFollowUps();
     dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
     dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
     dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
@@ -204,7 +247,7 @@ function DashboardPage() {
     : 0;
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
   const firstName = user?.full_name?.split(' ')[0] || '';
 
   // Same source data and same filter/slice logic as AttentionRequired
@@ -304,11 +347,9 @@ function DashboardPage() {
         <KpiCard label="Active Employees" value={staff.active_employees} />
         <KpiCard label="Pending Tasks" value={staff.pending_tasks} tone={staff.pending_tasks > 0 ? 'warning' : 'success'} />
         <KpiCard label="Completed Tasks" value={staff.completed_tasks} tone="success" />
-        <KpiCard
-          label="Production Jobs In Progress"
-          value={(staff.production_status_summary || []).filter((p) => p.status !== 'Completed').reduce((sum, p) => sum + p.count, 0)}
-        />
       </div>
+
+      <ProductionPipeline summary={staff.production_status_summary} />
 
       <section className="dashboard-section">
         <h2 className="section-heading">Attention Required</h2>
@@ -317,6 +358,32 @@ function DashboardPage() {
           upcomingDeliveries={upcomingDeliveries} pendingPurchases={pendingPurchases} delayedProduction={delayedProduction}
         />
       </section>
+
+      {followUps.length > 0 && (
+        <section className="dashboard-section">
+          <h2 className="section-heading">Client Follow-ups Due</h2>
+          <Card>
+            {followUps.map((f) => (
+              <div className="follow-up-row" key={f.id}>
+                <div>
+                  <span
+                    className="btn-link" onClick={() => navigate(`/clients/${f.client_id}`)}
+                    style={{ fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {f.client_name || f.client_code}
+                  </span>
+                  {' \u2014 '}{f.summary}
+                  <span className={f.overdue ? 'follow-up-overdue' : ''} style={{ marginLeft: 8 }}>
+                    ({new Date(f.follow_up_date).toLocaleDateString()}{f.overdue ? ', overdue' : ''})
+                  </span>
+                </div>
+                <span />
+                <button className="btn-secondary" onClick={() => handleCompleteFollowUp(f.id)}>Mark Done</button>
+              </div>
+            ))}
+          </Card>
+        </section>
+      )}
 
       <section className="dashboard-section">
         <h2 className="section-heading">Business at a Glance</h2>

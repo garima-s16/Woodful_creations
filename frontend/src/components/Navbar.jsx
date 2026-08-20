@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon } from './icons';
+import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon, SearchIcon } from './icons';
 import GlobalSearch from './GlobalSearch';
 import NotificationBell from './NotificationBell';
 import '../styles/Navbar.css';
@@ -15,12 +15,13 @@ import '../styles/Navbar.css';
  * existing icon set already covers every control used here.
  */
 
-const ROLE_LABELS = { master: 'Master Admin', manager: 'Manager', user: 'Team Member' };
+const ROLE_LABELS = { master: 'Master Admin', user: 'Team Member' };
 
 function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
   const cartCount = useSelector((state) => state.cart.items.reduce((sum, i) => sum + i.quantity, 0));
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -59,6 +60,15 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
         </div>
 
         <div className="navbar-right">
+          <button
+            className="mobile-search-toggle"
+            onClick={() => setShowMobileSearch((v) => !v)}
+            title="Search"
+            aria-label="Toggle search"
+            aria-expanded={showMobileSearch}
+          >
+            <SearchIcon width={19} height={19} />
+          </button>
           <button className="cart-toggle" onClick={onOpenCart} title="Purchase cart" aria-label="Open purchase cart">
             <CartIcon width={19} height={19} />
             {cartCount > 0 && <span className="cart-toggle-badge">{cartCount}</span>}
@@ -95,6 +105,11 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
           </div>
         </div>
       </div>
+      {showMobileSearch && (
+        <div className="mobile-search-row">
+          <GlobalSearch />
+        </div>
+      )}
     </nav>
   );
 }

@@ -1,13 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { purchasesAPI, suppliersAPI, materialsAPI } from '../utils/api';
+import { useSelector } from 'react-redux';
+import { purchasesAPI, suppliersAPI, materialsAPI, documentsAPI } from '../utils/api';
 import Card from '../components/common/Card';
 import Alert from '../components/common/Alert';
+import DocumentsPanel from '../components/DocumentsPanel';
 import { formatCurrency } from '../utils/currency';
 import { statusClass } from '../utils/statusColors';
 
 function PurchaseDetailPage() {
   const { purchaseId } = useParams();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
   const [purchase, setPurchase] = useState(null);
   const [supplier, setSupplier] = useState(null);
   const [material, setMaterial] = useState(null);
@@ -93,6 +97,15 @@ function PurchaseDetailPage() {
           </div>
         </div>
       </Card>
+
+      {isPrivileged && (
+        <DocumentsPanel title="Documents" api={{
+          list: () => documentsAPI.list('purchase', purchaseId),
+          upload: (file, description) => documentsAPI.upload('purchase', purchaseId, file, description),
+          downloadUrl: (documentId) => documentsAPI.downloadUrl('purchase', purchaseId, documentId),
+          remove: (documentId) => documentsAPI.remove('purchase', purchaseId, documentId),
+        }} canUpload={isPrivileged} />
+      )}
     </div>
   );
 }

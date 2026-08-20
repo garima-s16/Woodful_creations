@@ -70,3 +70,7 @@ class ProjectType(_LookupMixin, BaseModel):
 
 class ExpenseCategory(_LookupMixin, BaseModel):
     __tablename__ = "expense_categories"
+
+
+class ProductionStage(_LookupMixin, BaseModel):
+    __tablename__ = "production_stages"

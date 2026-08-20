@@ -5,8 +5,11 @@ import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Card from '../components/common/Card';
 import Table from '../components/common/Table';
 import Alert from '../components/common/Alert';
+import Modal from '../components/common/Modal';
+import Form from '../components/common/Form';
 import { statusClass } from '../utils/statusColors';
 import { formatCurrency } from '../utils/currency';
+import { today } from '../utils/dates';
 
 
 function EstimateDetailPage() {
@@ -20,6 +23,9 @@ function EstimateDetailPage() {
   const [versions, setVersions] = useState([]);
   const [revising, setRevising] = useState(false);
   const [error, setError] = useState('');
+  const [showConvert, setShowConvert] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState('');
 
   const load = useCallback(() => {
     estimatesAPI.get(estimateId).then((res) => {
@@ -45,6 +51,25 @@ function EstimateDetailPage() {
     }
   };
 
+  const handleConvertToOrder = async (formData) => {
+    setConverting(true);
+    setConvertError('');
+    try {
+      const res = await ordersAPI.create({
+        client_id: estimate.client_id,
+        project_type: estimate.description ? estimate.description.slice(0, 100) : undefined,
+        order_date: new Date(formData.order_date).toISOString(),
+        advance: formData.advance || '0',
+        from_estimate_id: estimate.id,
+      });
+      navigate(`/orders/${res.data.id}`);
+    } catch (err) {
+      setConvertError(err.response?.data?.detail || 'Failed to convert this estimate into an order');
+    } finally {
+      setConverting(false);
+    }
+  };
+
   if (error) return <div className="page">{error}</div>;
   if (!estimate) return <div className="page">Loading...</div>;
 
@@ -65,6 +90,9 @@ function EstimateDetailPage() {
             <button className="btn-secondary" onClick={handleRevise} disabled={revising}>
               {revising ? 'Creating...' : 'Create New Version'}
             </button>
+          )}
+          {isPrivileged && !estimate.order_id && estimate.status !== 'rejected' && (
+            <button className="btn-primary" onClick={() => setShowConvert(true)}>Convert to Order</button>
           )}
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`estimates/${estimate.id}/quote.pdf`)} target="_blank" rel="noreferrer">
             Download Quote PDF
@@ -141,6 +169,22 @@ function EstimateDetailPage() {
           />
         </Card>
       )}
+
+      <Modal isOpen={showConvert} title="Convert to Order" onClose={() => { setShowConvert(false); setConvertError(''); }}>
+        {convertError && <Alert type="error" message={convertError} onClose={() => setConvertError('')} />}
+        <p style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+          This creates a new order for {client?.name || 'this client'} using this estimate's line items and total
+          ({formatCurrency(estimate.total_cost)}). The estimate will be linked to the new order.
+        </p>
+        <Form
+          fields={[
+            { name: 'order_date', label: 'Order Date', type: 'date', required: true },
+            { name: 'advance', label: 'Advance Received', type: 'number' },
+          ]}
+          onSubmit={handleConvertToOrder} loading={converting} submitText="Create Order"
+          initialValues={{ order_date: today() }}
+        />
+      </Modal>
     </div>
   );
 }

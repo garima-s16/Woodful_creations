@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
@@ -130,15 +131,17 @@ def staff_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user
     total_overtime = sum(a.overtime_hours for a in db.query(Attendance).all())
 
     performance = []
+    today = datetime.utcnow().date()
     for e in employees:
         emp_tasks = [t for t in tasks if t.employee_id == e.id]
         completed = [t for t in emp_tasks if t.status == "DONE"]
+        overdue = [t for t in emp_tasks if t.date.date() < today and t.status != "DONE"]
         emp_attendance = [a for a in e.attendance_records]
         hours = sum(a.working_hours for a in emp_attendance)
         overtime = sum(a.overtime_hours for a in emp_attendance)
         performance.append({
             "employee_id": e.id, "employee": e.name, "department": e.department,
-            "tasks": len(emp_tasks), "completed": len(completed),
+            "tasks": len(emp_tasks), "completed": len(completed), "overdue": len(overdue),
             "completion_percent": round(len(completed) / len(emp_tasks), 4) if emp_tasks else 0,
             "hours": round(hours, 2), "overtime": round(overtime, 2),
         })

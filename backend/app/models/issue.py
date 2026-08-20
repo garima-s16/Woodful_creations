@@ -19,6 +19,11 @@ class Issue(BaseModel):
     purpose = Column(String(255), nullable=True)
     approved_by = Column(String(255), nullable=True)
     remarks = Column(Text, nullable=True)
+    # Which location this material was issued from. Nullable - unset means
+    # "the material's primary location", preserving behavior for existing
+    # callers that don't pass one.
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True, index=True)
 
     order = relationship("Order", back_populates="issues")
     material = relationship("Material", back_populates="issues")
+    location = relationship("Location")

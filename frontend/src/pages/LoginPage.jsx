@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authAPI } from '../utils/api';
 import { loginStart, loginSuccess, loginFailure } from '../redux/slices/authSlice';
@@ -142,6 +142,9 @@ function LoginPage() {
                 {loading ? 'Signing in...' : 'Sign In'}
               </motion.button>
             </form>
+            <p className="login-form-subtitle" style={{ marginTop: 'var(--space-5)' }}>
+              <Link to="/forgot-password">Forgot your password?</Link>
+            </p>
           </motion.div>
         </div>
       </div>

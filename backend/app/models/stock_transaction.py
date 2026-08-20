@@ -34,11 +34,17 @@ class StockAdjustment(BaseModel):
 
     business_id = Column(String(10), unique=True, index=True, nullable=True)
     material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)
-    adjustment_type = Column(String(30), nullable=False)  # Physical Count / Damage / Wastage / Theft-Loss / Correction
+    adjustment_type = Column(String(30), nullable=False)  # Physical Count / Damage / Wastage / Theft-Loss / Correction / Return from Issue
+    related_issue_id = Column(Integer, ForeignKey("issues.id"), nullable=True, index=True)  # set only for adjustment_type="Return from Issue"
     quantity_delta = Column(Numeric(12, 2), nullable=False)  # signed: +5 or -5
     stock_before = Column(Numeric(12, 2), nullable=False)
     stock_after = Column(Numeric(12, 2), nullable=False)
     reason = Column(Text, nullable=False)
     adjusted_by = Column(String(100), nullable=True)
+    # Which location the adjustment applies to. Nullable - unset means
+    # "the material's primary location", preserving behavior for existing
+    # callers that don't pass one.
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True, index=True)
 
     material = relationship("Material")
+    location = relationship("Location")

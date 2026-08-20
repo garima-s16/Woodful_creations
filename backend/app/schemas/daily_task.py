@@ -9,6 +9,7 @@ class DailyTaskBase(BaseModel):
     employee_id: int
     order_id: Optional[int] = None
     task_description: str
+    task_category: Optional[str] = None
     priority: Optional[str] = None
     planned_start: Optional[time] = None
     planned_end: Optional[time] = None
@@ -27,6 +28,7 @@ class DailyTaskCreate(DailyTaskBase):
 
 class DailyTaskUpdate(BaseModel):
     status: Optional[str] = None
+    task_category: Optional[str] = None
     completion_percent: Optional[int] = None
     checked_by: Optional[str] = None
     delay_reason: Optional[str] = None
@@ -37,6 +39,7 @@ class DailyTaskResponse(DailyTaskBase):
     id: int
     business_id: Optional[str] = None
     previous_task_id: Optional[int] = None
+    actual_completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

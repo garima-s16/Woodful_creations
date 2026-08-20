@@ -29,6 +29,7 @@ function MaterialDetailPage() {
   const [tab, setTab] = useState(VALID_TABS.includes(requestedTab) ? requestedTab : 'Overview');
   const [addedToCart, setAddedToCart] = useState(false);
   const [allLocations, setAllLocations] = useState([]);
+  const [locationStock, setLocationStock] = useState(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
@@ -40,6 +41,7 @@ function MaterialDetailPage() {
     issuesAPI.list({ material_id: materialId }).then((res) => setIssues(res.data)).catch(() => setIssues([]));
     supplierMaterialsAPI.byMaterial(materialId).then((res) => setSupplierLinks(res.data)).catch(() => setSupplierLinks([]));
     locationsAPI.list().then((res) => setAllLocations(res.data)).catch(() => setAllLocations([]));
+    stockAPI.locationStock(materialId).then((res) => setLocationStock(res.data)).catch(() => setLocationStock(null));
   }, [materialId]);
 
   useEffect(load, [load]);
@@ -50,7 +52,9 @@ function MaterialDetailPage() {
     try {
       await stockAPI.transfer({
         material_id: Number(materialId), quantity: Number(formData.quantity),
-        to_location_id: Number(formData.to_location_id), remarks: formData.remarks,
+        to_location_id: Number(formData.to_location_id),
+        from_location_id: formData.from_location_id ? Number(formData.from_location_id) : undefined,
+        remarks: formData.remarks,
       });
       setShowTransfer(false);
       load();
@@ -65,10 +69,15 @@ function MaterialDetailPage() {
     setStockLoading(true);
     setStockError('');
     try {
-      const delta = formData.direction === 'decrease' ? -Math.abs(Number(formData.quantity)) : Math.abs(Number(formData.quantity));
+      const isReturn = formData.adjustment_type === 'Return from Issue';
+      const delta = isReturn
+        ? Math.abs(Number(formData.quantity))
+        : (formData.direction === 'decrease' ? -Math.abs(Number(formData.quantity)) : Math.abs(Number(formData.quantity)));
       await stockAPI.adjust({
         material_id: Number(materialId), adjustment_type: formData.adjustment_type,
         quantity_delta: delta, reason: formData.reason,
+        related_issue_id: isReturn ? Number(formData.related_issue_id) : undefined,
+        location_id: formData.location_id ? Number(formData.location_id) : undefined,
       });
       setShowAdjust(false);
       load();
@@ -140,6 +149,20 @@ function MaterialDetailPage() {
               <div className="detail-meta-item"><span className="detail-meta-label">Total Issued</span><span className="detail-meta-value">{material.total_issued} {material.unit}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Location</span><span className="detail-meta-value">{material.location || '-'}</span></div>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {tab === 'Overview' && locationStock?.locations?.length > 0 && (
+        <Card title="Stock by Location">
+          <div className="card-body">
+            <Table
+              columns={[
+                { key: 'location_name', label: 'Location' },
+                { key: 'quantity', label: 'Quantity', render: (v) => `${v} ${material.unit}` },
+              ]}
+              data={[...locationStock.locations, { location_id: 'total', location_name: 'Total', quantity: locationStock.total }]}
+            />
           </div>
         </Card>
       )}
@@ -217,6 +240,9 @@ function MaterialDetailPage() {
         <Form
           fields={[
             { name: 'to_location_id', label: 'Transfer To', type: 'select', required: true, options: allLocations.map((l) => ({ value: l.id, label: l.full_path })) },
+            { name: 'from_location_id', label: 'Transfer From', type: 'select',
+              options: allLocations.map((l) => ({ value: l.id, label: l.full_path })),
+              placeholder: material.location || 'Primary location' },
             { name: 'quantity', label: `Quantity (${material.unit})`, type: 'number', required: true },
             { name: 'remarks', label: 'Remarks', type: 'textarea' },
           ]}
@@ -237,11 +263,23 @@ function MaterialDetailPage() {
               { value: 'Wastage', label: 'Wastage' },
               { value: 'Theft/Loss', label: 'Theft/Loss' },
               { value: 'Correction', label: 'Correction' },
+              { value: 'Return from Issue', label: 'Return from Issue' },
             ] },
-            { name: 'direction', label: 'Direction', type: 'select', required: true, options: [
-              { value: 'increase', label: 'Increase stock' }, { value: 'decrease', label: 'Decrease stock' },
-            ] },
+            { name: 'related_issue_id', label: 'Issue Being Returned Against', type: 'select',
+              visibleIf: (fd) => fd.adjustment_type === 'Return from Issue',
+              required: true,
+              options: issues.map((i) => ({
+                value: i.id, label: `${i.issue_code} - ${i.quantity_issued} ${material.unit} (${new Date(i.date).toLocaleDateString()})`,
+              })) },
+            { name: 'direction', label: 'Direction', type: 'select', required: true,
+              visibleIf: (fd) => fd.adjustment_type !== 'Return from Issue',
+              options: [
+                { value: 'increase', label: 'Increase stock' }, { value: 'decrease', label: 'Decrease stock' },
+              ] },
             { name: 'quantity', label: `Quantity (${material.unit})`, type: 'number', required: true },
+            { name: 'location_id', label: 'Location', type: 'select',
+              options: allLocations.map((l) => ({ value: l.id, label: l.full_path })),
+              placeholder: material.location || 'Primary location' },
             { name: 'reason', label: 'Reason', type: 'textarea', required: true },
           ]}
           onSubmit={handleAdjust} loading={stockLoading} submitText="Confirm Adjustment"

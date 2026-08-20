@@ -3,18 +3,21 @@ import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   ordersAPI, clientsAPI, paymentsAPI, projectExpensesAPI, issuesAPI,
-  dailyTasksAPI, productionJobsAPI, materialsAPI, employeesAPI, reportsAPI,
+  dailyTasksAPI, productionJobsAPI, materialsAPI, employeesAPI, reportsAPI, documentsAPI,
+  communicationAPI,
 } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
+import DocumentsPanel from '../components/DocumentsPanel';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { statusClass } from '../utils/statusColors';
 import { formatCurrency } from '../utils/currency';
 import { today } from '../utils/dates';
 
-const TABS = ['Overview', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Production', 'Profitability'];
+const TABS = ['Overview', 'Communication', 'Payments', 'Expenses', 'Materials', 'Tasks', 'Production', 'Profitability'];
 
 function OrderDetailPage() {
   const { orderId } = useParams();
@@ -33,9 +36,23 @@ function OrderDetailPage() {
   const [profitability, setProfitability] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('Overview');
+  // Family 11 - project communication (comments) + activity timeline,
+  // plus the AI summarize/draft helpers (rule-based, never sends
+  // anything - see communication_ai_service.py).
+  const [comments, setComments] = useState([]);
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [commentError, setCommentError] = useState('');
+  const [insights, setInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [draftPurpose, setDraftPurpose] = useState('follow_up');
+  const [draftResult, setDraftResult] = useState(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState('');
   const [activeAction, setActiveAction] = useState(null); // 'payment' | 'expense' | 'issue' | 'task' | 'production'
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [pendingDeletePayment, setPendingDeletePayment] = useState(null);
 
   const closeAction = () => { setActiveAction(null); setActionError(''); };
 
@@ -48,8 +65,19 @@ function OrderDetailPage() {
     finally { setActionLoading(false); }
   };
 
-  const handleQuickExpense = async (formData) => {
-    setActionLoading(true); setActionError('');
+  const confirmDeletePayment = async () => {
+    setActionError('');
+    try {
+      await paymentsAPI.remove(pendingDeletePayment.id);
+      setPendingDeletePayment(null);
+      load();
+    } catch (err) {
+      setActionError(err.response?.data?.detail || 'Failed to delete payment');
+      setPendingDeletePayment(null);
+    }
+  };
+
+  const handleQuickExpense = async (formData) => {    setActionLoading(true); setActionError('');
     try {
       await projectExpensesAPI.create({ ...formData, order_id: Number(orderId), date: new Date(formData.date).toISOString() });
       closeAction(); load();
@@ -106,9 +134,49 @@ function OrderDetailPage() {
     paymentsAPI.list({ order_id: orderId }).then((res) => setPayments(res.data)).catch(() => setPayments('forbidden'));
     projectExpensesAPI.list({ order_id: orderId }).then((res) => setExpenses(res.data)).catch(() => setExpenses('forbidden'));
     ordersAPI.profitability(orderId).then((res) => setProfitability(res.data)).catch(() => setProfitability('forbidden'));
+
+    ordersAPI.listComments(orderId).then((res) => setComments(res.data)).catch(() => setComments([]));
+    ordersAPI.activity(orderId).then((res) => setActivityFeed(res.data)).catch(() => setActivityFeed([]));
   }, [orderId]);
 
   useEffect(load, [load]);
+
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setCommentError('');
+    try {
+      await ordersAPI.addComment(orderId, { text: newComment.trim() });
+      setNewComment('');
+      load();
+    } catch (err) {
+      setCommentError(err.response?.data?.detail || 'Failed to add comment');
+    }
+  };
+
+  const handleGetInsights = async () => {
+    setInsightsLoading(true); setInsights(null);
+    try {
+      const res = await communicationAPI.insights('order', orderId);
+      setInsights(res.data);
+    } catch (err) {
+      setInsights({ error: err.response?.data?.detail || 'Unable to generate insights.' });
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  const handleGetDraft = async () => {
+    setDraftLoading(true); setDraftResult(null); setDraftError('');
+    try {
+      const res = await communicationAPI.draft('order', orderId, draftPurpose);
+      setDraftResult(res.data);
+    } catch (err) {
+      setDraftError(err.response?.data?.detail || 'Unable to generate a draft.');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
 
   if (error) return <div className="page"><Alert type="error" message={error} /></div>;
   if (!order) return <div className="page">Loading...</div>;
@@ -260,6 +328,113 @@ function OrderDetailPage() {
         </Card>
       )}
 
+      {tab === 'Overview' && (
+        <DocumentsPanel title="Documents" api={{
+          list: () => documentsAPI.list('order', orderId),
+          upload: (file, description) => documentsAPI.upload('order', orderId, file, description),
+          downloadUrl: (documentId) => documentsAPI.downloadUrl('order', orderId, documentId),
+          remove: (documentId) => documentsAPI.remove('order', orderId, documentId),
+        }} canUpload={canViewFinancials} />
+      )}
+
+      {tab === 'Communication' && (
+        <>
+          <Card title="Project Comments">
+            <div className="card-body">
+              {commentError && <Alert type="error" message={commentError} onClose={() => setCommentError('')} />}
+              {comments.length === 0 && <p className="page-summary">No comments yet.</p>}
+              {comments.map((c) => (
+                <div key={c.id} className="detail-meta-item" style={{ marginBottom: 12 }}>
+                  <span className="detail-meta-label">{c.author} &middot; {new Date(c.date).toLocaleString()}</span>
+                  <span className="detail-meta-value">{c.text}</span>
+                </div>
+              ))}
+              <form onSubmit={handleAddComment} style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <input
+                  className="form-input" style={{ flex: 1 }} placeholder="Add a comment - use @username to mention someone"
+                  value={newComment} onChange={(e) => setNewComment(e.target.value)}
+                />
+                <button type="submit" className="btn-secondary">Post</button>
+              </form>
+            </div>
+          </Card>
+
+          <Card title="Activity Timeline">
+            <div className="card-body">
+              {activityFeed.length === 0 && <p className="page-summary">No activity recorded for this project yet.</p>}
+              {activityFeed.map((a, idx) => (
+                <div key={idx} className="detail-meta-item" style={{ marginBottom: 12 }}>
+                  <span className="detail-meta-label">
+                    {a.type?.replace('_', ' ')} &middot; {a.author ? `${a.author} &middot; ` : ''}{a.date ? new Date(a.date).toLocaleString() : ''}
+                  </span>
+                  <span className="detail-meta-value">{a.text || a.title}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card title="AI Summary (rule-based, not a live language model)">
+            <div className="card-body">
+              <p className="page-summary">
+                Summarizes the comments actually recorded on this project - extracts action items and
+                flags anything left unanswered. This never contacts an external AI service and nothing
+                is invented beyond what was written above.
+              </p>
+              <button className="btn-secondary" onClick={handleGetInsights} disabled={insightsLoading}>
+                {insightsLoading ? 'Summarizing...' : 'Summarize Communication'}
+              </button>
+              {insights && insights.error && <Alert type="error" message={insights.error} />}
+              {insights && !insights.error && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">Summary ({insights.entry_count} entries)</span>
+                    <span className="detail-meta-value">{insights.summary}</span>
+                  </div>
+                  {insights.action_items?.length > 0 && (
+                    <div className="detail-meta-item">
+                      <span className="detail-meta-label">Action Items</span>
+                      <ul>{insights.action_items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+                    </div>
+                  )}
+                  {insights.unanswered_items?.length > 0 && (
+                    <div className="detail-meta-item">
+                      <span className="detail-meta-label">Unanswered</span>
+                      <ul>{insights.unanswered_items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card title="Draft a Message">
+            <div className="card-body">
+              <p className="page-summary">
+                A template-filled draft for you to review and send yourself through your usual channel.
+                Nothing is ever sent automatically from here.
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select className="form-input" value={draftPurpose} onChange={(e) => setDraftPurpose(e.target.value)}>
+                  <option value="follow_up">Follow-up</option>
+                  <option value="status_update">Status Update</option>
+                  {canViewFinancials && <option value="payment_reminder">Payment Reminder</option>}
+                </select>
+                <button className="btn-secondary" onClick={handleGetDraft} disabled={draftLoading}>
+                  {draftLoading ? 'Drafting...' : 'Generate Draft'}
+                </button>
+              </div>
+              {draftError && <Alert type="error" message={draftError} onClose={() => setDraftError('')} />}
+              {draftResult && (
+                <div style={{ marginTop: 16 }}>
+                  <textarea className="form-input" style={{ width: '100%', minHeight: 140 }} readOnly value={draftResult.draft} />
+                  <p className="page-summary">{draftResult.note}</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        </>
+      )}
+
       {tab === 'Payments' && (
         payments === 'forbidden'
           ? <Alert type="info" message="You do not have permission to view payments for this order." />
@@ -271,6 +446,13 @@ function OrderDetailPage() {
                 { key: 'payment_type', label: 'Type' }, { key: 'payment_mode', label: 'Mode' },
                 { key: 'amount', label: 'Amount', render: formatCurrency },
                 { key: 'received_by', label: 'Received By' },
+                {
+                  key: 'delete_action', label: '', render: (v, row) => (
+                    canViewFinancials ? (
+                      <button className="btn-link" onClick={(e) => { e.stopPropagation(); setPendingDeletePayment(row); }}>Delete</button>
+                    ) : null
+                  ),
+                },
               ]}
               data={payments || []}
               emptyMessage="No payments recorded for this order yet."
@@ -441,6 +623,13 @@ function OrderDetailPage() {
           initialValues={{ date: today() }}
         />
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDeletePayment}
+        message={pendingDeletePayment ? `Delete payment ${pendingDeletePayment.receipt_code} (${formatCurrency(pendingDeletePayment.amount)})? This cannot be undone.` : ''}
+        onConfirm={confirmDeletePayment}
+        onCancel={() => setPendingDeletePayment(null)}
+      />
     </div>
   );
 }

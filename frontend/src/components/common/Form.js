@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import './Form.css';
 
 function FieldInput({ field, value, error, onChange, onBlur, formData }) {
@@ -78,10 +79,25 @@ function FieldGroup({ field, formData, errors, handleChange, handleBlur }) {
  * long flat list. Omitting `section` on every field keeps the old flat
  * single-page behavior - fully backward compatible.
  */
-const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initialValues = {} }) => {
+const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = false, submitText = 'Submit', initialValues = {} }, ref) => {
   const [formData, setFormData] = React.useState(initialValues);
   const [errors, setErrors] = React.useState({});
   const [step, setStep] = React.useState(0);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+
+  // Lets a parent push a value into the form programmatically - e.g. the
+  // material creation form's "intelligent defaults" suggestion (Family 5)
+  // filling in thickness_size when the user clicks Apply - without turning
+  // every field into a parent-controlled input. Only ever invoked from an
+  // explicit user action, never automatically, so it can't fight the user
+  // while they're typing. Backward compatible: callers that don't pass a
+  // ref are unaffected.
+  React.useImperativeHandle(ref, () => ({
+    setValue(name, value) {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+      setErrors((prev) => (prev[name] ? { ...prev, [name]: '' } : prev));
+    },
+  }), []);
 
   React.useEffect(() => {
     setFormData(initialValues);
@@ -117,6 +133,7 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
+    if (onFieldChange) onFieldChange(name, value);
   };
 
   const handleBlur = (field) => () => {
@@ -158,17 +175,50 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
     const newErrors = validate(fields);
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      if (!sections && fields.some((f) => f.advanced && newErrors[f.name])) {
+        setShowAdvanced(true);
+      }
       return;
     }
     onSubmit(formData);
   };
 
   if (!sections) {
+    const visibleFields = fields.filter((field) => !field.visibleIf || field.visibleIf(formData));
+    const primaryFields = visibleFields.filter((field) => !field.advanced);
+    const advancedFields = visibleFields.filter((field) => field.advanced);
     return (
       <form className="form" onSubmit={handleSubmit}>
-        {fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
+        {primaryFields.map((field) => (
           <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} handleBlur={handleBlur} />
         ))}
+        {advancedFields.length > 0 && (
+          <>
+            <button
+              type="button" className="form-advanced-toggle"
+              onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+            >
+              Additional information {showAdvanced ? '▲' : '▼'}
+            </button>
+            <AnimatePresence initial={false}>
+              {showAdvanced && (
+                <motion.div
+                  className="form-advanced-section"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  {advancedFields.map((field) => (
+                    <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} handleBlur={handleBlur} />
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
         <button type="submit" className="btn-submit" disabled={loading}>
           {loading ? 'Please wait...' : submitText}
         </button>
@@ -242,6 +292,6 @@ const Form = ({ fields, onSubmit, loading = false, submitText = 'Submit', initia
       </div>
     </form>
   );
-};
+});
 
 export default Form;

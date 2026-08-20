@@ -32,6 +32,7 @@ from app.models.estimate import Estimate
 from app.api.routes.estimates import _compute_totals
 from app.models.payment import Payment
 from app.models.notification import Notification
+from app.models.working_calendar import CompanyHoliday
 from app.services.notification_service import NotificationService
 from app.models.project_expense import ProjectExpense
 from app.models.employee import Employee
@@ -265,11 +266,11 @@ def seed_suppliers(db):
     if db.query(Supplier).count() > 0:
         return {s.supplier_code: s for s in db.query(Supplier).all()}
     rows = [
-        ("SUP-001", "Century Plywood Dealer", "Plywood", "Rajesh", "98XXXXXX21", "23ABCDE1234F1Z5", "15 Days", "Primary plywood supplier"),
-        ("SUP-002", "Greenpanel Distributor", "HDHMR", "Mukesh", "98XXXXXX22", "23ABCDE2234F1Z5", "Cash", "HDHMR and MDF"),
-        ("SUP-003", "Merino Laminates", "Laminate", "Deepak", "98XXXXXX23", "23ABCDE3234F1Z5", "30 Days", "Decorative laminates"),
-        ("SUP-004", "Hardware Hub", "Hardware", "Vikas", "98XXXXXX24", "23ABCDE4234F1Z5", "7 Days", "Hinges and channels"),
-        ("SUP-005", "Paint Solutions", "Paint/PU", "Ajay", "98XXXXXX25", "23ABCDE5234F1Z5", "Cash", "PU and polish material"),
+        ("SUP-001", "Century Plywood Dealer", "Plywood", "Sanket", "98XXXXXX21", "23ABCDE1234F1Z5", "15 Days", "Primary plywood supplier"),
+        ("SUP-002", "Greenpanel Distributor", "HDHMR", "Ishu", "98XXXXXX22", "23ABCDE2234F1Z5", "Cash", "HDHMR and MDF"),
+        ("SUP-003", "Merino Laminates", "Laminate", "Ashu", "98XXXXXX23", "23ABCDE3234F1Z5", "30 Days", "Decorative laminates"),
+        ("SUP-004", "Hardware Hub", "Hardware", "Mahek", "98XXXXXX24", "23ABCDE4234F1Z5", "7 Days", "Hinges and channels"),
+        ("SUP-005", "Paint Solutions", "Paint/PU", "Aviral", "98XXXXXX25", "23ABCDE5234F1Z5", "Cash", "PU and polish material"),
     ]
     out = {}
     for code, name, cat, contact, phone, gstin, terms, remarks in rows:
@@ -323,11 +324,11 @@ def seed_clients(db):
     if db.query(Client).count() > 0:
         return {c.client_code: c for c in db.query(Client).all()}
     rows = [
-        ("CL-001", "Rahul Sir", "93XXXXXX54", "rahul@example.com", "Indore", "Referral", "2026-07-10", "Bedroom furniture"),
-        ("CL-002", "Sharma Family", "98XXXXXX31", "sharma@example.com", "Bicholi, Indore", "Architect", "2026-07-12", "Modular kitchen"),
-        ("CL-003", "Architect Studio", "98XXXXXX32", "studio@example.com", "Vijay Nagar", "Instagram", "2026-07-18", "CNC wall panel"),
-        ("CL-004", "Rakesh Ji", "98XXXXXX33", "rakesh@example.com", "Rau", "Existing Client", "2026-07-19", "Mandir"),
-        ("CL-005", "Factory Display", "93XXXXXX00", "info@woodful.local", "Woodful Creations", "Internal", "2026-07-20", "Showroom display"),
+        ("CL-001", "Siddharth", "93XXXXXX54", "siddharth@example.com", "Indore", "Referral", "2026-07-10", "Bedroom furniture"),
+        ("CL-002", "Khushaal", "98XXXXXX31", "khushaal@example.com", "Bicholi, Indore", "Architect", "2026-07-12", "Modular kitchen"),
+        ("CL-003", "Shrangi", "98XXXXXX32", "shrangi@example.com", "Vijay Nagar", "Instagram", "2026-07-18", "CNC wall panel"),
+        ("CL-004", "Nimisha", "98XXXXXX33", "nimisha@example.com", "Rau", "Existing Client", "2026-07-19", "Mandir"),
+        ("CL-005", "Mayank", "93XXXXXX00", "mayank@example.com", "Woodful Creations", "Internal", "2026-07-20", "Showroom display"),
     ]
     out = {}
     for code, name, phone, email, addr, source, contact_date, remarks in rows:
@@ -345,10 +346,10 @@ def seed_orders(db, clients):
         return {o.order_code: o for o in db.query(Order).all()}
     rows = [
         ("WC-2026-001", "CL-001", "Bedroom Furniture", "2026-07-20", "2026-08-20", 325000, 32500, 97500, "Cutting", 45, "High", "Ravi", "Indore", "Bedroom and wardrobe"),
-        ("WC-2026-002", "CL-002", "Modular Kitchen", "2026-07-22", "2026-08-25", 216000, 21600, 64800, "Material Purchase", 30, "Urgent", "Amit", "Bicholi, Indore", "Base and wall cabinets"),
-        ("WC-2026-003", "CL-003", "CNC Wall Panel", "2026-07-25", "2026-08-10", 85000, 25000, 0, "Designing", 10, "Medium", "Amit", "Vijay Nagar", "3D carved panel"),
+        ("WC-2026-002", "CL-002", "Modular Kitchen", "2026-07-22", "2026-08-25", 216000, 21600, 64800, "Material Purchase", 30, "Urgent", "Devendra", "Bicholi, Indore", "Base and wall cabinets"),
+        ("WC-2026-003", "CL-003", "CNC Wall Panel", "2026-07-25", "2026-08-10", 85000, 25000, 0, "Designing", 10, "Medium", "Devendra", "Vijay Nagar", "3D carved panel"),
         ("WC-2026-004", "CL-004", "Mandir", "2026-07-26", "2026-08-18", 125000, 25000, 0, "Approved", 20, "High", "Ravi", "Rau", "HDHMR mandir"),
-        ("WC-2026-005", "CL-005", "Showroom Display", "2026-07-27", "2026-09-01", 180000, 0, 0, "Designing", 10, "Low", "Manish", "Woodful Creations", "Internal work"),
+        ("WC-2026-005", "CL-005", "Showroom Display", "2026-07-27", "2026-09-01", 180000, 0, 0, "Designing", 10, "Low", "Brajwal", "Woodful Creations", "Internal work"),
     ]
     out = {}
     for code, cl_code, ptype, odate, ddate, value, advance, other, status, progress, priority, sup, addr, remarks in rows:
@@ -435,9 +436,9 @@ def seed_payments(db, orders):
     rows = [
         ("WC-2026-001", "Advance", "Bank Transfer", 32500, "2026-07-20", "Ravi", "First advance on booking"),
         ("WC-2026-001", "Progress Payment", "UPI", 97500, "2026-08-05", "Ravi", "Progress payment - cutting stage"),
-        ("WC-2026-002", "Advance", "Cash", 21600, "2026-07-22", "Amit", "Advance received"),
-        ("WC-2026-002", "Progress Payment", "Bank Transfer", 64800, "2026-08-08", "Amit", "Progress payment - material purchase"),
-        ("WC-2026-003", "Advance", "UPI", 25000, "2026-07-25", "Amit", "Design advance"),
+        ("WC-2026-002", "Advance", "Cash", 21600, "2026-07-22", "Devendra", "Advance received"),
+        ("WC-2026-002", "Progress Payment", "Bank Transfer", 64800, "2026-08-08", "Devendra", "Progress payment - material purchase"),
+        ("WC-2026-003", "Advance", "UPI", 25000, "2026-07-25", "Devendra", "Design advance"),
         ("WC-2026-004", "Advance", "Cash", 25000, "2026-07-26", "Ravi", "Booking advance"),
     ]
     count = 0
@@ -499,13 +500,13 @@ def seed_issues(db, orders, materials):
         return
     rows = [
         ("ISS-001", "2026-07-23", "WC-2026-001", "MAT-001", 18, "Sheets", "Ravi", "Assembly", "Wardrobe and bed"),
-        ("ISS-002", "2026-07-23", "WC-2026-001", "MAT-004", 22, "Sheets", "Sohan", "Edge Banding", "Interior laminate"),
-        ("ISS-003", "2026-07-24", "WC-2026-002", "MAT-002", 20, "Sheets", "Amit", "CNC", "Kitchen boxes"),
+        ("ISS-002", "2026-07-23", "WC-2026-001", "MAT-004", 22, "Sheets", "Madan", "Edge Banding", "Interior laminate"),
+        ("ISS-003", "2026-07-24", "WC-2026-002", "MAT-002", 20, "Sheets", "Devendra", "CNC", "Kitchen boxes"),
         ("ISS-004", "2026-07-24", "WC-2026-002", "MAT-006", 90, "Nos", "Ravi", "Assembly", "Kitchen shutters"),
-        ("ISS-005", "2026-07-25", "WC-2026-003", "MAT-003", 12, "Sheets", "Amit", "CNC", "3D carving"),
-        ("ISS-006", "2026-07-25", "WC-2026-001", "MAT-009", 380, "Metres", "Sohan", "Edge Banding", "Wardrobe edges"),
-        ("ISS-007", "2026-07-26", "WC-2026-004", "MAT-001", 14, "Sheets", "Amit", "CNC", "Mandir panels"),
-        ("ISS-008", "2026-07-27", "WC-2026-004", "MAT-010", 9, "Litres", "Rahul", "Painting", "PU finishing"),
+        ("ISS-005", "2026-07-25", "WC-2026-003", "MAT-003", 12, "Sheets", "Devendra", "CNC", "3D carving"),
+        ("ISS-006", "2026-07-25", "WC-2026-001", "MAT-009", 380, "Metres", "Madan", "Edge Banding", "Wardrobe edges"),
+        ("ISS-007", "2026-07-26", "WC-2026-004", "MAT-001", 14, "Sheets", "Devendra", "CNC", "Mandir panels"),
+        ("ISS-008", "2026-07-27", "WC-2026-004", "MAT-010", 9, "Litres", "Arpit", "Painting", "PU finishing"),
         ("ISS-009", "2026-07-28", "WC-2026-002", "MAT-007", 18, "Sets", "Ravi", "Assembly", "Drawers"),
     ]
     for code, idate, order_code, mat_code, qty, unit, issued_to, dept, purpose in rows:
@@ -627,6 +628,7 @@ def seed_attendance(db, employees):
         ("2026-07-28", "EMP-004", "2026-07-28 09:20", "2026-07-28 17:50", "Present", None),
         ("2026-07-28", "EMP-005", "2026-07-28 08:45", "2026-07-28 19:00", "Present", "Site visit"),
         ("2026-07-27", "EMP-004", None, None, "Absent", None),
+        ("2026-07-28", "EMP-006", "2026-07-28 09:00", "2026-07-28 13:00", "Half Day", "Half day - personal work"),
     ]
     for adate, emp_code, in_t, out_t, status, remarks in rows:
         db.add(Attendance(date=_d(adate), employee_id=employees[emp_code].id,
@@ -747,21 +749,41 @@ def seed_production_jobs(db, employees, orders, materials):
     if db.query(ProductionJob).count() > 0:
         return
     rows = [
-        ("JOB-001", "2026-07-28", "CNC Router", "EMP-001", "WC-2026-002", "Panel cutting", "MAT-002", 18, 18, "09:00", "12:00", "Completed"),
-        ("JOB-002", "2026-07-28", "Edge Bander", "EMP-003", "WC-2026-001", "Edge banding", "MAT-009", 32, 20, "09:30", "13:30", "In Progress"),
-        ("JOB-003", "2026-07-28", "Cold Press", "EMP-002", "WC-2026-001", "Laminate pressing", "MAT-001", 12, 12, "10:00", "12:30", "Completed"),
-        ("JOB-004", "2026-07-28", "PU Paint Setup", "EMP-004", "WC-2026-004", "Primer coat", "MAT-010", 8, 0, "11:00", "16:00", "Not Started"),
-        ("JOB-005", "2026-07-29", "CNC Router", "EMP-001", "WC-2026-003", "3D roughing", "MAT-003", 4, 0, "09:00", "14:00", "Not Started"),
-        ("JOB-006", "2026-07-29", "Panel Saw", "EMP-002", "WC-2026-002", "Strip cutting", "MAT-002", 15, 0, "09:00", "11:00", "Not Started"),
+        ("JOB-001", "2026-07-28", "CNC Router", "EMP-001", "WC-2026-002", "Panel cutting", "Cutting", "MAT-002", 18, 18, "09:00", "12:00", "Completed"),
+        ("JOB-002", "2026-07-28", "Edge Bander", "EMP-003", "WC-2026-001", "Edge banding", "Edge Banding", "MAT-009", 32, 20, "09:30", "13:30", "In Progress"),
+        ("JOB-003", "2026-07-28", "Cold Press", "EMP-002", "WC-2026-001", "Laminate pressing", None, "MAT-001", 12, 12, "10:00", "12:30", "Completed"),
+        ("JOB-004", "2026-07-28", "PU Paint Setup", "EMP-004", "WC-2026-004", "Primer coat", "Finishing", "MAT-010", 8, 0, "11:00", "16:00", "Not Started"),
+        ("JOB-005", "2026-07-29", "CNC Router", "EMP-001", "WC-2026-003", "3D roughing", "CNC / Drilling", "MAT-003", 4, 0, "09:00", "14:00", "Not Started"),
+        ("JOB-006", "2026-07-29", "Panel Saw", "EMP-002", "WC-2026-002", "Strip cutting", "Cutting", "MAT-002", 15, 0, "09:00", "11:00", "Not Started"),
     ]
-    for code, jdate, machine, emp_code, order_code, op, mat_code, planned, completed, start, end, status in rows:
+    for code, jdate, machine, emp_code, order_code, op, stage, mat_code, planned, completed, start, end, status in rows:
         db.add(ProductionJob(job_code=code, date=_d(jdate), machine=machine,
                               employee_id=employees[emp_code].id, order_id=orders[order_code].id,
-                              operation=op, material_id=materials[mat_code].id,
+                              operation=op, stage=stage, material_id=materials[mat_code].id,
                               planned_qty=planned, completed_qty=completed,
                               start_time=_t(start), end_time=_t(end), status=status))
     db.commit()
     logger.info("Seeded %d production jobs", len(rows))
+
+
+def seed_company_holidays(db):
+    """Demonstrates the working calendar system with genuinely verified
+    dates (each weekday checked directly, not assumed) - Independence
+    Day and Gandhi Jayanti both fall on real working weekdays in 2026,
+    so declaring them holidays genuinely reduces that month's working-day
+    count. One special working day (a Sunday) is included too, to
+    demonstrate the other side of the same model."""
+    if db.query(CompanyHoliday).count() > 0:
+        return
+    rows = [
+        ("2026-08-15", "Independence Day", False, None),
+        ("2026-10-02", "Gandhi Jayanti", False, None),
+        ("2026-08-09", "Special working Sunday - order backlog", True, "Declared working to catch up on pending orders"),
+    ]
+    for hdate, name, is_working, remarks in rows:
+        db.add(CompanyHoliday(date=_d(hdate).date(), name=name, is_working=is_working, remarks=remarks))
+    db.commit()
+    logger.info("Seeded %d company holiday/calendar records", len(rows))
 
 
 def seed_notifications(db, materials, orders, employees, tasks):
@@ -840,6 +862,7 @@ if __name__ == "__main__":
         tasks = seed_daily_tasks(db, employees, orders)
         seed_task_comments(db, tasks)
         seed_production_jobs(db, employees, orders, materials)
+        seed_company_holidays(db)
         seed_notifications(db, materials, orders, employees, tasks)
         logger.info("Seed complete.")
     finally:

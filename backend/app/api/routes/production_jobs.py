@@ -13,6 +13,13 @@ from app.utils.id_generator import generate_unique_code, generate_short_id
 
 router = APIRouter(prefix="/api/production-jobs", tags=["production-jobs"])
 
+# Matching DailyTask's exact established pattern: any employee can
+# update the direct work-progress fields on any job (jobs are visible
+# to everyone, not restricted to the assigned operator) - but planning
+# fields (stage, remarks, which employee/machine is assigned) remain
+# master-only.
+EMPLOYEE_SELF_SERVICE_FIELDS = {"status", "completed_qty", "blocker_reason"}
+
 
 @router.get("/", response_model=List[ProductionJobResponse])
 def list_production_jobs(order_id: Optional[int] = Query(None), machine: Optional[str] = Query(None),
@@ -59,7 +66,21 @@ def update_production_job(job_id: int, data: ProductionJobUpdate, db: Session = 
     job = db.query(ProductionJob).filter(ProductionJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    for field, value in data.dict(exclude_unset=True).items():
+    role = auth.get("role", "user")
+    update_data = data.dict(exclude_unset=True)
+
+    if role not in ("master",):
+        disallowed = set(update_data.keys()) - EMPLOYEE_SELF_SERVICE_FIELDS
+        if disallowed:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You can only update: {', '.join(sorted(EMPLOYEE_SELF_SERVICE_FIELDS))}. "
+                       f"Not allowed to change: {', '.join(sorted(disallowed))}.",
+            )
+
+    if update_data.get("status") == "Completed" and job.status != "Completed":
+        update_data["completion_date"] = datetime.utcnow()
+    for field, value in update_data.items():
         setattr(job, field, value)
     db.add(job)
     db.commit()

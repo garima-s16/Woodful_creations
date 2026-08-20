@@ -24,3 +24,4 @@ class Client(BaseModel):
     remarks = Column(Text, nullable=True)
 
     orders = relationship("Order", back_populates="client")
+    documents = relationship("ClientDocument", back_populates="client", cascade="all, delete-orphan")

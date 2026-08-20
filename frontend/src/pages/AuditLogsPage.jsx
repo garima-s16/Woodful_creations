@@ -30,7 +30,10 @@ function AuditLogsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Audit Logs</h1>
+        <div>
+          <h1>Audit Logs</h1>
+          <p className="page-summary">A record of who changed what, and when, across the system.</p>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <form className="page-search" onSubmit={handleFilter}>

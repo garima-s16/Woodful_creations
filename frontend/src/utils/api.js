@@ -24,12 +24,29 @@ export const authAPI = {
   login: (identifier, password) => client.post('/api/auth/login', { identifier, password }),
   logout: () => client.post('/api/auth/logout'),
   me: () => client.get('/api/auth/me'),
+  forgotPassword: (identifier) => client.post('/api/auth/forgot-password', { identifier }),
+  resetPassword: (token, newPassword) => client.post('/api/auth/reset-password', { token, new_password: newPassword }),
 };
 
 export const dashboardAPI = {
   stock: () => client.get('/api/dashboard/stock'),
   orders: () => client.get('/api/dashboard/orders'),
   staff: () => client.get('/api/dashboard/staff'),
+};
+
+export const analyticsAPI = {
+  sales: (months) => client.get('/api/analytics/sales', { params: { months } }),
+  inventory: () => client.get('/api/analytics/inventory'),
+  purchases: (months) => client.get('/api/analytics/purchases', { params: { months } }),
+  production: () => client.get('/api/analytics/production'),
+  projects: () => client.get('/api/analytics/projects'),
+  tasks: () => client.get('/api/analytics/tasks'),
+  payments: (months) => client.get('/api/analytics/payments', { params: { months } }),
+  expenses: (months) => client.get('/api/analytics/expenses', { params: { months } }),
+  workforce: () => client.get('/api/analytics/workforce'),
+  operations: () => client.get('/api/analytics/operations'),
+  alerts: () => client.get('/api/analytics/alerts'),
+  whatsChanged: () => client.get('/api/analytics/whats-changed'),
 };
 
 export const suppliersAPI = {
@@ -46,6 +63,9 @@ export const materialsAPI = {
   create: (data) => client.post('/api/materials/', data),
   update: (id, data) => client.put(`/api/materials/${id}`, data),
   remove: (id) => client.delete(`/api/materials/${id}`),
+  // Family 5 "intelligent defaults" - existing backend interpreter,
+  // just exposed to the material creation form.
+  interpretName: (name) => client.get('/api/materials/interpret-name', { params: { name } }),
 };
 
 export const materialCategoriesAPI = {
@@ -67,6 +87,7 @@ export const supplierMaterialsAPI = {
 export const stockAPI = {
   transfer: (data) => client.post('/api/stock/transfers', data),
   adjust: (data) => client.post('/api/stock/adjustments', data),
+  locationStock: (materialId) => client.get(`/api/stock/locations/${materialId}`),
 };
 
 export const purchaseImportAPI = {
@@ -122,6 +143,7 @@ export const clientsAPI = {
   create: (data) => client.post('/api/clients/', data),
   update: (id, data) => client.put(`/api/clients/${id}`, data),
   remove: (id) => client.delete(`/api/clients/${id}`),
+  checkDuplicates: (name) => client.get('/api/clients/check-duplicates', { params: { name } }),
 };
 
 export const ordersAPI = {
@@ -131,12 +153,37 @@ export const ordersAPI = {
   update: (id, data) => client.put(`/api/orders/${id}`, data),
   profitability: (id) => client.get(`/api/orders/${id}/profitability`),
   aiReports: (id) => client.get(`/api/orders/${id}/ai-reports`),
+  // Family 11 - project communication: comments tied to this order,
+  // and the merged chronological activity timeline (comments + task
+  // comments for its tasks + milestones + relevant notifications).
+  listComments: (id) => client.get(`/api/orders/${id}/comments`),
+  addComment: (id, data) => client.post(`/api/orders/${id}/comments`, data),
+  activity: (id, params) => client.get(`/api/orders/${id}/activity`, { params }),
+};
+
+export const communicationAPI = {
+  // Family 11 - searches actual communication content (task/order
+  // comments, client activity, notifications), not just master-record
+  // names/codes like /api/search.
+  search: (q) => client.get('/api/communication/search', { params: { q } }),
+  // Rule-based extractive summary/action-items/unanswered-items over
+  // an order's or client's recorded communication - never a real LLM,
+  // see communication_ai_service.py.
+  insights: (entityType, entityId) => client.post('/api/communication/insights', {
+    entity_type: entityType, entity_id: entityId,
+  }),
+  // Template-filled draft for the user to review and send themselves -
+  // nothing is ever sent automatically.
+  draft: (entityType, entityId, purpose, detail) => client.post('/api/communication/draft', {
+    entity_type: entityType, entity_id: entityId, purpose, detail,
+  }),
 };
 
 export const paymentsAPI = {
   list: (params) => client.get('/api/payments/', { params }),
   create: (data) => client.post('/api/payments/', data),
   update: (id, data) => client.put(`/api/payments/${id}`, data),
+  remove: (id) => client.delete(`/api/payments/${id}`),
 };
 
 export const projectExpensesAPI = {
@@ -202,6 +249,10 @@ export const estimatesAPI = {
 export const clientActivitiesAPI = {
   list: (params) => client.get('/api/client-activities/', { params }),
   create: (data) => client.post('/api/client-activities/', data),
+  update: (id, data) => client.put(`/api/client-activities/${id}`, data),
+  remove: (id) => client.delete(`/api/client-activities/${id}`),
+  pendingFollowUps: (params) => client.get('/api/client-activities/follow-ups', { params }),
+  completeFollowUp: (id) => client.patch(`/api/client-activities/${id}/complete-follow-up`),
 };
 
 export const candidatesAPI = {
@@ -230,6 +281,8 @@ export const salarySlipsAPI = {
   list: (params) => client.get('/api/salary-slips/', { params }),
   create: (data) => client.post('/api/salary-slips/', data),
   update: (id, data) => client.put(`/api/salary-slips/${id}`, data),
+  attendanceSummary: (employeeId, month, year) =>
+    client.get('/api/salary-slips/attendance-summary', { params: { employee_id: employeeId, month, year } }),
 };
 
 export const searchAPI = {
@@ -253,6 +306,50 @@ export const auditLogsAPI = {
 
 export const reportsAPI = {
   downloadUrl: (path) => `${API_URL}/api/reports/${path}`,
+};
+
+export const documentsAPI = {
+  list: (parentType, parentId) => client.get(`/api/documents/${parentType}/${parentId}`),
+  upload: (parentType, parentId, file, description) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (description) formData.append('description', description);
+    return client.post(`/api/documents/${parentType}/${parentId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  downloadUrl: (parentType, parentId, documentId) =>
+    `${API_URL}/api/documents/${parentType}/${parentId}/${documentId}/download`,
+  remove: (parentType, parentId, documentId) =>
+    client.delete(`/api/documents/${parentType}/${parentId}/${documentId}`),
+};
+
+export const clientDocumentsAPI = {
+  list: (clientId) => client.get(`/api/clients/${clientId}/documents`),
+  upload: (clientId, file, description) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (description) formData.append('description', description);
+    return client.post(`/api/clients/${clientId}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  downloadUrl: (clientId, documentId) => `${API_URL}/api/clients/${clientId}/documents/${documentId}/download`,
+  remove: (clientId, documentId) => client.delete(`/api/clients/${clientId}/documents/${documentId}`),
+};
+
+export const paymentDocumentsAPI = {
+  list: (paymentId) => client.get(`/api/payments/${paymentId}/documents`),
+  upload: (paymentId, file, description) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (description) formData.append('description', description);
+    return client.post(`/api/payments/${paymentId}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  downloadUrl: (paymentId, documentId) => `${API_URL}/api/payments/${paymentId}/documents/${documentId}/download`,
+  remove: (paymentId, documentId) => client.delete(`/api/payments/${paymentId}/documents/${documentId}`),
 };
 
 export default client;

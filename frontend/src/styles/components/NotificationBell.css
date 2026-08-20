@@ -46,8 +46,8 @@
 .notification-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .notif-dot-critical { background: var(--danger, #9c3d31); }
 .notif-dot-warning { background: var(--color-gold); }
-.notif-dot-success { background: #2e7d32; }
-.notif-dot-info { background: #5b7ea6; }
+.notif-dot-success { background: var(--success); }
+.notif-dot-info { background: var(--info); }
 
 .notification-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .notification-item-text strong { font-size: 0.85rem; }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { attendanceAPI, employeesAPI } from '../utils/api';
+import { attendanceAPI, employeesAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
@@ -15,6 +15,11 @@ function monthKey(dateStr) {
 function monthLabel(key) {
   const [year, month] = key.split('-');
   return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function monthNameOnly(key) {
+  const [year, month] = key.split('-');
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
 }
 
 function AttendancePage() {
@@ -103,11 +108,35 @@ function AttendancePage() {
     { name: 'remarks', label: 'Remarks' },
   ];
 
+  const attendanceExportUrl = (overtimeOnly = false) => {
+    const params = new URLSearchParams();
+    if (employeeFilter) params.set('employee_id', employeeFilter);
+    if (monthFilter) {
+      const [year] = monthFilter.split('-');
+      params.set('month', monthNameOnly(monthFilter));
+      params.set('year', year);
+    }
+    if (overtimeOnly) params.set('overtime_only', 'true');
+    const qs = params.toString();
+    return reportsAPI.downloadUrl(`attendance.xlsx${qs ? `?${qs}` : ''}`);
+  };
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Attendance</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Mark Attendance</button>
+        <div>
+          <h1>Attendance</h1>
+          <p className="page-summary">Log daily attendance and track Half Day/Absent records for payroll.</p>
+        </div>
+        <div className="page-actions">
+          <a className="btn-secondary" href={attendanceExportUrl()} target="_blank" rel="noreferrer">
+            {employeeFilter || monthFilter ? 'Export Filtered' : 'Export All'}
+          </a>
+          <a className="btn-secondary" href={attendanceExportUrl(true)} target="_blank" rel="noreferrer">
+            Export Overtime
+          </a>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Mark Attendance</button>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <form className="page-search" onSubmit={(e) => e.preventDefault()}>

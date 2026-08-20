@@ -9,11 +9,19 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.core.audit import log_action, serializable_fields
 from app.models.order import Order
+from app.models.order_comment import OrderComment
 from app.models.ai_workspace_report import AIWorkspaceReport
 from app.models.order_item import OrderItem
 from app.models.estimate import Estimate
+from app.models.daily_task import DailyTask
+from app.models.task_comment import TaskComment
+from app.models.milestone import Milestone
+from app.models.notification import Notification
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse
+from app.schemas.order_comment import OrderCommentCreate, OrderCommentResponse
 from app.services.order_service import OrderService
+from app.services.notification_service import NotificationService
+from app.services.mention_service import notify_mentions
 from app.utils.id_generator import generate_unique_code, generate_short_id
 from datetime import datetime, timedelta
 
@@ -106,6 +114,10 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
         source_estimate = db.query(Estimate).filter(Estimate.id == data.from_estimate_id).first()
         if not source_estimate:
             raise HTTPException(status_code=404, detail="Source estimate not found")
+        if source_estimate.status == "rejected":
+            raise HTTPException(status_code=400, detail="This estimate was rejected and cannot be converted into an order.")
+        if source_estimate.order_id:
+            raise HTTPException(status_code=400, detail="This estimate has already been converted to an order.")
 
     if source_estimate and source_estimate.line_items:
         # Copy items from the estimate's line items rather than re-enter
@@ -188,8 +200,8 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         db.flush()
         order.order_value = sum((i.amount for i in new_items), Decimal("0"))
 
-    if "order_value" in update_fields or data.items is not None:
-        order.balance = (order.order_value or Decimal("0")) - (order.total_received or Decimal("0"))
+    if data.items is not None or "order_value" in update_fields:
+        order.recompute_totals()
 
     db.add(order)
     db.commit()
@@ -235,3 +247,82 @@ def list_order_ai_reports(order_id: int, db: Session = Depends(get_db), auth=Dep
             "findings": findings, "created_at": r.created_at,
         })
     return result
+
+
+# --------------------------------------------------------------------- #
+# Family 11 - project communication (order-level comments) and the
+# order's activity timeline (comments + task comments for its tasks +
+# milestone events + relevant notifications, merged and time-ordered).
+# --------------------------------------------------------------------- #
+@router.get("/{order_id}/comments", response_model=List[OrderCommentResponse])
+def list_order_comments(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    if not db.query(Order).filter(Order.id == order_id).first():
+        raise HTTPException(status_code=404, detail="Order not found")
+    return db.query(OrderComment).filter(OrderComment.order_id == order_id).order_by(OrderComment.date.asc()).all()
+
+
+@router.post("/{order_id}/comments", response_model=OrderCommentResponse, status_code=201)
+def add_order_comment(order_id: int, data: OrderCommentCreate, db: Session = Depends(get_db),
+                       auth=Depends(get_current_user)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    comment = OrderComment(order_id=order_id, author=auth.get("email") or "Unknown", text=data.text,
+                            date=datetime.utcnow())
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    notify_mentions(
+        db, text=data.text, comment_id=comment.id, source_type="order_comment",
+        entity_type="order", entity_id=order_id,
+        title=f"Mentioned in project {order.order_code}", action_path=f"/orders/{order_id}",
+        excluded_user_id=auth.get("user_id"),
+    )
+    return comment
+
+
+@router.get("/{order_id}/activity")
+def get_order_activity(order_id: int, limit: int = Query(100, ge=1, le=500),
+                        db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """A single chronological feed of everything tied to this project -
+    project comments, comments on its tasks, milestones reached, and
+    notifications about it (task overdue, project delayed, ...) - so
+    "what's been happening on this order" doesn't mean checking four
+    separate screens. Financial notifications (e.g. a payment-overdue
+    alert for this order) are filtered through the exact same
+    NotificationService.visible_to used everywhere else notifications
+    are shown - an employee opening this timeline sees the same set of
+    notifications they'd see in their own notification panel, never
+    more."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    role = auth.get("role", "user")
+    entries = []
+
+    for c in db.query(OrderComment).filter(OrderComment.order_id == order_id).all():
+        entries.append({"type": "order_comment", "date": c.date, "author": c.author, "text": c.text,
+                         "path": f"/orders/{order_id}"})
+
+    task_ids = [t.id for t in db.query(DailyTask.id).filter(DailyTask.order_id == order_id).all()]
+    if task_ids:
+        for tc in db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).all():
+            entries.append({"type": "task_comment", "date": tc.date, "author": tc.author, "text": tc.text,
+                             "path": f"/daily-tasks/{tc.task_id}"})
+
+    for ms in db.query(Milestone).filter(Milestone.order_id == order_id).all():
+        if ms.completed_date:
+            entries.append({"type": "milestone_completed", "date": ms.completed_date, "author": None,
+                             "text": f"Milestone completed: {ms.name}", "path": f"/orders/{order_id}"})
+
+    notif_query = NotificationService.visible_to(
+        db.query(Notification).filter(Notification.related_entity_type == "order",
+                                       Notification.related_entity_id == order_id),
+        auth.get("user_id"), role,
+    )
+    for n in notif_query.all():
+        entries.append({"type": "notification", "date": n.created_at, "author": None,
+                         "text": f"{n.title}: {n.message}", "path": n.action_path or f"/orders/{order_id}"})
+
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    return entries[:limit]

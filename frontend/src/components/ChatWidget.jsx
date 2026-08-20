@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { chatAPI, paymentsAPI, materialsAPI } from '../utils/api';
+import { chatAPI, paymentsAPI, materialsAPI, employeesAPI, reportsAPI, ordersAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
 import { clearPendingMessage } from '../redux/slices/chatUiSlice';
 import { addToCart } from '../redux/slices/cartSlice';
@@ -24,6 +24,20 @@ function contextualGreetingSuggestion(params, pathname, cartOpen) {
   return null;
 }
 
+// Family 4 - budget-aware suggestion for a project (order) page, layered
+// on top of contextualGreetingSuggestion above rather than replacing it
+// (that function's existing behavior - e.g. "Summarize this order" -
+// is left untouched). budgetSuggestion is only ever a value the caller
+// already resolved from the real backend profitability figure (or null
+// while it's loading / unavailable) - this function never decides
+// over-budget itself, it only decides whether/where to slot the
+// already-decided suggestion in.
+function buildContextualSuggestions(params, pathname, cartOpen, budgetSuggestion) {
+  const primary = contextualGreetingSuggestion(params, pathname, cartOpen);
+  const extras = params.orderId && budgetSuggestion ? [budgetSuggestion] : [];
+  return [primary, ...extras].filter(Boolean);
+}
+
 function ChatWidget() {
   const params = useParams();
   const location = useLocation();
@@ -33,13 +47,21 @@ function ChatWidget() {
   const cartItems = useSelector((state) => state.cart.items);
   const pendingCommand = useSelector((state) => state.chatUi.pendingMessage);
   const [open, setOpen] = useState(false);
+  // Family 4 - resolved from the EXISTING master-only profitability
+  // endpoint (same one the order detail page's own profitability panel
+  // already calls), never recomputed here. null means "not known yet /
+  // not applicable" (still loading, no order in context, or a non-master
+  // viewer the endpoint itself returned 403 for) - in every one of those
+  // cases buildContextualSuggestions above simply omits the budget
+  // suggestion rather than guessing.
+  const [budgetSuggestion, setBudgetSuggestion] = useState(null);
   const [messages, setMessages] = useState(() => {
     const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
-    const contextual = contextualGreetingSuggestion(params, location.pathname, cartOpen);
+    const contextual = buildContextualSuggestions(params, location.pathname, cartOpen, null);
     return [{
       role: 'assistant',
       text: 'Hi, I\'m the Woodful Assistant. Ask me about stock, orders, clients, payments, or staff.',
-      suggestions: contextual ? [contextual, ...base] : base,
+      suggestions: [...contextual, ...base],
     }];
   });
   const [input, setInput] = useState('');
@@ -54,6 +76,55 @@ function ChatWidget() {
     );
     return () => clearInterval(interval);
   }, [loading]);
+
+  // Woodful's data model has no genuine planned/project-budget field -
+  // order_value is the order's price, not a declared cost ceiling, so
+  // "over budget" is not something the figures below can actually
+  // support (a project can be profitable and still have cost more than
+  // planned, or vice versa - see OrderService.profitability). This uses
+  // the same OrderService.profitability() figures the order detail
+  // page's own profitability panel displays - never a second/independent
+  // calculation, and never a hardcoded order id or boolean - but only
+  // ever phrases the suggestion in terms of profitability, never
+  // "budget", so the UI never claims something the data can't back up.
+  // A 403 (a "user"-role viewer, per the existing master-only permission
+  // on this endpoint) or any other failure just clears the suggestion -
+  // the financial detail behind it stays exactly as restricted as it
+  // already was on the order detail page.
+  useEffect(() => {
+    if (!params.orderId) {
+      setBudgetSuggestion(null);
+      return undefined;
+    }
+    let cancelled = false;
+    ordersAPI.profitability(params.orderId).then((res) => {
+      if (cancelled) return;
+      const runningAtALoss = Number(res.data?.estimated_gross_profit) < 0;
+      setBudgetSuggestion(runningAtALoss
+        ? 'Why is this project running at a loss?'
+        : "How is this project's profitability tracking?");
+    }).catch(() => {
+      if (!cancelled) setBudgetSuggestion(null);
+    });
+    return () => { cancelled = true; };
+  }, [params.orderId]);
+
+  // The initial greeting's contextual suggestions were only ever computed
+  // once at mount (useState's lazy initializer never re-runs) - it never
+  // reflected the page the user navigated to afterward, nor a budget
+  // suggestion that resolves asynchronously after the page loads. This
+  // refreshes it on every navigation and whenever the budget suggestion
+  // above resolves, but only while the chat is still untouched (just the
+  // greeting, no real conversation yet) - never rewrites an actual
+  // conversation the user has already had.
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length !== 1 || prev[0].role !== 'assistant') return prev;
+      const base = ['Check Low Stock', 'Show Outstanding Payments', 'Show Active Orders', "Today's Tasks"];
+      const contextual = buildContextualSuggestions(params, location.pathname, cartOpen, budgetSuggestion);
+      return [{ ...prev[0], suggestions: [...contextual, ...base] }];
+    });
+  }, [location.pathname, params, cartOpen, budgetSuggestion]);
   const [pending, setPending] = useState(null);
   const [lastEntity, setLastEntity] = useState(null);
   const endRef = useRef(null);
@@ -84,6 +155,7 @@ function ChatWidget() {
     const PARAM_TO_RECORD_TYPE = [
       ['orderId', 'order'], ['clientId', 'client'], ['materialId', 'material'],
       ['employeeId', 'employee'], ['supplierId', 'supplier'], ['taskId', 'task'],
+      ['estimateId', 'estimate'],
     ];
     const activeParam = PARAM_TO_RECORD_TYPE.find(([param]) => params[param]);
     const context = {
@@ -122,6 +194,7 @@ function ChatWidget() {
   const ACTION_EXECUTORS = {
     record_payment: { execute: (payload) => paymentsAPI.create(payload), successText: 'recorded.' },
     create_material: { execute: (payload) => materialsAPI.create(payload), successText: 'added to Material Master.' },
+    create_employee: { execute: (payload) => employeesAPI.create(payload), successText: 'added as an employee.' },
     add_to_cart: {
       execute: (payload) => dispatch(addToCart(payload)).unwrap(),
       successText: 'added to your cart.',
@@ -205,7 +278,9 @@ function ChatWidget() {
                               {r.actions.map((a, ai) => (
                                 <button
                                   key={ai} className="chat-record-action-btn"
-                                  onClick={() => navigate(a.path)}
+                                  onClick={() => (a.download_path
+                                    ? window.open(reportsAPI.downloadUrl(a.download_path), '_blank')
+                                    : navigate(a.path))}
                                 >
                                   {a.label}
                                 </button>

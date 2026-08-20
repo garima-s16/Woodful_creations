@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Text
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import BaseModel
@@ -15,5 +15,10 @@ class ClientActivity(BaseModel):
     date = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     summary = Column(Text, nullable=False)
     logged_by = Column(String(255), nullable=True)
+    follow_up_date = Column(DateTime, nullable=True, index=True)
+    # Lets a resolved follow-up drop out of the pending-follow-ups list
+    # instead of resurfacing forever. Irrelevant when follow_up_date is
+    # unset (a plain note/log entry has nothing to "complete").
+    follow_up_done = Column(Boolean, nullable=False, default=False)
 
     client = relationship("Client")

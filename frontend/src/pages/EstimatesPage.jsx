@@ -125,7 +125,10 @@ function EstimatesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Estimates</h1>
+        <div>
+          <h1>Estimates</h1>
+          <p className="page-summary">Prepare and track client quotations before they convert to orders.</p>
+        </div>
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>New Estimate</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

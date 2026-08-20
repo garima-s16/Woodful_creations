@@ -1,7 +1,7 @@
 import React from 'react';
 import './Table.css';
 
-const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No records yet.' }) => {
+const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No records yet.', emptyAction }) => {
   if (loading) {
     return (
       <div className="table-container">
@@ -32,7 +32,16 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
   }
 
   if (!data || data.length === 0) {
-    return <div className="table-empty">{emptyMessage}</div>;
+    return (
+      <div className="table-empty">
+        <p className="table-empty-message">{emptyMessage}</p>
+        {emptyAction && (
+          <button type="button" className="btn-primary table-empty-action" onClick={emptyAction.onClick}>
+            {emptyAction.label}
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (

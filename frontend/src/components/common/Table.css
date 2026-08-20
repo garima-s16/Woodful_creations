@@ -64,6 +64,9 @@
   font-size: 0.9rem;
 }
 
+.table-empty-message { margin: 0; }
+.table-empty-action { margin-top: var(--space-4); }
+
 .skeleton-row td { padding: 14px 16px; }
 
 .skeleton-bar {

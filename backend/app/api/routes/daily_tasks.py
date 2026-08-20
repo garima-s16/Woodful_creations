@@ -11,6 +11,7 @@ from app.models.daily_task import DailyTask
 from app.models.task_comment import TaskComment
 from app.models.user import User
 from app.services.notification_service import NotificationService
+from app.services.mention_service import notify_mentions
 from app.schemas.daily_task import (
     DailyTaskCreate, DailyTaskUpdate, DailyTaskResponse, CompleteAndAssignNext,
     TaskCommentCreate, TaskCommentResponse,
@@ -105,6 +106,8 @@ def update_daily_task(task_id: int, data: DailyTaskUpdate, db: Session = Depends
 
     if update_data.get("status") == "DONE":
         update_data["completion_percent"] = 100
+        if task.status != "DONE":
+            update_data["actual_completed_at"] = datetime.utcnow()
 
     status_changed = "status" in update_data and update_data["status"] != task.status
 
@@ -185,7 +188,8 @@ def list_task_comments(task_id: int, db: Session = Depends(get_db), auth=Depends
 @router.post("/{task_id}/comments", response_model=TaskCommentResponse, status_code=201)
 def add_task_comment(task_id: int, data: TaskCommentCreate, db: Session = Depends(get_db),
                       auth=Depends(get_current_user)):
-    if not db.query(DailyTask).filter(DailyTask.id == task_id).first():
+    task = db.query(DailyTask).filter(DailyTask.id == task_id).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     comment = TaskComment(
         task_id=task_id, author=auth.get("email") or "Unknown", text=data.text, date=datetime.utcnow(),
@@ -193,4 +197,14 @@ def add_task_comment(task_id: int, data: TaskCommentCreate, db: Session = Depend
     db.add(comment)
     db.commit()
     db.refresh(comment)
+    # Family 11 - @mentions in a task comment notify the mentioned user
+    # directly (never a broadcast - a mention is addressed to one
+    # person). Best-effort: a malformed/unmatched handle is simply not
+    # notified, never a reason to fail the comment itself.
+    notify_mentions(
+        db, text=data.text, comment_id=comment.id, source_type="task_comment",
+        entity_type="task", entity_id=task_id,
+        title=f"Mentioned in task {task.task_code}", action_path=f"/daily-tasks/{task_id}",
+        excluded_user_id=auth.get("user_id"),
+    )
     return comment

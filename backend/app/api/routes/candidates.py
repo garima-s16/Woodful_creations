@@ -1,5 +1,4 @@
 from typing import List, Optional
-import os
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
@@ -15,6 +14,10 @@ from app.models.candidate import Candidate
 from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateResponse
 from app.utils.id_generator import generate_short_id
 
+from app.utils.validators import validate_file_signature
+from app.core.storage import get_storage_backend
+
+
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
 # Resume uploads use their own narrower allowlist (P7: "PDF, DOC, DOCX")
@@ -26,7 +29,6 @@ RESUME_ALLOWED_MIME_TYPES = {
     "application/msword",  # .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
 }
-RESUME_UPLOAD_DIR = os.path.join(settings.UPLOAD_DIRECTORY, "resumes")
 
 
 @router.get("/", response_model=List[CandidateResponse])
@@ -79,9 +81,7 @@ def update_candidate(candidate_id: int, data: CandidateUpdate, db: Session = Dep
 
 def _delete_stored_resume_file(candidate: Candidate) -> None:
     if candidate.resume_stored_filename:
-        old_path = os.path.join(RESUME_UPLOAD_DIR, candidate.resume_stored_filename)
-        if os.path.exists(old_path):
-            os.remove(old_path)
+        get_storage_backend().delete(candidate.resume_stored_filename)
 
 
 @router.post("/{candidate_id}/resume", response_model=CandidateResponse)
@@ -105,31 +105,35 @@ def upload_resume(candidate_id: int, file: UploadFile = File(...), db: Session =
     if file.content_type not in RESUME_ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"Unrecognized file type: {file.content_type}")
 
-    os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
+    backend = get_storage_backend()
     # A random server-side filename - never the user-supplied one, which
     # could otherwise be used to attempt a path-traversal or to collide
     # with/overwrite another candidate's stored file.
-    stored_filename = f"{secrets.token_hex(16)}.{ext}"
-    stored_path = os.path.join(RESUME_UPLOAD_DIR, stored_filename)
+    stored_filename = f"resumes/{secrets.token_hex(16)}.{ext}"
 
     size = 0
+    first_chunk = True
+    chunks = []
     try:
-        with open(stored_path, "wb") as out:
-            while chunk := file.file.read(1024 * 1024):
-                size += len(chunk)
-                if size > settings.MAX_UPLOAD_SIZE:
-                    out.close()
-                    os.remove(stored_path)
+        while chunk := file.file.read(1024 * 1024):
+            if first_chunk:
+                if not validate_file_signature(ext, chunk):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
+                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
                     )
-                out.write(chunk)
+                first_chunk = False
+            size += len(chunk)
+            if size > settings.MAX_UPLOAD_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
+                )
+            chunks.append(chunk)
+        backend.save(stored_filename, b"".join(chunks))
     except HTTPException:
         raise
     except Exception:
-        if os.path.exists(stored_path):
-            os.remove(stored_path)
         raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
 
     _delete_stored_resume_file(candidate)  # replace, not accumulate, if one already existed
@@ -149,9 +153,10 @@ def download_resume(candidate_id: int, db: Session = Depends(get_db),
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate or not candidate.resume_stored_filename:
         raise HTTPException(status_code=404, detail="No resume file uploaded for this candidate.")
-    file_path = os.path.join(RESUME_UPLOAD_DIR, candidate.resume_stored_filename)
-    if not os.path.exists(file_path):
+    backend = get_storage_backend()
+    if not backend.exists(candidate.resume_stored_filename):
         raise HTTPException(status_code=404, detail="Resume file is missing from storage.")
+    file_path = backend.local_path_for_serving(candidate.resume_stored_filename)
     return FileResponse(
         file_path, media_type=candidate.resume_content_type or "application/octet-stream",
         filename=candidate.resume_original_filename or "resume",

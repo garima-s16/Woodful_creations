@@ -2,12 +2,31 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 
 from app.models.notification import Notification
 from app.models.material import Material
 from app.models.order import Order
 from app.models.purchase import Purchase
 from app.utils.id_generator import generate_short_id
+
+# Notification types whose content is inherently financial - even when
+# broadcast (no specific recipient), only master should see these.
+# Operational broadcasts (LOW_STOCK, OUT_OF_STOCK, PURCHASE_RECEIVED -
+# quantities/materials/suppliers, never a price) are visible to
+# everyone, matching "Employee CAN view stock/material information"
+# from the access-control brief.
+# PURCHASE_RECOMMENDED (Family 13) is a recommendation to spend money on
+# a purchase - same financial-commitment sensitivity as PAYMENT_OVERDUE,
+# and purchases themselves are already master-only (see purchases.py).
+# ESTIMATE_PENDING_RESPONSE (Family 13 gap-fix) is about an Estimate -
+# a financial document whose create/update/revise routes are already
+# require_role("master") in estimates.py - same tier.
+# Lives here (not in the notifications route) so every other place that
+# needs the exact same "can this role see this notification" rule -
+# Family 11's communication search included - imports the one
+# definition rather than re-deriving it.
+FINANCIAL_NOTIFICATION_TYPES = {"PAYMENT_OVERDUE", "PAYMENT_DUE", "PURCHASE_RECOMMENDED", "ESTIMATE_PENDING_RESPONSE"}
 
 
 class NotificationService:
@@ -114,3 +133,21 @@ class NotificationService:
         current state, without needing a background scheduler."""
         NotificationService.check_stock_notifications(db)
         NotificationService.check_payment_overdue_notifications(db)
+
+    @staticmethod
+    def visible_to(query, user_id: Optional[int], role: str):
+        """A notification is visible if it's addressed to this specific
+        user, or it's a broadcast (no specific recipient) whose type
+        isn't financial - financial broadcasts stay master-only even
+        though they have no specific recipient set. The single
+        definition of "who can see this notification" - used for the
+        notification list itself and, unchanged, for Family 11's
+        communication search over notification content."""
+        own = Notification.recipient_user_id == user_id
+        if role in ("master",):
+            return query.filter(or_(own, Notification.recipient_user_id.is_(None)))
+        operational_broadcast = and_(
+            Notification.recipient_user_id.is_(None),
+            Notification.notification_type.notin_(FINANCIAL_NOTIFICATION_TYPES),
+        )
+        return query.filter(or_(own, operational_broadcast))

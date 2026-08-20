@@ -15,14 +15,15 @@ from app.models.material_attribute import MaterialAttributeValue
 from app.models.location import Location
 from app.models.purchase import Purchase
 from app.models.issue import Issue
-from app.schemas.material import MaterialCreate, MaterialUpdate, MaterialResponse
+from app.schemas.material import MaterialCreate, MaterialUpdate, MaterialResponse, MaterialNameInterpretResponse
+from app.utils.material_interpreter import interpret_material_name
 
 
 def _serialize_materials(materials, role: str):
     """Employees can see stock quantities/status/material info, but not
     financial data (average_rate, stock_value) - genuinely nulled here,
     server-side, before the response is built, not merely hidden by the
-    frontend. Master/manager get the real figures unchanged."""
+    frontend. Master accounts get the real figures unchanged."""
     responses = [MaterialResponse.model_validate(m) for m in materials]
     if role not in ("master",):
         for r in responses:
@@ -143,6 +144,16 @@ def _apply_attribute_values(db: Session, material: Material, attribute_values):
             material_id=material.id, attribute_definition_id=item.attribute_definition_id,
             value_text=item.value_text, value_number=item.value_number,
         ))
+
+
+@router.get("/interpret-name", response_model=MaterialNameInterpretResponse)
+def interpret_name(name: str = Query(..., min_length=1), db: Session = Depends(get_db),
+                    auth=Depends(get_current_user)):
+    """Material name -> suggested thickness/category/subcategory, for the
+    material creation form's "intelligent defaults" - typing "HDHMR 6mm"
+    suggests a category if one genuinely matches; never a guess dressed
+    up as a fact (confidence "none" means the form shows nothing)."""
+    return interpret_material_name(db, name)
 
 
 @router.post("/", response_model=MaterialResponse, status_code=201)

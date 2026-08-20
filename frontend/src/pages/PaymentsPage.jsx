@@ -133,7 +133,10 @@ function PaymentsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Payments</h1>
+        <div>
+          <h1>Payments</h1>
+          <p className="page-summary">Record and review payments received against orders.</p>
+        </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('payments.xlsx')} target="_blank" rel="noreferrer">Export</a>
           {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Payment</button>}

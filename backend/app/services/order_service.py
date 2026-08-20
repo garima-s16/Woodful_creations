@@ -11,6 +11,11 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.project_expense import ProjectExpense
 from app.models.issue import Issue
+from app.models.order_comment import OrderComment
+from app.models.daily_task import DailyTask
+from app.models.task_comment import TaskComment
+from app.models.milestone import Milestone
+from app.models.notification import Notification
 from app.schemas.payment import PaymentCreate
 from app.utils.id_generator import generate_unique_code, generate_short_id
 

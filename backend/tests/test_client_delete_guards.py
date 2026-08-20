@@ -70,20 +70,20 @@ def test_client_delete_rejects_plain_employee(client, test_user, db_session):
 
 
 def test_client_delete_is_strictly_master_only(client, test_user, db_session):
-    """Global delete rule - only master, not manager, can delete
-    anything anywhere in the app."""
+    """Global delete rule - only master, not any other role, can
+    delete anything anywhere in the app."""
     from app.core.security import hash_password
     from app.models.user import User
 
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Delete Guard Manager Test Client"}).json()
-    manager = User(
-        username="clientdeleteguardmanager", email="clientdeleteguardmanager@example.com", full_name="Client Delete Guard Manager",
-        password_hash=hash_password("ManagerPass1!"), role="manager", is_active=True,
+    created = client.post("/api/clients/", json={"name": "Delete Guard Non-Master Test Client"}).json()
+    non_master = User(
+        username="clientdeleteguarduser", email="clientdeleteguarduser@example.com", full_name="Client Delete Guard User",
+        password_hash=hash_password("UserPass1!"), role="user", is_active=True,
     )
-    db_session.add(manager)
+    db_session.add(non_master)
     db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "clientdeleteguardmanager@example.com", "password": "ManagerPass1!"})
+    client.post("/api/auth/login", json={"identifier": "clientdeleteguarduser@example.com", "password": "UserPass1!"})
 
     resp = client.delete(f"/api/clients/{created['id']}")
     assert resp.status_code == 403

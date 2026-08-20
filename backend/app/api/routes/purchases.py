@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.security import require_role
 from app.core.audit import log_action, serializable_fields
 from app.models.purchase import Purchase
-from app.schemas.purchase import PurchaseCreate, PurchaseUpdate, PurchaseResponse
+from app.schemas.purchase import PurchaseCreate, PurchaseUpdate, PurchaseResponse, PurchaseReceiveRequest
 from app.services.stock_service import StockService
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
@@ -65,12 +65,20 @@ def update_purchase(purchase_id: int, data: PurchaseUpdate, request: Request, db
 
 
 @router.post("/{purchase_id}/receive", response_model=PurchaseResponse)
-def receive_purchase(purchase_id: int, request: Request, db: Session = Depends(get_db),
+def receive_purchase(purchase_id: int, data: Optional[PurchaseReceiveRequest] = None,
+                      request: Request = None, db: Session = Depends(get_db),
                       auth=Depends(require_role("master"))):
-    """Marks an Ordered purchase as Received - the point stock actually
-    increases. A purchase created as Received already has its stock
-    applied, so this only does anything for the Ordered case."""
-    purchase = StockService.mark_purchase_received(db, purchase_id)
+    """Marks an Ordered/Partially Received purchase toward Received -
+    the point stock actually increases. With no body (or an omitted
+    quantity), receives everything still outstanding, exactly as
+    before. A quantity can be passed to receive only part of the
+    order, moving it to "Partially Received" until the rest arrives."""
+    quantity_to_receive = data.quantity if data else None
+    receive_location_id = data.location_id if data else None
+    purchase = StockService.mark_purchase_received(db, purchase_id, quantity_to_receive, receive_location_id)
     log_action(db, request, user_id=auth.get("user_id"), action="receive_purchase", module_name="purchases",
-               record_id=purchase.id, new_value={"material_id": purchase.material_id, "receipt_status": purchase.receipt_status})
+               record_id=purchase.id, new_value={
+                   "material_id": purchase.material_id, "receipt_status": purchase.receipt_status,
+                   "quantity_received": float(purchase.quantity_received or 0),
+               })
     return purchase

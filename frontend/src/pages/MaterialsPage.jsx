@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { materialsAPI, materialCategoriesAPI, locationsAPI, suppliersAPI, reportsAPI } from '../utils/api';
@@ -60,6 +60,19 @@ function MaterialsPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Family 5 - "intelligent defaults" for the Add Material form. The
+  // interpretation itself lives entirely in the backend
+  // (materialsAPI.interpretName -> existing material_interpreter.py);
+  // this is only the suggestion box + the two refs used to apply it
+  // into the existing Form/MaterialAttributesEditor without turning
+  // either into a parent-controlled component.
+  const [nameSuggestion, setNameSuggestion] = useState(null);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const createFormRef = useRef(null);
+  const createAttributesRef = useRef(null);
+  const suggestTimerRef = useRef(null);
+  const suggestRequestIdRef = useRef(0);
 
   const load = (params, pageNum = 1) => {
     const offset = (pageNum - 1) * PAGE_SIZE;
@@ -166,6 +179,51 @@ function MaterialsPage() {
     return list;
   }, [materials, brand, thickness, sort]);
 
+  // Fires on every keystroke in the create form (Form's onFieldChange),
+  // but only the "name" field triggers anything here. Debounced so it
+  // doesn't call the backend on every keystroke, and guarded with a
+  // request id so a slow earlier response can never clobber a newer one.
+  const handleCreateFieldChange = (fieldName, value) => {
+    if (fieldName !== 'name') return;
+    setSuggestionDismissed(false);
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    const typed = (value || '').trim();
+    if (typed.length < 3) {
+      setNameSuggestion(null);
+      return;
+    }
+    suggestTimerRef.current = setTimeout(() => {
+      const requestId = ++suggestRequestIdRef.current;
+      materialsAPI.interpretName(typed).then((res) => {
+        if (requestId !== suggestRequestIdRef.current) return; // superseded by a newer keystroke
+        // Confidence "none" means the interpreter genuinely has nothing
+        // to go on - do nothing gracefully, not an error.
+        if (res.data && res.data.confidence !== 'none') {
+          setNameSuggestion({ ...res.data, for_name: typed });
+        } else {
+          setNameSuggestion(null);
+        }
+      }).catch(() => setNameSuggestion(null));
+    }, 400);
+  };
+
+  const applyNameSuggestion = () => {
+    if (!nameSuggestion) return;
+    if (nameSuggestion.thickness_size) {
+      createFormRef.current?.setValue('thickness_size', nameSuggestion.thickness_size);
+    }
+    if (nameSuggestion.subcategory_id) {
+      createAttributesRef.current?.applySuggestedSubcategory(nameSuggestion.subcategory_id);
+    }
+    setSuggestionDismissed(true);
+  };
+
+  const resetCreateSuggestionState = () => {
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    setNameSuggestion(null);
+    setSuggestionDismissed(false);
+  };
+
   const handleCreate = async (formData) => {
     setLoading(true);
     setError('');
@@ -182,6 +240,7 @@ function MaterialsPage() {
       });
       setShowAdd(false);
       setHierarchySelection({ subcategoryId: null, attributeValues: [] });
+      resetCreateSuggestionState();
       applyServerFilters();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to add material');
@@ -471,9 +530,24 @@ function MaterialsPage() {
         </>
       )}
 
-      <Modal isOpen={showAdd} title="Add Material" onClose={() => { setShowAdd(false); setHierarchySelection({ subcategoryId: null, attributeValues: [] }); }}>
-        <MaterialAttributesEditor onChange={setHierarchySelection} />
-        <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Material" />
+      <Modal isOpen={showAdd} title="Add Material" onClose={() => { setShowAdd(false); setHierarchySelection({ subcategoryId: null, attributeValues: [] }); resetCreateSuggestionState(); }}>
+        {nameSuggestion && !suggestionDismissed && (
+          <div className="material-suggestion-box">
+            <div className="material-suggestion-text">
+              <strong>{nameSuggestion.for_name}</strong> looks like{' '}
+              {nameSuggestion.subcategory_name
+                ? <>a <strong>{nameSuggestion.subcategory_name}</strong>{nameSuggestion.category_name ? ` (${nameSuggestion.category_name})` : ''}</>
+                : 'a known material'}
+              {nameSuggestion.thickness_size ? <>, <strong>{nameSuggestion.thickness_size}</strong> thick</> : ''}.
+            </div>
+            <div className="material-suggestion-actions">
+              <button type="button" className="btn-secondary btn-small" onClick={applyNameSuggestion}>Use this</button>
+              <button type="button" className="btn-link" onClick={() => setSuggestionDismissed(true)}>Dismiss</button>
+            </div>
+          </div>
+        )}
+        <MaterialAttributesEditor ref={createAttributesRef} onChange={setHierarchySelection} />
+        <Form ref={createFormRef} fields={createFields} onSubmit={handleCreate} onFieldChange={handleCreateFieldChange} loading={loading} submitText="Add Material" />
       </Modal>
       <Modal isOpen={!!editingMaterial} title={`Edit ${editingMaterial?.name || ''}`} onClose={() => { setEditingMaterial(null); setHierarchySelection({ subcategoryId: null, attributeValues: [] }); }}>
         {editingMaterial && (

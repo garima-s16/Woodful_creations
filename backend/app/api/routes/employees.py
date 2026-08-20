@@ -18,7 +18,7 @@ def _serialize_employees(employees, role: str, own_employee_id):
     """monthly_salary/daily_wage/pan/uan/bank details are confidential
     HR/payroll data (the same category as salary slips), not general
     directory info - genuinely nulled for every record except the
-    requester's own, for non-privileged roles. Master/manager see
+    requester's own, for non-privileged roles. Master accounts see
     everyone's."""
     responses = [EmployeeResponse.model_validate(e) for e in employees]
     if role not in ("master",):

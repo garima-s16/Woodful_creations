@@ -31,6 +31,14 @@ from app.api.routes import salary_slips
 from app.api.routes import chat
 from app.api.routes import users
 from app.api.routes import audit_logs
+from app.api.routes import working_calendar
+from app.api.routes import milestones
+from app.api.routes import documents
+from app.api.routes import agents
+from app.api.routes import integrations
+from app.api.routes import automation
+from app.api.routes import communication
+from app.api.routes import analytics
 
 all_routers = [
     auth.router,
@@ -66,4 +74,12 @@ all_routers = [
     chat.router,
     users.router,
     audit_logs.router,
+    working_calendar.router,
+    milestones.router,
+    documents.router,
+    agents.router,
+    integrations.router,
+    automation.router,
+    communication.router,
+    analytics.router,
 ]

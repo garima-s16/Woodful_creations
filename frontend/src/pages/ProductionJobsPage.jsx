@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { productionJobsAPI, employeesAPI, ordersAPI, materialsAPI } from '../utils/api';
+import { productionJobsAPI, employeesAPI, ordersAPI, materialsAPI, settingsAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -13,6 +13,7 @@ function ProductionJobsPage() {
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [stages, setStages] = useState([]);
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingJob, setEditingJob] = useState(null);
@@ -26,6 +27,7 @@ function ProductionJobsPage() {
     employeesAPI.list().then((res) => setEmployees(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
     materialsAPI.list().then((res) => setMaterials(res.data));
+    settingsAPI.list('production-stages').then((res) => setStages(res.data)).catch(() => setStages([]));
   };
   useEffect(load, []);
 
@@ -89,6 +91,8 @@ function ProductionJobsPage() {
     { name: 'date', label: 'Date', type: 'date', required: true, section: 'Job & Machine' },
     { name: 'machine', label: 'Machine', section: 'Job & Machine' },
     { name: 'operation', label: 'Operation', section: 'Job & Machine' },
+    { name: 'stage', label: 'Stage', type: 'select', section: 'Job & Machine',
+      options: stages.map((s) => ({ value: s.name, label: s.name })) },
     { name: 'employee_id', label: 'Operator', type: 'select', section: 'Assignment', options: employees.map((e) => ({ value: e.id, label: e.name })) },
     { name: 'order_id', label: 'Project (Order)', type: 'select', section: 'Assignment', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'material_id', label: 'Material', type: 'select', section: 'Assignment', options: materials.map((m) => ({ value: m.id, label: m.name })) },
@@ -98,6 +102,7 @@ function ProductionJobsPage() {
 
   const editFields = [
     { name: 'completed_qty', label: 'Completed Quantity', type: 'number', required: true },
+    { name: 'stage', label: 'Stage', type: 'select', options: stages.map((s) => ({ value: s.name, label: s.name })) },
     { name: 'status', label: 'Status', type: 'select', required: true, options: [
       { value: 'Not Started', label: 'Not Started' }, { value: 'In Progress', label: 'In Progress' },
       { value: 'Completed', label: 'Completed' },
@@ -108,8 +113,16 @@ function ProductionJobsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Production Jobs</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Create Production Job</button>
+        <div>
+          <h1>Production Jobs</h1>
+          <p className="page-summary">Track work through cutting, assembly, and finishing on the shop floor.</p>
+        </div>
+        <div className="page-actions">
+          <a className="btn-secondary" href={reportsAPI.downloadUrl('production.xlsx')} target="_blank" rel="noreferrer">
+            Export Production
+          </a>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Create Production Job</button>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={jobs} loading={pageLoading} onRowClick={(row) => navigate(`/production-jobs/${row.id}`)} emptyMessage="No production jobs recorded yet." />

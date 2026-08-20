@@ -10,20 +10,40 @@
   font-size: 0.9rem; font-family: var(--font-body); color: var(--text-primary);
   background: var(--surface); transition: border-color var(--transition);
 }
-.form-input:focus { outline: none; border-color: var(--color-gold); box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15); }
+.form-input:focus { outline: none; border-color: var(--color-gold); box-shadow: var(--focus-ring); }
 .form-input.error { border-color: var(--danger); }
-.form-input-readonly { background: var(--light-bg, #f5f5f5); color: var(--text-secondary, #666); cursor: not-allowed; }
+/* Was falling back to light-theme colors (#f5f5f5 bg / #666 text) that
+   the dark palette migration never reached, since --light-bg and
+   --text-secondary are always defined and the fallback never fires -
+   using the dark-surface tokens directly instead. */
+.form-input-readonly { background: var(--color-charcoal-elevated); color: var(--text-secondary); cursor: not-allowed; }
 
 .form-hint { font-size: 0.75rem; color: var(--text-secondary); }
 .error-message { font-size: 0.78rem; color: var(--danger); }
 
+/* Same visual role as .btn-primary (the one submit action per form) -
+   kept as its own class since many pages already reference btn-submit,
+   but restyled to match so a form's submit button and a page's primary
+   button no longer look like two different products. */
 .btn-submit {
-  padding: 11px 24px; border: none; border-radius: var(--radius-sm);
-  background: var(--color-ink); color: var(--color-ivory); font-weight: 600;
+  padding: 11px 24px; border: 1px solid var(--color-gold); border-radius: var(--radius-sm);
+  background: var(--color-gold); color: var(--color-ink); font-weight: 600;
   font-size: 0.88rem; cursor: pointer; transition: all var(--transition);
 }
-.btn-submit:hover:not(:disabled) { background: var(--color-charcoal); }
-.btn-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-submit:hover:not(:disabled) { background: var(--color-gold-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-submit:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-submit:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+.form-advanced-toggle {
+  background: none; border: none; padding: 4px 0; margin: -8px 0 4px;
+  color: var(--color-gold-soft); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; text-align: left; align-self: flex-start;
+  transition: color var(--transition);
+}
+.form-advanced-toggle:hover { color: var(--color-gold); }
+.form-advanced-toggle:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+.form-advanced-section { display: flex; flex-direction: column; gap: var(--space-5); }
 
 /* Multi-step wizard */
 .form-wizard { gap: var(--space-5); }
@@ -51,3 +71,10 @@
 .review-value { font-weight: 600; }
 
 .wizard-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+
+@media (max-width: 768px) {
+  /* iOS Safari auto-zooms the page on focusing any input/textarea/select
+     with a font-size under 16px - genuinely disruptive on every form in
+     the app until fixed here, not merely cosmetic. */
+  .form-input { font-size: 16px; }
+}

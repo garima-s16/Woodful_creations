@@ -57,6 +57,8 @@
 }
 .nav-item.active .nav-item-icon { opacity: 1; color: var(--color-gold); }
 
+.sidebar-backdrop { display: none; }
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -69,4 +71,12 @@
   }
   .sidebar.open { transform: translateX(0); }
   .sidebar.closed { display: block; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 60px 0 0 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 98;
+  }
 }

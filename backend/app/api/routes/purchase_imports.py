@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import zipfile
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 from datetime import datetime
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import require_role
 from app.models.material import Material
 from app.models.supplier import Supplier
@@ -13,7 +15,9 @@ from app.schemas.purchase_import import (
 )
 from app.services.stock_service import StockService
 from app.utils.id_generator import generate_unique_code, generate_short_id
-from app.utils.purchase_import import build_import_template, parse_uploaded_workbook, validate_and_match_row
+from app.utils.purchase_import import (
+    build_import_template, parse_uploaded_workbook, validate_and_match_row, normalize_match_key,
+)
 
 router = APIRouter(prefix="/api/purchase-imports", tags=["purchase-imports"])
 
@@ -33,13 +37,38 @@ def preview_import(file: UploadFile = File(...), db: Session = Depends(get_db),
     """Parses and validates the uploaded file - never writes anything to
     the database. The user reviews this, resolves any unmatched
     materials, and only then calls /commit."""
+    original_name = file.filename or "import"
+    ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if ext != "xlsx":
+        raise HTTPException(status_code=400, detail=f"File must be a .xlsx workbook (got .{ext or 'unknown'}).")
+    allowed_mime_types = {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+    if file.content_type not in allowed_mime_types:
+        raise HTTPException(status_code=400, detail=f"Unrecognized file type: {file.content_type}")
+
+    file_bytes = bytearray()
+    while chunk := file.file.read(1024 * 1024):
+        file_bytes.extend(chunk)
+        if len(file_bytes) > settings.MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
+            )
     try:
-        raw_rows = parse_uploaded_workbook(file.file.read())
+        raw_rows = parse_uploaded_workbook(bytes(file_bytes))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except zipfile.BadZipFile:
+        raise HTTPException(
+            status_code=400,
+            detail="Couldn't read this file - please upload a valid .xlsx file using the downloaded template.",
+        )
 
-    materials_by_name = {m.name.strip().lower(): m for m in db.query(Material).all()}
-    suppliers_by_name = {s.name.strip().lower(): s for s in db.query(Supplier).all()}
+    # Same normalize_match_key used when a row's typed name is looked up
+    # (validate_and_match_row) - so whitespace/case differences on
+    # either side never prevent a genuine match, without this ever
+    # becoming fuzzy matching that could pick the wrong record.
+    materials_by_name = {normalize_match_key(m.name): m for m in db.query(Material).all()}
+    suppliers_by_name = {normalize_match_key(s.name): s for s in db.query(Supplier).all()}
 
     preview_rows = []
     matched_count = 0

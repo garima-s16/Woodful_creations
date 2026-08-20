@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { issuesAPI, materialsAPI, ordersAPI, reportsAPI } from '../utils/api';
+import { issuesAPI, materialsAPI, ordersAPI, reportsAPI, locationsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -12,6 +12,7 @@ function IssuesPage() {
   const [issues, setIssues] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,7 @@ function IssuesPage() {
     issuesAPI.list().then((res) => setIssues(res.data)).finally(() => setPageLoading(false));
     materialsAPI.list().then((res) => setMaterials(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
+    locationsAPI.list().then((res) => setLocations(res.data)).catch(() => setLocations([]));
   };
   useEffect(load, []);
 
@@ -33,6 +35,7 @@ function IssuesPage() {
         ...formData,
         material_id: Number(formData.material_id),
         order_id: formData.order_id ? Number(formData.order_id) : null,
+        location_id: formData.location_id ? Number(formData.location_id) : null,
         date: new Date(formData.date).toISOString(),
       });
       setShowAdd(false);
@@ -59,6 +62,7 @@ function IssuesPage() {
     { name: 'order_id', label: 'Order (Project)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'quantity_issued', label: 'Quantity Issued', type: 'number', required: true },
     { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
+    { name: 'location_id', label: 'Issue From Location', type: 'select', options: locations.map((l) => ({ value: l.id, label: l.full_path })), placeholder: 'Primary location' },
     { name: 'issued_to', label: 'Issued To' },
     { name: 'department', label: 'Department' },
     { name: 'purpose', label: 'Purpose' },
@@ -68,7 +72,10 @@ function IssuesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Issues (Stock Out)</h1>
+        <div>
+          <h1>Issues (Stock Out)</h1>
+          <p className="page-summary">Record materials issued from stock for production and project use.</p>
+        </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('issues.xlsx')} target="_blank" rel="noreferrer">Export</a>
           {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Issue</button>}

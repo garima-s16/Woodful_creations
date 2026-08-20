@@ -67,22 +67,21 @@ def test_regular_user_asking_for_margin_also_denied(client, test_user, db_sessio
     assert "master accounts only" in chat_resp.json()["response"].lower()
 
 
-def test_manager_role_is_now_denied_like_any_employee(client, test_user, db_session):
-    """Final role model - only master has privileged access. Manager
-    is no longer automatically privileged and must be denied exactly
-    like a plain employee."""
+def test_non_master_role_is_denied_profit_access(client, test_user, db_session):
+    """Only master has privileged access to profit data - any
+    non-master role must be denied exactly like a plain employee."""
     _login(client, test_user)
     employee = client.post("/api/employees/", json={
-        "name": "Manager RBAC Employee", "monthly_salary": "20000", "daily_wage": "800",
+        "name": "Non-Master RBAC Employee", "monthly_salary": "20000", "daily_wage": "800",
     }).json()
-    manager_user = User(
-        username="managerrbacuser", email="managerrbacuser@example.com", full_name="Manager User",
-        password_hash=hash_password("ManagerPass1!"), role="manager", employee_id=employee["id"], is_active=True,
+    non_master_user = User(
+        username="nonmasterrbacuser", email="nonmasterrbacuser@example.com", full_name="Non-Master RBAC User",
+        password_hash=hash_password("UserPass1!"), role="user", employee_id=employee["id"], is_active=True,
     )
-    db_session.add(manager_user)
+    db_session.add(non_master_user)
     db_session.commit()
 
-    resp = client.post("/api/auth/login", json={"identifier": "managerrbacuser@example.com", "password": "ManagerPass1!"})
+    resp = client.post("/api/auth/login", json={"identifier": "nonmasterrbacuser@example.com", "password": "UserPass1!"})
     assert resp.status_code == 200
 
     chat_resp = client.post("/api/chat/", json={"message": "What is our overall profit margin?"})

@@ -1,7 +1,6 @@
 ROLE_PERMISSIONS = {
     "master": ["view_all", "edit_all", "delete_all", "manage_users", "view_payments", "view_employees"],
-    "employee": ["view_own", "edit_own", "log_attendance"],
-    "user": ["view_limited", "create_orders"]
+    "user": ["view_limited", "create_orders"],
 }
 
 STATUS_CHOICES = {
@@ -21,7 +20,7 @@ ALERT_TYPES = {
     "PENDING_APPROVAL": "Estimate pending approval"
 }
 
-USER_ROLES = ["master", "employee", "user"]
+USER_ROLES = ["master", "user"]
 DEFAULT_ROLE = "user"
 MASTER_ROLE = "master"
 

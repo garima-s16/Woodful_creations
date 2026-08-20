@@ -13,7 +13,7 @@ from app.schemas.setting import LookupCreate, LookupUpdate, LookupResponse
 from app.models.setting import (
     Unit, StockStatus, StockPaymentStatus, SupplierTerm,
     Department, TaskStatus, AttendanceStatus, Machine,
-    ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory,
+    ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory, ProductionStage,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -40,6 +40,7 @@ LOOKUP_MODELS = {
     "lead-sources": LeadSource,
     "project-types": ProjectType,
     "expense-categories": ExpenseCategory,
+    "production-stages": ProductionStage,
 }
 
 

@@ -81,7 +81,10 @@ function SettingsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Settings</h1>
+        <div>
+          <h1>Settings</h1>
+          <p className="page-summary">Manage the dropdown values used throughout the system.</p>
+        </div>
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)} disabled={!selected}>Add Value</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

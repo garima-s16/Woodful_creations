@@ -88,22 +88,22 @@ def test_cannot_delete_supplier_with_material_link(client, test_user):
 
 
 def test_material_delete_is_strictly_master_only(client, test_user, db_session):
-    """require_role("master") - a manager (not strictly master) must
-    also be rejected, not just a plain employee."""
+    """require_role("master") - any non-master role must be rejected,
+    not just an obviously-unprivileged account."""
     from app.core.security import hash_password
     from app.models.user import User
 
     _login(client, test_user)
     material = client.post("/api/materials/", json={
-        "name": "Delete Guard Manager Test Material", "unit": "Sheets", "opening_stock": "5", "minimum_stock": "1",
+        "name": "Delete Guard Non-Master Test Material", "unit": "Sheets", "opening_stock": "5", "minimum_stock": "1",
     }).json()
-    manager = User(
-        username="deleteguardmanager", email="deleteguardmanager@example.com", full_name="Delete Guard Manager",
-        password_hash=hash_password("ManagerPass1!"), role="manager", is_active=True,
+    non_master = User(
+        username="deleteguarduser", email="deleteguarduser@example.com", full_name="Delete Guard User",
+        password_hash=hash_password("UserPass1!"), role="user", is_active=True,
     )
-    db_session.add(manager)
+    db_session.add(non_master)
     db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "deleteguardmanager@example.com", "password": "ManagerPass1!"})
+    client.post("/api/auth/login", json={"identifier": "deleteguarduser@example.com", "password": "UserPass1!"})
 
     resp = client.delete(f"/api/materials/{material['id']}")
     assert resp.status_code == 403

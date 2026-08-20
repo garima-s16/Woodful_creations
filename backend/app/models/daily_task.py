@@ -15,11 +15,13 @@ class DailyTask(BaseModel):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
     task_description = Column(String(500), nullable=False)
+    task_category = Column(String(50), nullable=True)  # e.g. Cutting/Assembly/Installation - distinct from the free-text description
     priority = Column(String(20), nullable=True)
     planned_start = Column(Time, nullable=True)
     planned_end = Column(Time, nullable=True)
     status = Column(String(20), nullable=False, default="TO DO", index=True)
     completion_percent = Column(Integer, nullable=False, default=0)
+    actual_completed_at = Column(DateTime, nullable=True)  # set when the task is actually marked DONE, not merely planned_end
     checked_by = Column(String(255), nullable=True)
     delay_reason = Column(String(255), nullable=True)  # doubles as the "blocked" reason
     remarks = Column(Text, nullable=True)

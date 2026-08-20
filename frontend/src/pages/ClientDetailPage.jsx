@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI, clientActivitiesAPI } from '../utils/api';
+import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI, clientActivitiesAPI, communicationAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { formatCurrency } from '../utils/currency';
 import { today } from '../utils/dates';
 
@@ -15,6 +16,7 @@ function ClientDetailPage() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
+  const isStrictlyMaster = user?.role === 'master';
   const canViewFinancials = user?.role === 'master';
   const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments', 'Activity'] : ['Overview', 'Orders', 'Estimates', 'Activity'];
   const [client, setClient] = useState(null);
@@ -26,6 +28,14 @@ function ClientDetailPage() {
   const [activeAction, setActiveAction] = useState(null); // 'order' | 'estimate' | 'payment' | 'activity'
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
+  // Family 11 - AI summary of this client's communication history
+  // (rule-based extractive summary, never a real LLM call - see
+  // communication_ai_service.py).
+  const [insights, setInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [editingActivity, setEditingActivity] = useState(null);
+  const [pendingDeleteActivity, setPendingDeleteActivity] = useState(null);
+  const [pendingDeletePayment, setPendingDeletePayment] = useState(null);
 
   const load = useCallback(() => {
     clientsAPI.get(clientId).then((res) => setClient(res.data)).catch(() => setClient(null));
@@ -83,10 +93,43 @@ function ClientDetailPage() {
     try {
       await clientActivitiesAPI.create({
         ...formData, client_id: Number(clientId), date: new Date(formData.date).toISOString(),
+        follow_up_date: formData.follow_up_date ? new Date(formData.follow_up_date).toISOString() : null,
       });
       closeAction(); load();
     } catch (err) { setActionError(err.response?.data?.detail || 'Failed to log activity'); }
     finally { setActionLoading(false); }
+  };
+
+  const handleUpdateActivity = async (formData) => {
+    setActionLoading(true); setActionError('');
+    try {
+      await clientActivitiesAPI.update(editingActivity.id, {
+        ...formData, date: new Date(formData.date).toISOString(),
+        follow_up_date: formData.follow_up_date ? new Date(formData.follow_up_date).toISOString() : null,
+      });
+      setEditingActivity(null); load();
+    } catch (err) { setActionError(err.response?.data?.detail || 'Failed to update activity'); }
+    finally { setActionLoading(false); }
+  };
+
+  const confirmDeleteActivity = async () => {
+    try {
+      await clientActivitiesAPI.remove(pendingDeleteActivity.id);
+      setPendingDeleteActivity(null); load();
+    } catch (err) {
+      setActionError(err.response?.data?.detail || 'Failed to delete activity');
+      setPendingDeleteActivity(null);
+    }
+  };
+
+  const confirmDeletePayment = async () => {
+    try {
+      await paymentsAPI.remove(pendingDeletePayment.id);
+      setPendingDeletePayment(null); load();
+    } catch (err) {
+      setActionError(err.response?.data?.detail || 'Failed to delete payment');
+      setPendingDeletePayment(null);
+    }
   };
 
   if (!client) return <div className="page">Loading...</div>;
@@ -181,6 +224,11 @@ function ClientDetailPage() {
             { key: 'order_id', label: 'Order', render: (v) => orders.find((o) => o.id === v)?.order_code || v },
             { key: 'payment_type', label: 'Type' }, { key: 'payment_mode', label: 'Mode' },
             { key: 'amount', label: 'Amount', render: formatCurrency },
+            {
+              key: 'delete_action', label: '', render: (v, row) => (
+                <button className="btn-link" onClick={(e) => { e.stopPropagation(); setPendingDeletePayment(row); }}>Delete</button>
+              ),
+            },
           ]}
           data={payments}
           emptyMessage="No payments recorded for this client yet."
@@ -193,10 +241,95 @@ function ClientDetailPage() {
             { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleString() },
             { key: 'activity_type', label: 'Type' }, { key: 'summary', label: 'Summary' },
             { key: 'logged_by', label: 'Logged By' },
+            {
+              key: 'follow_up_date', label: 'Follow-up',
+              render: (v, row) => {
+                if (!v) return '-';
+                if (row.follow_up_done) return <span style={{ color: 'var(--text-secondary)' }}>Done \u2713</span>;
+                const overdue = new Date(v) < new Date();
+                return (
+                  <span>
+                    <span className={overdue ? 'follow-up-overdue' : ''}>{new Date(v).toLocaleDateString()}</span>
+                    {' '}
+                    <button
+                      className="btn-link"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await clientActivitiesAPI.completeFollowUp(row.id);
+                        load();
+                      }}
+                    >
+                      Mark Done
+                    </button>
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'edit_action', label: '', render: (v, row) => (
+                <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingActivity(row); }}>Edit</button>
+              ),
+            },
+            {
+              key: 'delete_action', label: '', render: (v, row) => (
+                isStrictlyMaster ? (
+                  <button className="btn-link" onClick={(e) => { e.stopPropagation(); setPendingDeleteActivity(row); }}>Delete</button>
+                ) : null
+              ),
+            },
           ]}
           data={activities}
           emptyMessage="No activity logged for this client yet. Log calls, meetings, and site visits here."
         />
+      )}
+
+      {tab === 'Activity' && (
+        <Card title="AI Summary (rule-based, not a live language model)">
+          <div className="card-body">
+            <p className="page-summary">
+              Summarizes this client's communication history exactly as logged above - no external AI
+              service is contacted and nothing is invented beyond what was actually recorded.
+            </p>
+            <button
+              className="btn-secondary"
+              onClick={async () => {
+                setInsightsLoading(true); setInsights(null);
+                try {
+                  const res = await communicationAPI.insights('client', clientId);
+                  setInsights(res.data);
+                } catch (err) {
+                  setInsights({ error: err.response?.data?.detail || 'Unable to generate insights.' });
+                } finally {
+                  setInsightsLoading(false);
+                }
+              }}
+              disabled={insightsLoading}
+            >
+              {insightsLoading ? 'Summarizing...' : 'Summarize Communication'}
+            </button>
+            {insights && insights.error && <Alert type="error" message={insights.error} />}
+            {insights && !insights.error && (
+              <div style={{ marginTop: 16 }}>
+                <div className="detail-meta-item">
+                  <span className="detail-meta-label">Summary ({insights.entry_count} entries)</span>
+                  <span className="detail-meta-value">{insights.summary}</span>
+                </div>
+                {insights.action_items?.length > 0 && (
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">Action Items</span>
+                    <ul>{insights.action_items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+                  </div>
+                )}
+                {insights.unanswered_items?.length > 0 && (
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">Unanswered</span>
+                    <ul>{insights.unanswered_items.map((it, i) => <li key={i}>{it}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       <Modal isOpen={activeAction === 'order'} title="Create Order" onClose={closeAction}>
@@ -257,11 +390,50 @@ function ClientDetailPage() {
             { name: 'date', label: 'Date', type: 'date', required: true },
             { name: 'summary', label: 'Summary', type: 'textarea', required: true },
             { name: 'logged_by', label: 'Logged By' },
+            { name: 'follow_up_date', label: 'Follow-up Date (optional)', type: 'date', advanced: true },
           ]}
           onSubmit={handleLogActivity} loading={actionLoading} submitText="Log Activity"
           initialValues={{ date: today(), logged_by: user?.full_name || user?.username || '' }}
         />
       </Modal>
+
+      <Modal isOpen={!!editingActivity} title="Edit Activity" onClose={() => { setEditingActivity(null); setActionError(''); }}>
+        {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
+        {editingActivity && (
+          <Form
+            fields={[
+              { name: 'activity_type', label: 'Activity Type', type: 'select', required: true, options: [
+                { value: 'Call', label: 'Call' }, { value: 'Meeting', label: 'Meeting' },
+                { value: 'Email', label: 'Email' }, { value: 'Site Visit', label: 'Site Visit' }, { value: 'Note', label: 'Note' },
+              ] },
+              { name: 'date', label: 'Date', type: 'date', required: true },
+              { name: 'summary', label: 'Summary', type: 'textarea', required: true },
+              { name: 'logged_by', label: 'Logged By' },
+              { name: 'follow_up_date', label: 'Follow-up Date (optional)', type: 'date', advanced: true },
+            ]}
+            onSubmit={handleUpdateActivity} loading={actionLoading} submitText="Save Changes"
+            initialValues={{
+              ...editingActivity,
+              date: editingActivity.date ? editingActivity.date.slice(0, 10) : '',
+              follow_up_date: editingActivity.follow_up_date ? editingActivity.follow_up_date.slice(0, 10) : '',
+            }}
+          />
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDeleteActivity}
+        message={pendingDeleteActivity ? `Delete this ${pendingDeleteActivity.activity_type?.toLowerCase() || 'activity'} entry? This cannot be undone.` : ''}
+        onConfirm={confirmDeleteActivity}
+        onCancel={() => setPendingDeleteActivity(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={!!pendingDeletePayment}
+        message={pendingDeletePayment ? `Delete payment ${pendingDeletePayment.receipt_code} (${formatCurrency(pendingDeletePayment.amount)})? This cannot be undone.` : ''}
+        onConfirm={confirmDeletePayment}
+        onCancel={() => setPendingDeletePayment(null)}
+      />
     </div>
   );
 }

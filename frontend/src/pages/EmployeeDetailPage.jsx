@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI, ordersAPI } from '../utils/api';
+import { employeesAPI, attendanceAPI, dailyTasksAPI, productionJobsAPI, leavesAPI, ordersAPI, documentsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import DocumentsPanel from '../components/DocumentsPanel';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
@@ -90,7 +91,8 @@ function EmployeeDetailPage() {
 
   const totalHours = attendance.reduce((sum, a) => sum + (a.working_hours || 0), 0);
   const totalOvertime = attendance.reduce((sum, a) => sum + (a.overtime_hours || 0), 0);
-  const completedTasks = tasks.filter((t) => t.status === 'Completed').length;
+  const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
+  const overdueTasks = tasks.filter((t) => t.status !== 'DONE' && new Date(t.date) < new Date(today())).length;
 
   return (
     <div className="page">
@@ -118,6 +120,7 @@ function EmployeeDetailPage() {
           </>
         )}
         <Card><div className="card-body"><div className="detail-meta-label">Tasks Completed</div><h3>{completedTasks}/{tasks.length}</h3></div></Card>
+        <Card><div className="card-body"><div className="detail-meta-label">Overdue Tasks</div><h3 style={overdueTasks > 0 ? { color: 'var(--warning)' } : undefined}>{overdueTasks}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Status</div><h3 style={{ fontSize: '1.1rem' }}>{employee.status}</h3></div></Card>
       </div>
 
@@ -238,6 +241,15 @@ function EmployeeDetailPage() {
           initialValues={{ date: today() }}
         />
       </Modal>
+
+      {isPrivileged && (
+        <DocumentsPanel title="Documents" api={{
+          list: () => documentsAPI.list('employee', employeeId),
+          upload: (file, description) => documentsAPI.upload('employee', employeeId, file, description),
+          downloadUrl: (documentId) => documentsAPI.downloadUrl('employee', employeeId, documentId),
+          remove: (documentId) => documentsAPI.remove('employee', employeeId, documentId),
+        }} canUpload={isPrivileged} />
+      )}
     </div>
   );
 }

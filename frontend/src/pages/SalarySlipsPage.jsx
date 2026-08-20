@@ -78,11 +78,21 @@ function SalarySlipsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Salary Slips</h1>
-        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Generate Salary Slip</button>}
+        <div>
+          <h1>Salary Slips</h1>
+          <p className="page-summary">Generate and review monthly salary slips for employees.</p>
+        </div>
+        {isPrivileged && (
+          <div className="page-actions">
+            <a className="btn-secondary" href={reportsAPI.downloadUrl('payroll.xlsx')} target="_blank" rel="noreferrer">
+              Export Payroll
+            </a>
+            <button className="btn-primary" onClick={() => setShowAdd(true)}>Generate Salary Slip</button>
+          </div>
+        )}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <p style={{ marginBottom: 16, color: '#6b7280', fontSize: '0.85rem' }}>
+      <p style={{ marginBottom: 16, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
         PF/TDS figures are entered manually and are not auto-calculated against statutory slabs -
         confirm with your accountant before finalizing payroll.
       </p>

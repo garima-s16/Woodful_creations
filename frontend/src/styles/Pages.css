@@ -15,19 +15,51 @@
 .page-header h1 { font-size: 1.9rem; font-weight: 600; }
 .page-actions { display: flex; gap: var(--space-3); align-items: center; }
 
-.btn-primary, .btn-secondary {
+.btn-primary, .btn-secondary, .btn-tertiary, .btn-danger {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 10px 20px; border-radius: var(--radius-sm); font-size: 0.85rem;
   font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none;
   text-align: center; letter-spacing: 0.01em; transition: all var(--transition);
 }
-.btn-primary { background: var(--color-ink); color: var(--color-ivory); }
-.btn-primary:hover { background: var(--color-charcoal); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.btn-danger { background: var(--danger); color: var(--color-ivory); border: 1px solid transparent; }
-.btn-danger:hover { background: #7d3128; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+/* Primary = the one gold-filled action per view. Previously this used
+   --color-ink (near-black) on the near-black page background, which
+   made primary CTAs nearly invisible - fixed to use the actual accent
+   color so "primary" reads as obviously primary. */
+.btn-primary { background: var(--color-gold); color: var(--color-ink); border-color: var(--color-gold); }
+.btn-primary:hover { background: var(--color-gold-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-danger { background: var(--danger); color: var(--color-ink); border: 1px solid transparent; }
+.btn-danger:hover { background: #e8998a; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .btn-secondary { background: transparent; color: var(--text-primary); border-color: var(--border-strong); }
 .btn-secondary:hover { background: var(--color-charcoal-elevated); border-color: var(--color-gold); }
+/* Tertiary/ghost - the most recessive button, no border at all, for an
+   action that must not visually compete with a primary or secondary
+   action on the same surface (e.g. "Cancel" next to "Save"). */
+.btn-tertiary { background: transparent; color: var(--text-secondary); border-color: transparent; padding: 10px 14px; }
+.btn-tertiary:hover { background: var(--color-charcoal-elevated); color: var(--text-primary); }
 .btn-link { background: none; border: none; color: var(--color-gold); cursor: pointer; text-decoration: none; padding: 0; font-size: 0.85rem; font-weight: 600; }
+
+.btn-primary:focus-visible, .btn-secondary:focus-visible,
+.btn-tertiary:focus-visible, .btn-danger:focus-visible, .btn-link:focus-visible {
+  outline: none; box-shadow: var(--focus-ring);
+}
+.btn-primary:disabled, .btn-secondary:disabled,
+.btn-tertiary:disabled, .btn-danger:disabled {
+  opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none;
+}
+
+/* Shared icon-only button baseline - 44px minimum matches the mobile
+   touch-target fix already applied to the navbar's icon buttons.
+   Requires aria-label on the button itself for accessibility, since
+   there is no visible text label. */
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0; border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid transparent; color: var(--text-primary);
+  cursor: pointer; transition: all var(--transition);
+}
+.btn-icon:hover { background: var(--color-charcoal-elevated); }
+.btn-icon:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-icon:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none; }
 .btn-link:hover { text-decoration: underline; }
 
 .tab-bar { display: flex; gap: 4px; margin-bottom: var(--space-5); border-bottom: 1px solid var(--border-color); }
@@ -39,7 +71,12 @@
 .tab.active { color: var(--text-primary); border-bottom-color: var(--color-gold); }
 .tab:hover { color: var(--text-primary); }
 
+/* Grid children (Card) also carry their own margin-bottom for
+   standalone use, which stacked on top of this grid's gap and skewed
+   row alignment/spacing - zeroed here so the grid gap is the only
+   source of spacing between KPI cards. */
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+.kpi-row .card { margin-bottom: 0; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-5); margin-bottom: var(--space-5); }
 
 .settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-5); }
@@ -147,6 +184,12 @@
 
 .secondary-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-7); }
 
+.production-pipeline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-2) 0; }
+.pipeline-stage { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 90px; }
+.pipeline-count { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; color: var(--color-gold-soft); }
+.pipeline-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.pipeline-arrow { color: var(--text-secondary); font-size: 1.1rem; opacity: 0.5; }
+
 .dashboard-section { margin-bottom: var(--space-7); }
 .section-heading {
   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
@@ -163,3 +206,16 @@
 .activity-date { color: var(--text-secondary); font-size: 0.78rem; white-space: nowrap; }
 
 .page-summary { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+.duplicate-match-list { list-style: none; margin: 0; padding: 0; }
+.duplicate-match-list li {
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-color); font-size: 0.86rem;
+}
+.duplicate-match-list li:last-child { border-bottom: none; }
+
+.follow-up-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-3); align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 0.86rem;
+}
+.follow-up-row:last-child { border-bottom: none; }
+.follow-up-overdue { color: var(--danger); font-weight: 600; }

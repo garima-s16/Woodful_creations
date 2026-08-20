@@ -1,8 +1,7 @@
-"""Tests for the global delete rule applied this turn - every delete
-endpoint in the app requires strictly master, not master-or-manager.
-Covers the four endpoints that had no dedicated delete-permission test
-at all before this turn: employees, candidate resumes, lookup values,
-and supplier-material links."""
+"""Tests for the global delete rule - every delete endpoint in the app
+requires strictly master. Covers the four endpoints that had no
+dedicated delete-permission test at all before this turn: employees,
+candidate resumes, lookup values, and supplier-material links."""
 from app.core.security import hash_password
 from app.models.user import User
 
@@ -12,39 +11,42 @@ def _login(client, test_user):
     assert resp.status_code == 200
 
 
-def _login_as_manager(client, username, email):
-    manager = User(
+def _login_as_user(client, username, email):
+    """The application has only two roles - master and user. This
+    creates a non-master account to confirm delete endpoints reject
+    it, not an obsolete third role."""
+    user = User(
         username=username, email=email, full_name=username,
-        password_hash=hash_password("ManagerPass1!"), role="manager", is_active=True,
+        password_hash=hash_password("UserPass1!"), role="user", is_active=True,
     )
-    return manager
+    return user
 
 
-def test_employee_delete_rejects_manager(client, test_user, db_session):
+def test_employee_delete_rejects_non_master(client, test_user, db_session):
     _login(client, test_user)
     employee = client.post("/api/employees/", json={"name": "Global Delete Guard Employee", "monthly_salary": "20000"}).json()
-    manager = _login_as_manager(client, "globaldeleteguardmgr1", "globaldeleteguardmgr1@example.com")
-    db_session.add(manager)
+    non_master = _login_as_user(client, "globaldeleteguarduser1", "globaldeleteguarduser1@example.com")
+    db_session.add(non_master)
     db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "globaldeleteguardmgr1@example.com", "password": "ManagerPass1!"})
+    client.post("/api/auth/login", json={"identifier": "globaldeleteguarduser1@example.com", "password": "UserPass1!"})
 
     resp = client.delete(f"/api/employees/{employee['id']}")
     assert resp.status_code == 403
 
 
-def test_lookup_value_delete_rejects_manager(client, test_user, db_session):
+def test_lookup_value_delete_rejects_non_master(client, test_user, db_session):
     _login(client, test_user)
     value = client.post("/api/settings/units", json={"name": "Global Delete Guard Unit"}).json()
-    manager = _login_as_manager(client, "globaldeleteguardmgr2", "globaldeleteguardmgr2@example.com")
-    db_session.add(manager)
+    non_master = _login_as_user(client, "globaldeleteguarduser2", "globaldeleteguarduser2@example.com")
+    db_session.add(non_master)
     db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "globaldeleteguardmgr2@example.com", "password": "ManagerPass1!"})
+    client.post("/api/auth/login", json={"identifier": "globaldeleteguarduser2@example.com", "password": "UserPass1!"})
 
     resp = client.delete(f"/api/settings/units/{value['id']}")
     assert resp.status_code == 403
 
 
-def test_supplier_material_delete_rejects_manager(client, test_user, db_session):
+def test_supplier_material_delete_rejects_non_master(client, test_user, db_session):
     _login(client, test_user)
     supplier = client.post("/api/suppliers/", json={"name": "Global Delete Guard Supplier"}).json()
     material = client.post("/api/materials/", json={
@@ -53,10 +55,10 @@ def test_supplier_material_delete_rejects_manager(client, test_user, db_session)
     link = client.post("/api/supplier-materials/", json={
         "supplier_id": supplier["id"], "material_id": material["id"], "supplier_price": "100.00",
     }).json()
-    manager = _login_as_manager(client, "globaldeleteguardmgr3", "globaldeleteguardmgr3@example.com")
-    db_session.add(manager)
+    non_master = _login_as_user(client, "globaldeleteguarduser3", "globaldeleteguarduser3@example.com")
+    db_session.add(non_master)
     db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "globaldeleteguardmgr3@example.com", "password": "ManagerPass1!"})
+    client.post("/api/auth/login", json={"identifier": "globaldeleteguarduser3@example.com", "password": "UserPass1!"})
 
     resp = client.delete(f"/api/supplier-materials/{link['id']}")
     assert resp.status_code == 403

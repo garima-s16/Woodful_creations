@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI } from '../utils/api';
+import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI, locationsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
 import { today } from '../utils/dates';
+import { statusClass } from '../utils/statusColors';
 
 function PurchasesPage() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ function PurchasesPage() {
   const [purchases, setPurchases] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [locations, setLocations] = useState([]);
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [error, setError] = useState('');
@@ -27,6 +29,7 @@ function PurchasesPage() {
     purchasesAPI.list().then((res) => setPurchases(res.data)).catch(() => setError('You do not have permission to view purchases.')).finally(() => setPageLoading(false));
     suppliersAPI.list().then((res) => setSuppliers(res.data));
     materialsAPI.list().then((res) => setMaterials(res.data));
+    locationsAPI.list().then((res) => setLocations(res.data)).catch(() => setLocations([]));
   };
   useEffect(load, []);
 
@@ -50,6 +53,7 @@ function PurchasesPage() {
         material_id: Number(formData.material_id),
         quantity: formData.quantity, rate: formData.rate,
         gst_percent: formData.gst_percent || '18',
+        location_id: formData.location_id ? Number(formData.location_id) : null,
         date: new Date(formData.date).toISOString(),
       });
       setShowAdd(false);
@@ -70,7 +74,7 @@ function PurchasesPage() {
     { key: 'invoice_total', label: 'Invoice Total', render: (v) => formatCurrency(v) },
     { key: 'payment_status', label: 'Payment Status' },
     { key: 'receipt_status', label: 'Receipt Status', render: (v) => (
-      <span className={`status-badge ${v === 'Ordered' ? 'status-warning' : 'status-ok'}`}>{v}</span>
+      <span className={`status-badge ${statusClass(v)}`}>{v}</span>
     ) },
     { key: 'actions', label: '', render: (_, row) => (
       row.receipt_status === 'Ordered'
@@ -86,6 +90,8 @@ function PurchasesPage() {
     { name: 'quantity', label: 'Quantity', type: 'number', required: true, section: 'Quantity & Cost' },
     { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets', section: 'Quantity & Cost' },
     { name: 'rate', label: 'Rate', type: 'number', required: true, section: 'Quantity & Cost' },
+    { name: 'location_id', label: 'Receiving Location', type: 'select', section: 'Quantity & Cost',
+      options: locations.map((l) => ({ value: l.id, label: l.full_path })), placeholder: "Material's primary location" },
     { name: 'gst_percent', label: 'GST %', type: 'number', placeholder: '18', section: 'Tax' },
     { name: 'payment_status', label: 'Payment Status', type: 'select', section: 'Payment', options: [
       { value: 'Paid', label: 'Paid' }, { value: 'Part Paid', label: 'Part Paid' }, { value: 'Credit', label: 'Credit' },
@@ -99,7 +105,10 @@ function PurchasesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Purchases (Stock In)</h1>
+        <div>
+          <h1>Purchases (Stock In)</h1>
+          <p className="page-summary">Record material receipts from suppliers and keep purchase history in one place.</p>
+        </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('purchases.xlsx')} target="_blank" rel="noreferrer">Export</a>
           {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Purchase</button>}

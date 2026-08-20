@@ -42,6 +42,7 @@
   height: 30px;
   width: auto;
   display: block;
+  filter: brightness(0) invert(1);
 }
 
 .login-brand-content {
@@ -84,10 +85,11 @@
 .login-form-wrap h1 {
   font-size: 2rem;
   margin-bottom: 6px;
+  color: var(--color-ink);
 }
 
 .login-form-subtitle {
-  color: var(--text-secondary);
+  color: rgba(14, 13, 11, 0.65);
   font-size: 0.9rem;
   margin-bottom: var(--space-6);
 }
@@ -105,7 +107,7 @@
 
 .form-group label {
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-ink);
   margin-bottom: 8px;
   font-size: 0.85rem;
 }

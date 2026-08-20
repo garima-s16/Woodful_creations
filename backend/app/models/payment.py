@@ -22,3 +22,4 @@ class Payment(BaseModel):
     remarks = Column(Text, nullable=True)
 
     order = relationship("Order", back_populates="payments")
+    documents = relationship("PaymentDocument", back_populates="payment", cascade="all, delete-orphan")

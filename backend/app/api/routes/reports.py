@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
+from app.core.rate_limit import rate_limit
+from app.core.config import settings
 from app.models.purchase import Purchase
 from app.models.issue import Issue
 from app.models.payment import Payment
@@ -21,13 +23,22 @@ from app.models.estimate import Estimate
 from app.models.salary_slip import SalarySlip
 from app.models.client import Client
 from app.models.employee import Employee
+from app.models.attendance import Attendance
+from app.models.leave import Leave
+from app.models.salary_slip import SalarySlip
 from app.models.daily_task import DailyTask
 from app.models.production_job import ProductionJob
+from app.models.automation_log import AutomationLog
+from app.models.order_comment import OrderComment
+from app.models.task_comment import TaskComment
+from app.models.project_expense import ProjectExpense
 from app.services.order_service import OrderService
 from app.utils.exporters import build_workbook
 from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf, generate_invoice_pdf
 
-router = APIRouter(prefix="/api/reports", tags=["reports"])
+router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[
+    Depends(rate_limit("export", settings.RATE_LIMIT_EXPORT_PER_MINUTE))
+])
 
 
 def _xlsx_response(buffer, filename: str) -> StreamingResponse:
@@ -273,14 +284,306 @@ def export_employees(
     return _xlsx_response(buffer, filename)
 
 
+@router.get("/attendance.xlsx")
+def export_attendance(
+    employee_id: Optional[int] = Query(None), month: Optional[str] = Query(None), year: Optional[str] = Query(None),
+    attendance_status: Optional[str] = Query(None), overtime_only: bool = Query(False),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Attendance export - overtime_only covers "Overtime Excel" as a
+    filtered view of the same data rather than a separate endpoint,
+    since it's the same model with the same columns, just narrowed to
+    records where overtime_hours > 0."""
+    query = db.query(Attendance).options(selectinload(Attendance.employee))
+    filters_applied = []
+    if employee_id:
+        query = query.filter(Attendance.employee_id == employee_id)
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        filters_applied.append(f"Employee: {employee.name if employee else employee_id}")
+    if month and year:
+        try:
+            period_start = datetime.strptime(f"{month} {year}", "%B %Y")
+            last_day = calendar.monthrange(period_start.year, period_start.month)[1]
+            period_end = period_start.replace(day=last_day, hour=23, minute=59, second=59)
+            query = query.filter(Attendance.date >= period_start, Attendance.date <= period_end)
+            filters_applied.append(f"Period: {month} {year}")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="month must be a full month name, e.g. 'August'")
+    if attendance_status:
+        query = query.filter(Attendance.attendance_status == attendance_status)
+        filters_applied.append(f"Status: {attendance_status}")
+
+    records = query.order_by(Attendance.date.desc()).all()
+    if overtime_only:
+        records = [r for r in records if r.overtime_hours > 0]
+        filters_applied.append("Overtime only")
+
+    rows = [{
+        "attendance_id": r.business_id or "", "date": r.date.strftime("%d-%m-%Y") if r.date else "",
+        "employee": r.employee.name if r.employee else "",
+        "in_time": r.in_time.strftime("%H:%M") if r.in_time else "",
+        "out_time": r.out_time.strftime("%H:%M") if r.out_time else "",
+        "standard_hours": float(r.standard_hours or 0), "working_hours": r.working_hours,
+        "overtime_hours": r.overtime_hours, "status": r.attendance_status, "remarks": r.remarks or "",
+    } for r in records]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Records", str(len(records))),
+        ("Total Working Hours", f"{sum(r.working_hours for r in records):.2f}"),
+        ("Total Overtime Hours", f"{sum(r.overtime_hours for r in records):.2f}"),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Overtime" if overtime_only else "Attendance",
+        "title": "OVERTIME REPORT" if overtime_only else "ATTENDANCE REPORT",
+        "columns": ["attendance_id", "date", "employee", "in_time", "out_time", "standard_hours",
+                    "working_hours", "overtime_hours", "status", "remarks"],
+        "headers": ["Attendance ID", "Date", "Employee", "In Time", "Out Time", "Standard Hours",
+                    "Working Hours", "Overtime Hours", "Status", "Remarks"],
+        "rows": rows, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"{'overtime' if overtime_only else 'attendance'}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/leaves.xlsx")
+def export_leaves(
+    employee_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    query = db.query(Leave).options(selectinload(Leave.employee))
+    filters_applied = []
+    if employee_id:
+        query = query.filter(Leave.employee_id == employee_id)
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        filters_applied.append(f"Employee: {employee.name if employee else employee_id}")
+    if status:
+        query = query.filter(Leave.status == status)
+        filters_applied.append(f"Status: {status}")
+
+    records = query.order_by(Leave.start_date.desc()).all()
+    rows = [{
+        "leave_id": r.business_id or "", "employee": r.employee.name if r.employee else "",
+        "leave_type": r.leave_type, "start_date": r.start_date.strftime("%d-%m-%Y") if r.start_date else "",
+        "end_date": r.end_date.strftime("%d-%m-%Y") if r.end_date else "", "days": float(r.days or 0),
+        "status": r.status, "approved_by": r.approved_by or "", "reason": r.reason or "",
+    } for r in records]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Requests", str(len(records))),
+        ("Total Days", f"{sum(float(r.days or 0) for r in records):.1f}"),
+        ("Approved", str(sum(1 for r in records if r.status == "Approved"))),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Leave", "title": "LEAVE REPORT",
+        "columns": ["leave_id", "employee", "leave_type", "start_date", "end_date", "days", "status", "approved_by", "reason"],
+        "headers": ["Leave ID", "Employee", "Type", "Start Date", "End Date", "Days", "Status", "Approved By", "Reason"],
+        "rows": rows, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"leaves_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/payroll.xlsx")
+def export_payroll(
+    employee_id: Optional[int] = Query(None), month: Optional[str] = Query(None), year: Optional[str] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(require_role("master")),
+):
+    """Master-only, matching the same require_role("master") gate the
+    salary-slip routes themselves already use - this must never be
+    reachable by a direct API call from a non-master session, not just
+    hidden from the UI."""
+    query = db.query(SalarySlip).options(selectinload(SalarySlip.employee))
+    filters_applied = []
+    if employee_id:
+        query = query.filter(SalarySlip.employee_id == employee_id)
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        filters_applied.append(f"Employee: {employee.name if employee else employee_id}")
+    if month:
+        query = query.filter(SalarySlip.month == month)
+        filters_applied.append(f"Month: {month}")
+    if year:
+        query = query.filter(SalarySlip.year == year)
+        filters_applied.append(f"Year: {year}")
+
+    records = query.order_by(SalarySlip.year.desc(), SalarySlip.month.desc()).all()
+    rows = [{
+        "slip_id": r.business_id or "", "employee": r.employee.name if r.employee else "",
+        "month": r.month, "year": r.year, "working_days": float(r.working_days or 0),
+        "paid_days": float(r.paid_days or 0), "basic": float(r.basic or 0), "da": float(r.da or 0),
+        "hra": float(r.hra or 0), "overtime_amount": float(r.overtime_amount or 0),
+        "pf_deduction": float(r.pf_deduction or 0), "tds_deduction": float(r.tds_deduction or 0),
+        "other_deductions": float(r.other_deductions or 0), "net_salary": float(r.net_salary or 0),
+        "status": r.status,
+    } for r in records]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Slips", str(len(records))),
+        ("Total Net Payout", f"Rs {sum(float(r.net_salary or 0) for r in records):,.2f}"),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Payroll", "title": "PAYROLL REPORT",
+        "columns": ["slip_id", "employee", "month", "year", "working_days", "paid_days", "basic", "da", "hra",
+                    "overtime_amount", "pf_deduction", "tds_deduction", "other_deductions", "net_salary", "status"],
+        "headers": ["Slip ID", "Employee", "Month", "Year", "Working Days", "Paid Days", "Basic", "DA", "HRA",
+                    "Overtime", "PF Deduction", "TDS Deduction", "Other Deductions", "Net Salary", "Status"],
+        "rows": rows, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"payroll_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/estimates.xlsx")
+def export_estimates(
+    client_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(require_role("master")),
+):
+    query = db.query(Estimate).options(selectinload(Estimate.client))
+    filters_applied = []
+    if client_id:
+        query = query.filter(Estimate.client_id == client_id)
+        client = db.query(Client).filter(Client.id == client_id).first()
+        filters_applied.append(f"Client: {client.name if client else client_id}")
+    if status:
+        query = query.filter(Estimate.status == status)
+        filters_applied.append(f"Status: {status}")
+
+    estimates = query.order_by(Estimate.created_at.desc()).all()
+    rows = [{
+        "estimate_id": e.business_id or "", "estimate_code": e.estimate_code,
+        "client": e.client.name if e.client else "", "version": e.version,
+        "material_cost": float(e.material_cost or 0), "labor_cost": float(e.labor_cost or 0),
+        "discount": float(e.discount or 0), "tax_percent": float(e.tax_percent or 0),
+        "tax_amount": float(e.tax_amount or 0), "total_cost": float(e.total_cost or 0),
+        "status": e.status, "converted_to_order": "Yes" if e.order_id else "No",
+        "valid_until": e.valid_until.strftime("%d-%m-%Y") if e.valid_until else "",
+    } for e in estimates]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Estimates", str(len(estimates))),
+        ("Approved", str(sum(1 for e in estimates if e.status == "approved"))),
+        ("Converted to Orders", str(sum(1 for e in estimates if e.order_id))),
+        ("Total Value", f"Rs {sum(float(e.total_cost or 0) for e in estimates):,.2f}"),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Estimates", "title": "ESTIMATES & QUOTATIONS REPORT",
+        "columns": ["estimate_id", "estimate_code", "client", "version", "material_cost", "labor_cost",
+                    "discount", "tax_percent", "tax_amount", "total_cost", "status", "converted_to_order", "valid_until"],
+        "headers": ["Estimate ID", "Code", "Client", "Version", "Material Cost", "Labor Cost",
+                    "Discount", "Tax %", "Tax Amount", "Total Cost", "Status", "Converted to Order", "Valid Until"],
+        "rows": rows, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"estimates_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/production.xlsx")
+def export_production(
+    employee_id: Optional[int] = Query(None), machine: Optional[str] = Query(None),
+    order_id: Optional[int] = Query(None), stage: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None), date_to: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """One flexible, filterable endpoint covering "Production Jobs",
+    "Daily/Weekly Production" (via date_from/date_to), and
+    "Machine/Operator Work" (via machine/employee_id) - all genuinely
+    the same underlying ProductionJob data with a different filter
+    applied, matching the export_tasks precedent rather than
+    proliferating near-duplicate routes for each named variant."""
+    query = db.query(ProductionJob).options(selectinload(ProductionJob.employee), selectinload(ProductionJob.order))
+    filters_applied = []
+    if employee_id:
+        query = query.filter(ProductionJob.employee_id == employee_id)
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        filters_applied.append(f"Operator: {employee.name if employee else employee_id}")
+    if machine:
+        query = query.filter(ProductionJob.machine == machine)
+        filters_applied.append(f"Machine: {machine}")
+    if order_id:
+        query = query.filter(ProductionJob.order_id == order_id)
+        order = db.query(Order).filter(Order.id == order_id).first()
+        filters_applied.append(f"Order: {order.order_code if order else order_id}")
+    if stage:
+        query = query.filter(ProductionJob.stage == stage)
+        filters_applied.append(f"Stage: {stage}")
+    if date_from:
+        query = query.filter(ProductionJob.date >= date_from)
+        filters_applied.append(f"From: {date_from.strftime('%d-%m-%Y')}")
+    if date_to:
+        query = query.filter(ProductionJob.date <= date_to)
+        filters_applied.append(f"To: {date_to.strftime('%d-%m-%Y')}")
+
+    jobs = query.order_by(ProductionJob.date.desc()).all()
+    rows = [{
+        "job_id": j.business_id or "", "date": j.date.strftime("%d-%m-%Y") if j.date else "",
+        "operator": j.employee.name if j.employee else "", "order": j.order.order_code if j.order else "",
+        "machine": j.machine or "", "stage": j.stage or "", "operation": j.operation or "",
+        "planned_qty": j.planned_qty, "completed_qty": j.completed_qty, "status": j.status,
+        "completion_date": j.completion_date.strftime("%d-%m-%Y") if j.completion_date else "",
+        "remarks": j.remarks or "",
+    } for j in jobs]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [
+        ("Total Jobs", str(len(jobs))),
+        ("Completed", str(sum(1 for j in jobs if j.status == "Completed"))),
+        ("Total Planned Qty", str(sum(j.planned_qty for j in jobs))),
+        ("Total Completed Qty", str(sum(j.completed_qty for j in jobs))),
+    ]
+
+    buffer = build_workbook([{
+        "sheet_name": "Production", "title": "PRODUCTION REPORT",
+        "columns": ["job_id", "date", "operator", "order", "machine", "stage", "operation",
+                    "planned_qty", "completed_qty", "status", "completion_date", "remarks"],
+        "headers": ["Job ID", "Date", "Operator", "Order", "Machine", "Stage", "Operation",
+                    "Planned Qty", "Completed Qty", "Status", "Completion Date", "Remarks"],
+        "rows": rows, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"production_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
 @router.get("/tasks.xlsx")
-def export_tasks(db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def export_tasks(employee_id: Optional[int] = Query(None), order_id: Optional[int] = Query(None),
+                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """Tasks & Production export - no financial fields exist on either
     model, so no role-based redaction is needed, matching "everyone can
-    view tasks" for the Tasks sheet."""
-    tasks = db.query(DailyTask).options(
-        selectinload(DailyTask.employee), selectinload(DailyTask.order)
-    ).order_by(DailyTask.date.desc()).all()
+    view tasks" for the Tasks sheet. employee_id covers "Employee-wise
+    Tasks Excel", order_id covers "Project Tasks Excel" - one flexible,
+    filterable endpoint rather than three separate routes for what's
+    the same underlying data with a different filter applied."""
+    task_query = db.query(DailyTask).options(selectinload(DailyTask.employee), selectinload(DailyTask.order))
+    job_query = db.query(ProductionJob).options(selectinload(ProductionJob.employee), selectinload(ProductionJob.order))
+    filters_applied = []
+    if employee_id:
+        task_query = task_query.filter(DailyTask.employee_id == employee_id)
+        job_query = job_query.filter(ProductionJob.employee_id == employee_id)
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        filters_applied.append(f"Employee: {employee.name if employee else employee_id}")
+    if order_id:
+        task_query = task_query.filter(DailyTask.order_id == order_id)
+        job_query = job_query.filter(ProductionJob.order_id == order_id)
+        order = db.query(Order).filter(Order.id == order_id).first()
+        filters_applied.append(f"Order: {order.order_code if order else order_id}")
+
+    tasks = task_query.order_by(DailyTask.date.desc()).all()
     task_rows = [{
         "task_id": t.business_id or "", "date": t.date.strftime("%d-%m-%Y") if t.date else "",
         "employee": t.employee.name if t.employee else "", "task": t.task_description,
@@ -289,9 +592,7 @@ def export_tasks(db: Session = Depends(get_db), auth=Depends(get_current_user)):
         "delay_reason": t.delay_reason or "", "remarks": t.remarks or "",
     } for t in tasks]
 
-    jobs = db.query(ProductionJob).options(
-        selectinload(ProductionJob.employee), selectinload(ProductionJob.order)
-    ).order_by(ProductionJob.date.desc()).all()
+    jobs = job_query.order_by(ProductionJob.date.desc()).all()
     job_rows = [{
         "job_id": p.business_id or "", "date": p.date.strftime("%d-%m-%Y") if p.date else "",
         "employee": p.employee.name if p.employee else "", "order": p.order.order_code if p.order else "",
@@ -299,17 +600,21 @@ def export_tasks(db: Session = Depends(get_db), auth=Depends(get_current_user)):
         "status": p.status,
     } for p in jobs]
 
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+
     buffer = build_workbook([
         {"sheet_name": "Tasks", "title": "STAFF TASKS",
          "columns": ["task_id", "date", "employee", "task", "order", "priority", "status",
                      "completion_percent", "delay_reason", "remarks"],
          "headers": ["Task ID", "Date", "Employee", "Task", "Order", "Priority", "Status",
                      "Completion %", "Delay Reason", "Remarks"],
-         "rows": task_rows},
+         "rows": task_rows, "subtitle": subtitle},
         {"sheet_name": "Production", "title": "PRODUCTION JOBS",
          "columns": ["job_id", "date", "employee", "order", "operation", "planned_qty", "completed_qty", "status"],
          "headers": ["Job ID", "Date", "Operator", "Order", "Operation", "Planned Qty", "Completed Qty", "Status"],
-         "rows": job_rows},
+         "rows": job_rows, "subtitle": subtitle},
     ])
     filename = f"tasks_production_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return _xlsx_response(buffer, filename)
@@ -340,6 +645,126 @@ def export_order_profitability(db: Session = Depends(get_db), auth=Depends(requi
                                "total_columns": ["order_value", "total_received", "pending_payment",
                                                   "project_expenses", "material_cost", "estimated_gross_profit"]}])
     return _xlsx_response(buffer, "order-profitability.xlsx")
+
+
+@router.get("/orders.xlsx")
+def export_orders(
+    status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Family 12 - Sales/Orders Register export. Mirrors GET /api/orders/'s
+    status/client_id filters. Financial columns (order value, received,
+    balance) are master-only, exactly matching the redaction
+    _serialize_orders already applies on-screen for a non-master viewer -
+    export inherits the same scope as the list view, never more."""
+    is_privileged = auth.get("role", "user") in ("master",)
+    query = db.query(Order).options(selectinload(Order.client))
+    filters_applied = []
+    if status:
+        query = query.filter(Order.project_status == status)
+        filters_applied.append(f"Status: {status}")
+    if client_id:
+        query = query.filter(Order.client_id == client_id)
+        client_obj = db.query(Client).filter(Client.id == client_id).first()
+        filters_applied.append(f"Client: {client_obj.name if client_obj else client_id}")
+
+    orders = query.order_by(Order.order_date.desc()).all()
+    rows = []
+    for o in orders:
+        row = {
+            "order_id": o.business_id or "", "order_code": o.order_code,
+            "client": o.client.name if o.client else "", "project_type": o.project_type or "",
+            "order_date": o.order_date.strftime("%d-%m-%Y") if o.order_date else "",
+            "delivery_date": o.delivery_date.strftime("%d-%m-%Y") if o.delivery_date else "",
+            "status": o.project_status, "progress_percent": o.progress_percent,
+        }
+        if is_privileged:
+            row["order_value"] = float(o.order_value or 0)
+            row["total_received"] = float(o.total_received or 0)
+            row["balance"] = float(o.balance or 0)
+        rows.append(row)
+
+    columns = ["order_id", "order_code", "client", "project_type", "order_date", "delivery_date",
+               "status", "progress_percent"]
+    headers = ["Order ID", "Order Code", "Client", "Project Type", "Order Date", "Delivery Date",
+               "Status", "Progress %"]
+    total_columns = []
+    if is_privileged:
+        columns[6:6] = ["order_value", "total_received", "balance"]
+        headers[6:6] = ["Order Value", "Total Received", "Balance"]
+        total_columns = ["order_value", "total_received", "balance"]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    summary = [("Total Orders", str(len(orders)))]
+    if is_privileged:
+        summary.append(("Total Order Value", f"Rs {sum(r['order_value'] for r in rows):,.2f}"))
+        summary.append(("Total Outstanding", f"Rs {sum(r['balance'] for r in rows):,.2f}"))
+
+    buffer = build_workbook([{
+        "sheet_name": "Orders", "title": "SALES / ORDERS REGISTER",
+        "columns": columns, "headers": headers, "rows": rows,
+        "total_columns": total_columns, "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"orders_register_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/project-expenses.xlsx")
+def export_project_expenses(
+    order_id: Optional[int] = Query(None), category: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None), end_date: Optional[str] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(require_role("master")),
+):
+    """Family 12 - Expense Register export. Master-only, matching
+    project_expenses.py's own require_role("master") gate - every field
+    on ProjectExpense is financial, so there is no partial/redacted view."""
+    query = db.query(ProjectExpense).options(selectinload(ProjectExpense.order))
+    filters_applied = []
+    if order_id:
+        query = query.filter(ProjectExpense.order_id == order_id)
+        order = db.query(Order).filter(Order.id == order_id).first()
+        filters_applied.append(f"Order: {order.order_code if order else order_id}")
+    if category:
+        query = query.filter(ProjectExpense.category == category)
+        filters_applied.append(f"Category: {category}")
+    if start_date:
+        query = query.filter(ProjectExpense.date >= datetime.fromisoformat(start_date))
+        filters_applied.append(f"From {start_date}")
+    if end_date:
+        query = query.filter(ProjectExpense.date <= datetime.fromisoformat(end_date))
+        filters_applied.append(f"To {end_date}")
+
+    expenses = query.order_by(ProjectExpense.date.desc()).all()
+    rows = [{
+        "expense_id": e.business_id or "", "expense_code": e.expense_code,
+        "date": e.date.strftime("%d-%m-%Y") if e.date else "",
+        "order": e.order.order_code if e.order else "", "category": e.category,
+        "description": e.description or "", "paid_to": e.paid_to or "",
+        "amount": float(e.amount or 0), "approved_by": e.approved_by or "",
+    } for e in expenses]
+    columns = ["expense_id", "expense_code", "date", "order", "category", "description",
+               "paid_to", "amount", "approved_by"]
+    headers = ["Expense ID", "Expense Code", "Date", "Order", "Category", "Description",
+               "Paid To", "Amount", "Approved By"]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+    by_category = {}
+    for e in expenses:
+        by_category[e.category or "Uncategorized"] = by_category.get(e.category or "Uncategorized", 0) + float(e.amount or 0)
+    summary = [("Total Expenses", str(len(expenses))), ("Total Amount", f"Rs {sum(float(e.amount or 0) for e in expenses):,.2f}")]
+    summary += [(f"  {cat}", f"Rs {amt:,.2f}") for cat, amt in sorted(by_category.items())]
+
+    buffer = build_workbook([{
+        "sheet_name": "Expenses", "title": "PROJECT EXPENSE REGISTER",
+        "columns": columns, "headers": headers, "rows": rows,
+        "total_columns": ["amount"], "subtitle": subtitle, "summary": summary,
+    }])
+    filename = f"expense_register_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
 
 
 @router.get("/stock-dashboard.xlsx")
@@ -430,7 +855,13 @@ def export_stock_dashboard(db: Session = Depends(get_db), auth=Depends(get_curre
 
 
 @router.get("/orders/{order_id}/estimate.pdf")
-def export_order_estimate_pdf(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def export_order_estimate_pdf(order_id: int, db: Session = Depends(get_db),
+                               auth=Depends(require_role("master"))):
+    """Family 12 gap fix: this PDF includes order_value/total_received -
+    the exact fields _serialize_orders() nulls for non-master in the
+    JSON API (orders.py). It was previously exportable by any
+    authenticated role via get_current_user, letting a USER bypass the
+    redaction entirely. Master-only now, matching invoice.pdf below."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -442,7 +873,13 @@ def export_order_estimate_pdf(order_id: int, db: Session = Depends(get_db), auth
 
 
 @router.get("/estimates/{estimate_id}/quote.pdf")
-def export_estimate_quote_pdf(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+def export_estimate_quote_pdf(estimate_id: int, db: Session = Depends(get_db),
+                               auth=Depends(require_role("master"))):
+    """Family 12 gap fix: this PDF includes per-line-item rate/amount -
+    the same line-item pricing test_estimate_financial_rbac.py already
+    proves is nulled for non-master via the JSON API. It was previously
+    exportable by any authenticated role via get_current_user. Master-only
+    now, matching every other estimate-mutation endpoint in estimates.py."""
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not estimate:
         raise HTTPException(status_code=404, detail="Estimate not found")
@@ -479,3 +916,34 @@ def export_salary_slip_pdf(slip_id: int, db: Session = Depends(get_db), auth=Dep
         buffer, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="salary-slip-{slip.month}-{slip.year}.pdf"', "Cache-Control": "no-store, private"},
     )
+
+
+@router.get("/automation-log.xlsx")
+def export_automation_log(rule_key: Optional[str] = None, status: Optional[str] = None,
+                           db: Session = Depends(get_db), auth=Depends(require_role("master"))):
+    """Family 13 - the automation audit trail as a downloadable report.
+    Reuses this module's existing Excel infrastructure (build_workbook /
+    write_sheet) rather than a separate export mechanism - same
+    formatting, same formula-injection sanitization, as every other
+    report here. Master-only, same as GET /api/automation/logs and
+    /api/audit-logs."""
+    query = db.query(AutomationLog)
+    if rule_key:
+        query = query.filter(AutomationLog.rule_key == rule_key)
+    if status:
+        query = query.filter(AutomationLog.status == status)
+    logs = query.order_by(AutomationLog.created_at.desc()).limit(2000).all()
+    rows = [{
+        "created_at": log.created_at.strftime("%d-%m-%Y %H:%M") if log.created_at else "",
+        "rule_key": log.rule_key, "trigger_event": log.trigger_event, "status": log.status,
+        "action_taken": log.action_taken, "condition_summary": log.condition_summary,
+        "related_entity_type": log.related_entity_type or "", "related_entity_id": log.related_entity_id or "",
+        "error_message": log.error_message or "",
+    } for log in logs]
+    columns = ["created_at", "rule_key", "trigger_event", "status", "action_taken",
+               "condition_summary", "related_entity_type", "related_entity_id", "error_message"]
+    headers = ["When", "Rule", "Trigger", "Status", "Action Taken",
+               "Condition", "Entity Type", "Entity ID", "Error"]
+    buffer = build_workbook([{"sheet_name": "Automation Log", "title": "AUTOMATION AUDIT TRAIL",
+                               "columns": columns, "headers": headers, "rows": rows}])
+    return _xlsx_response(buffer, f"automation-log_{datetime.utcnow().strftime('%Y%m%d')}.xlsx")

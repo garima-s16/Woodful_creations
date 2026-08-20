@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { leavesAPI, employeesAPI } from '../utils/api';
+import { leavesAPI, employeesAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { statusClass } from '../utils/statusColors';
 
 function LeavesPage() {
   const { user } = useSelector((state) => state.auth);
@@ -70,7 +71,7 @@ function LeavesPage() {
     { key: 'start_date', label: 'From', render: (v) => new Date(v).toLocaleDateString() },
     { key: 'end_date', label: 'To', render: (v) => new Date(v).toLocaleDateString() },
     { key: 'days', label: 'Days' }, { key: 'reason', label: 'Reason' },
-    { key: 'status', label: 'Status', render: (v) => <span className={`status-badge ${v === 'Approved' ? 'status-ok' : v === 'Rejected' ? 'status-danger' : 'status-warning'}`}>{v}</span> },
+    { key: 'status', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
     {
       key: 'decision_action', label: '', render: (v, row) => (
         row.status === 'Pending' && (
@@ -107,11 +108,26 @@ function LeavesPage() {
     { name: 'reason', label: 'Reason', type: 'textarea' },
   ];
 
+  const leavesExportUrl = () => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set('status', statusFilter);
+    const qs = params.toString();
+    return reportsAPI.downloadUrl(`leaves.xlsx${qs ? `?${qs}` : ''}`);
+  };
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Leave Requests</h1>
-        <button className="btn-primary" onClick={() => setShowAdd(true)}>Request Leave</button>
+        <div>
+          <h1>Leave Requests</h1>
+          <p className="page-summary">Review and approve employee leave requests.</p>
+        </div>
+        <div className="page-actions">
+          <a className="btn-secondary" href={leavesExportUrl()} target="_blank" rel="noreferrer">
+            {statusFilter ? 'Export Filtered' : 'Export All'}
+          </a>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Request Leave</button>
+        </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <form className="page-search" onSubmit={(e) => e.preventDefault()}>

@@ -15,6 +15,8 @@ import Footer from './components/Footer';
 import CartDrawer from './components/CartDrawer';
 
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import MaterialsPage from './pages/MaterialsPage';
 import LocationsPage from './pages/LocationsPage';
@@ -49,6 +51,7 @@ import InterviewsPage from './pages/InterviewsPage';
 import SalarySlipsPage from './pages/SalarySlipsPage';
 import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 function AppLayout({ children }) {
   const MOBILE_BREAKPOINT = 768;
@@ -116,7 +119,7 @@ function AppLayout({ children }) {
     <div className="app-shell">
       <Navbar user={navbarUser} onLogout={handleLogout} toggleSidebar={() => setSidebarOpen((v) => !v)} onOpenCart={() => dispatch(openCart())} />
       <div className="app-body">
-        <Sidebar isOpen={isSidebarOpen} user={user} />
+        <Sidebar isOpen={isSidebarOpen} user={user} onClose={() => setSidebarOpen(false)} />
         <main className="app-content">{children}</main>
       </div>
       <Footer />
@@ -148,8 +151,11 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
       <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
       <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />

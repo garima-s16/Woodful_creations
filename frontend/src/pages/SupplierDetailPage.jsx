@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { suppliersAPI, purchasesAPI } from '../utils/api';
+import { suppliersAPI, purchasesAPI, documentsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
+import DocumentsPanel from '../components/DocumentsPanel';
 import { formatCurrency } from '../utils/currency';
 
 
@@ -74,6 +75,13 @@ function SupplierDetailPage() {
           />
         </Card>
       )}
+
+      <DocumentsPanel title="Documents" api={{
+        list: () => documentsAPI.list('supplier', supplierId),
+        upload: (file, description) => documentsAPI.upload('supplier', supplierId, file, description),
+        downloadUrl: (documentId) => documentsAPI.downloadUrl('supplier', supplierId, documentId),
+        remove: (documentId) => documentsAPI.remove('supplier', supplierId, documentId),
+      }} canUpload={isPrivileged} />
     </div>
   );
 }

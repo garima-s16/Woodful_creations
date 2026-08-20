@@ -98,10 +98,21 @@ function DailyTasksPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Tasks</h1>
+        <div>
+          <h1>Tasks</h1>
+          <p className="page-summary">Assign and track daily work across the workshop.</p>
+        </div>
         <div className="page-actions">
-          <a className="btn-secondary" href={reportsAPI.downloadUrl('tasks.xlsx')} target="_blank" rel="noreferrer">
-            Export Tasks &amp; Production
+          <a
+            className="btn-secondary"
+            href={reportsAPI.downloadUrl(
+              view === 'My Tasks' && user?.employee_id
+                ? `tasks.xlsx?employee_id=${user.employee_id}`
+                : 'tasks.xlsx'
+            )}
+            target="_blank" rel="noreferrer"
+          >
+            {view === 'My Tasks' ? 'Export My Tasks' : 'Export Tasks & Production'}
           </a>
           <button className="btn-primary" onClick={() => setShowAdd(true)}>Assign Task</button>
         </div>

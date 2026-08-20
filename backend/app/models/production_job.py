@@ -16,13 +16,16 @@ class ProductionJob(BaseModel):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)  # operator
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
     operation = Column(String(255), nullable=True)
+    stage = Column(String(50), nullable=True)  # Cutting/CNC.../Assembly/.../Dispatch - standardized, distinct from the free-text operation description
     material_id = Column(Integer, ForeignKey("materials.id"), nullable=True, index=True)
     planned_qty = Column(Integer, nullable=False, default=0)
     completed_qty = Column(Integer, nullable=False, default=0)
     start_time = Column(Time, nullable=True)
     end_time = Column(Time, nullable=True)
     status = Column(String(20), nullable=False, default="Not Started", index=True)
+    completion_date = Column(DateTime, nullable=True)  # set when the job actually transitions to Completed
     remarks = Column(Text, nullable=True)
+    blocker_reason = Column(Text, nullable=True)  # set when status="Blocked" - why, matching DailyTask.delay_reason's role
 
     employee = relationship("Employee")
     order = relationship("Order", back_populates="production_jobs")

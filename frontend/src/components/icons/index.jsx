@@ -34,6 +34,7 @@ export const InterviewIcon = (p) => <svg {...base} {...p}><path d="M4 4h16v12H8l
 export const SettingsIcon = (p) => <svg {...base} {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></svg>;
 export const UserIcon = (p) => <svg {...base} {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></svg>;
 export const AuditIcon = (p) => <svg {...base} {...p}><path d="M6 2h9l5 5v15H6z" /><path d="M15 2v5h5" /><path d="M9 12h6M9 16h6" /></svg>;
+export const AnalyticsIcon = (p) => <svg {...base} {...p}><path d="M3 3v18h18" /><path d="M7 15l3-4 3 3 5-7" /></svg>;
 export const HomeIcon = (p) => <svg {...base} {...p}><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></svg>;
 export const MobileAppIcon = (p) => <svg {...base} {...p}><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></svg>;
 

@@ -4,7 +4,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.middleware import SecurityHeadersMiddleware
+from app.core.middleware import SecurityHeadersMiddleware, GlobalRateLimitMiddleware
 from app.core.auto_migrate import run_startup_migrations
 from app.api.routes import all_routers
 
@@ -36,6 +36,7 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GlobalRateLimitMiddleware)
 
 for router in all_routers:
     app.include_router(router)

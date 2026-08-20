@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env relative to backend/ regardless of the process's current
@@ -49,10 +49,57 @@ class Settings(BaseSettings):
     # EnvSettingsSource". Splitting it ourselves via the property below
     # avoids that entirely.
     CORS_ORIGINS: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # --- Rate limiting ---
-    RATE_LIMIT_LOGIN_PER_MINUTE: int = 5
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = 5  # per IP
+    RATE_LIMIT_LOGIN_ACCOUNT_PER_MINUTE: int = 8  # per account (identifier), independent of IP
+    RATE_LIMIT_PASSWORD_RESET_REQUEST_PER_HOUR: int = 3  # per IP - forgot-password requests
+    RATE_LIMIT_PASSWORD_RESET_REQUEST_ACCOUNT_PER_HOUR: int = 3  # per account/email
+    RATE_LIMIT_PASSWORD_RESET_VERIFY_PER_MINUTE: int = 5  # per IP - reset-password attempts
+    RATE_LIMIT_PASSWORD_RESET_VERIFY_ACCOUNT_PER_MINUTE: int = 5  # per account/email
+
+    # Exponential backoff for repeated authentication failures (per-account).
+    # Not a permanent lockout: the delay grows with consecutive failures and
+    # resets on a successful login or after the window elapses.
+    LOGIN_BACKOFF_THRESHOLD: int = 4          # consecutive failures before backoff kicks in
+    LOGIN_BACKOFF_BASE_SECONDS: int = 2       # delay after the threshold-th failure
+    LOGIN_BACKOFF_MAX_SECONDS: int = 300      # cap (5 minutes)
+    LOGIN_BACKOFF_RESET_SECONDS: int = 3600   # failure counter forgotten after 1h of inactivity
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     RATE_LIMIT_DEFAULT_PER_MINUTE: int = 120
+    RATE_LIMIT_CHAT_PER_MINUTE: int = 20  # per IP - each message re-queries the database
+    RATE_LIMIT_EXPORT_PER_MINUTE: int = 15  # per IP - applies to every /api/reports/*.xlsx and *.pdf endpoint
+    # Family 11 - communication search scans free-text across several
+    # tables (task comments, order comments, client activities,
+    # notifications), and AI insight/draft generation does multiple
+    # queries per call - both expensive enough per-request to rate-limit
+    # like chat/export above, not left uncapped.
+    RATE_LIMIT_COMMUNICATION_SEARCH_PER_MINUTE: int = 20  # per IP
+    RATE_LIMIT_COMMUNICATION_AI_PER_MINUTE: int = 10  # per IP - summarize/draft
+    RATE_LIMIT_BULK_NOTIFICATION_PER_MINUTE: int = 10  # per IP - mark-all-read and similar bulk ops
+    # "memory" (default - single process, zero extra dependency at runtime)
+    # or "redis" (required for a multi-instance/multi-worker production
+    # deployment, where the in-memory limiter's buckets would not be
+    # shared across processes). See app/core/rate_limit.py.
+    RATE_LIMIT_BACKEND: str = "memory"
+
+    # Storage provider selection (Family 17.1) - "local" is the only
+    # backend actually implemented in this build. A future cloud
+    # backend (S3-compatible/Azure Blob/GCS) would be selected here via
+    # environment configuration, never hardcoded into business logic.
+    STORAGE_PROVIDER: str = "local"
+
+    # Zoho/SAP integration credentials - environment variables only,
+    # never stored in the database and never returned in any API
+    # response. Empty by default; the adapters treat an empty value as
+    # "not configured" and refuse to attempt a live call, rather than
+    # send a request with a blank credential.
+    ZOHO_API_KEY: str = ""
+    ZOHO_API_BASE_URL: str = ""
+    SAP_API_KEY: str = ""
+    SAP_API_BASE_URL: str = ""
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # --- Third-party (optional) ---
     OPENAI_API_KEY: str = ""
@@ -95,6 +142,16 @@ class Settings(BaseSettings):
         if v not in allowed:
             raise ValueError(f"ENVIRONMENT must be one of {allowed}")
         return v
+
+    @model_validator(mode="after")
+    def debug_must_be_off_in_production(self):
+        if self.ENVIRONMENT == "production" and self.DEBUG:
+            raise ValueError(
+                "DEBUG=True is not allowed when ENVIRONMENT=production - it would expose full "
+                "stack tracebacks (file paths, code, and potentially secrets) in HTTP error "
+                "responses. Set DEBUG=False for any production deployment."
+            )
+        return self
 
     @property
     def is_production(self) -> bool:

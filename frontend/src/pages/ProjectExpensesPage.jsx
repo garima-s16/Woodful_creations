@@ -88,7 +88,10 @@ function ProjectExpensesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Project Expenses</h1>
+        <div>
+          <h1>Project Expenses</h1>
+          <p className="page-summary">Track costs recorded against each project, separate from material purchases.</p>
+        </div>
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Expense</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

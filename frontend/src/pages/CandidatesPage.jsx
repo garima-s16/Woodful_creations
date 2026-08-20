@@ -73,7 +73,10 @@ function CandidatesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Candidates</h1>
+        <div>
+          <h1>Candidates</h1>
+          <p className="page-summary">Track applicants through the hiring pipeline, from application to offer.</p>
+        </div>
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Candidate</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

@@ -16,6 +16,7 @@ class IssueBase(BaseModel):
     purpose: Optional[str] = None
     approved_by: Optional[str] = None
     remarks: Optional[str] = None
+    location_id: Optional[int] = None  # which location to issue from; falls back to the material's primary location if omitted
 
 
 class IssueCreate(IssueBase):

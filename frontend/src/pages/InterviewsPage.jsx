@@ -116,7 +116,10 @@ function InterviewsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Interviews</h1>
+        <div>
+          <h1>Interviews</h1>
+          <p className="page-summary">Schedule and track candidate interviews and outcomes.</p>
+        </div>
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Schedule Interview</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

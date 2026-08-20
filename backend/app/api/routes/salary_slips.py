@@ -1,5 +1,7 @@
 from typing import List, Optional
 from decimal import Decimal
+from datetime import datetime
+import calendar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -9,6 +11,9 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.core.audit import log_action
 from app.models.salary_slip import SalarySlip
+from app.models.attendance import Attendance
+from app.models.employee import Employee
+from app.services.working_calendar_service import compute_working_days
 from app.schemas.salary_slip import SalarySlipCreate, SalarySlipUpdate, SalarySlipResponse
 from app.utils.id_generator import generate_short_id
 
@@ -19,6 +24,55 @@ def _compute_net(data) -> None:
     gross = data.basic + data.da + data.hra + data.overtime_amount
     deductions = data.pf_deduction + data.tds_deduction + data.other_deductions
     return gross - deductions
+
+
+@router.get("/attendance-summary")
+def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session = Depends(get_db),
+                             auth=Depends(require_role("master"))):
+    """Suggested working_days/paid_days/overtime_amount derived from this
+    employee's real Attendance records for the given month - the master
+    reviews and can adjust every value before actually saving a salary
+    slip. Never writes anything itself. Day-value rule is explicit, not
+    hidden: Present = 1 day, Half Day = 0.5 day,
+    Absent/Leave = 0 (unpaid unless the master adjusts). working_days
+    and the overtime hourly rate both come from the actual configured
+    working calendar for THIS specific month (weekends/holidays/special
+    working days), never a fixed assumption - a different month can and
+    will produce a different total."""
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    try:
+        period_start = datetime.strptime(f"{month} {year}", "%B %Y")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="month must be a full month name, e.g. 'August', and year must be 4 digits")
+    last_day = calendar.monthrange(period_start.year, period_start.month)[1]
+    period_end = period_start.replace(day=last_day, hour=23, minute=59, second=59)
+
+    records = db.query(Attendance).filter(
+        Attendance.employee_id == employee_id,
+        Attendance.date >= period_start, Attendance.date <= period_end,
+    ).all()
+
+    working_days_this_month = compute_working_days(db, period_start.year, period_start.month)
+
+    day_value = {"Present": 1, "Half Day": 0.5, "Absent": 0, "Leave": 0}
+    paid_days = sum(day_value.get(r.attendance_status, 0) for r in records)
+    total_overtime_hours = sum(r.overtime_hours for r in records)
+    standard_hours_per_day = float(records[0].standard_hours) if records else 8
+    daily_rate_this_month = (float(employee.monthly_salary or 0) / working_days_this_month) if working_days_this_month else 0
+    hourly_rate = daily_rate_this_month / standard_hours_per_day if standard_hours_per_day else 0
+    overtime_amount = round(total_overtime_hours * hourly_rate, 2)
+
+    return {
+        "employee_id": employee_id,
+        "records_found": len(records),
+        "suggested_working_days": working_days_this_month,
+        "suggested_paid_days": paid_days,
+        "total_overtime_hours": round(total_overtime_hours, 2),
+        "suggested_overtime_amount": overtime_amount,
+        "note": "Derived from Attendance records and the configured working calendar for this period - review before saving.",
+    }
 
 
 @router.get("/", response_model=List[SalarySlipResponse])

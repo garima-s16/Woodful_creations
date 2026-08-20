@@ -28,6 +28,24 @@ class MaterialBase(BaseModel):
 
 class MaterialCreate(MaterialBase):
     opening_stock: Decimal = Decimal("0")
+
+
+class MaterialNameInterpretRequest(BaseModel):
+    name: str
+
+
+class MaterialNameInterpretResponse(BaseModel):
+    """The material creation form's "intelligent defaults" - typing a
+    name like "HDHMR 6mm" suggests thickness_size/subcategory_id, but
+    never overwrites anything the user already picked (confidence
+    "none" means show nothing)."""
+    thickness_size: Optional[str] = None
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    subcategory_id: Optional[int] = None
+    subcategory_name: Optional[str] = None
+    confidence: str  # "high" | "medium" | "none"
+    matched_on: str
     attribute_values: List[MaterialAttributeValueInput] = []
 
 

@@ -69,6 +69,30 @@
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
   --glow-gold: 0 0 0 1px rgba(192, 138, 69, 0.25), 0 4px 20px rgba(192, 138, 69, 0.12);
   --transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Slightly springier curve for confirmation/entrance feedback only -
+     precision, not bounce. Not used for hover/press (those stay on
+     --transition) or anything continuous/looping. */
+  --transition-spring: 220ms cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* One shared focus treatment for every interactive element - buttons,
+     inputs, custom controls. A box-shadow ring (not outline) so it
+     doesn't clip inside overflow:hidden cards/tables and remains
+     visible against both flat surfaces and rounded corners. */
+  --focus-ring: 0 0 0 3px rgba(192, 138, 69, 0.28);
+  --disabled-opacity: 0.5;
+}
+
+/* One global reduced-motion switch - every transition/animation in the
+   app is built from --transition/--transition-spring or a @keyframes
+   rule, so collapsing them here covers hover, press, modals, drawers,
+   list transitions and skeleton shimmer without touching each file. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 * {

@@ -23,8 +23,9 @@ detail page, rather than a wall of prose the user has to go find the
 records from themselves.
 """
 import re
+import difflib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
@@ -34,7 +35,11 @@ from sqlalchemy import or_
 
 from app.models.material import Material
 from app.models.client import Client
+from app.models.estimate import Estimate
 from app.models.order import Order
+from app.models.generic_document import GenericDocument
+from app.models.client_activity import ClientActivity
+from app.services.ai_layer import sanitize_untrusted_text
 from app.models.production_job import ProductionJob
 from app.models.issue import Issue
 from app.models.ai_workspace_report import AIWorkspaceReport
@@ -50,9 +55,15 @@ from app.models.attendance import Attendance
 from app.models.supplier import Supplier
 from app.models.supplier_material import SupplierMaterial
 from app.schemas.chat import ChatContext, ProposedAction
+from app.utils.material_interpreter import extract_thickness, interpret_material_name
+from app.services import analytics_service
 
 THIS_RECORD_WORDS = ["this order", "this material", "this client", "this employee", "this supplier",
-                      "summarize", "summarise", "should i reorder", "reorder this", "compare this supplier"]
+                      "summarize", "summarise", "should i reorder", "reorder this", "compare this supplier",
+                      # Family 4 - "this project" is how the budget suggestion refers to an order
+                      # (matching the Woodful UI's own "project" terminology), and "budget" on its
+                      # own covers the case where context is already set from viewing an order page.
+                      "this project", "budget"]
 PAYMENT_INTENT_WORDS = ["record a payment", "record payment", "log a payment", "log payment", "add a payment"]
 COMPLETE_TASK_WORDS = ["mark this done", "mark this task done", "mark this task as done", "mark as done",
                         "complete this task", "this is done", "task complete", "ye done kar", "ye complete"]
@@ -130,8 +141,19 @@ def parse_add_material_command(m: str) -> Optional[dict]:
     description = re.sub(r"\s+(sheets?|pairs?|pcs?|pieces?)$", "", description)
     unit_match = re.search(r"\b(sheets?|pairs?|pcs?|pieces?)\b", rest)
     unit = unit_match.group(1).rstrip("s") if unit_match else None
+    description = description.strip()
+    # "add 4 sheet" - no real material name given, just the bare unit
+    # word left over. The suffix-strip above only handles a unit word
+    # AFTER a real name ("hdhmr sheets" -> "hdhmr"); it can't catch the
+    # case where the unit word IS the entire remaining text, since that
+    # pattern requires a leading space that isn't there. Must not
+    # confidently propose a material literally named "sheet" - clearing
+    # it here lets the existing "I didn't catch what material" check
+    # downstream correctly ask for clarification instead.
+    if re.fullmatch(r"(sheets?|pairs?|pcs?|pieces?)", description):
+        description = ""
 
-    return {"quantity": quantity, "description": description.strip(), "unit": unit, "destination": destination}
+    return {"quantity": quantity, "description": description, "unit": unit, "destination": destination}
 
 
 def extract_material_query(m: str):
@@ -149,12 +171,18 @@ def extract_material_query(m: str):
         (r"stock of (.+?)$", "stock"),
         (r"which supplier (?:supplied|supplies) (?:this |the )?(.+?)$", "supplier"),
         (r"who (?:supplied|supplies) (?:this |the )?(.+?)$", "supplier"),
+        (r"^(.+?)\s+kitn[ae]\s+(?:h|hai|hain|bacha|bache|pada|pade)\b", "stock"),
+        (r"^stock\s+(.+?)$", "stock"),
     ]
+    # Only for the new bare "stock X" pattern - "stock dashboard"/"stock
+    # report" must fall through to the general stock summary, not
+    # confidently claim it couldn't find a material named "dashboard".
+    non_material_words = {"dashboard", "report", "summary", "levels", "status", "overview", "page"}
     for pattern, qtype in patterns:
         match = re.search(pattern, m)
         if match:
             text = match.group(1).strip().rstrip("?.")
-            if text in ("material", "this material", "the material", "it"):
+            if text in ("material", "this material", "the material", "it") or text in non_material_words:
                 return None
             return qtype, text
     return None
@@ -197,7 +225,7 @@ class ChatService:
             "order_code": order.order_code,
             "stage": order.project_status,
             "blocked_tasks": [
-                {"id": t.id, "description": t.task_description, "reason": t.delay_reason or "No reason recorded"}
+                {"id": t.id, "description": t.task_description, "reason": sanitize_untrusted_text(t.delay_reason) or "No reason recorded"}
                 for t in blocked_tasks
             ],
             "open_task_count": len(open_tasks),
@@ -219,7 +247,7 @@ class ChatService:
 
         lines = [f"{order.order_code} - {'AT RISK' if risk_level == 'AT_RISK' else 'ON TRACK'}"]
         if blocked_tasks:
-            reasons = ", ".join(f"{t.task_description} ({t.delay_reason or 'no reason recorded'})" for t in blocked_tasks[:3])
+            reasons = ", ".join(f"{t.task_description} ({sanitize_untrusted_text(t.delay_reason) or 'no reason recorded'})" for t in blocked_tasks[:3])
             lines.append(f"Blocked: {reasons}")
         if delivery_at_risk:
             lines.append("Delivery date is close with work still open.")
@@ -353,14 +381,23 @@ class ChatService:
             if proposal:
                 return proposal
 
+        add_employee_action = ChatService._route_add_employee_action(m, db, user_role)
+        if add_employee_action:
+            return add_employee_action
+
+        ambiguous_hindi_add = ChatService._route_ambiguous_hindi_add(m, db)
+        if ambiguous_hindi_add:
+            return ambiguous_hindi_add
+
         material_action = ChatService._route_material_action(m, db, user_role)
         if material_action:
             return material_action
 
         if context and context.cart_items and any(w in m for w in ["optimize", "cheapest supplier", "best supplier"]):
             if user_role in ("master",):
-                return ChatService._optimize_cart(db, context.cart_items)
-            return "Supplier price comparison is available to master accounts only.", [], []
+                text, suggestions, records = ChatService._optimize_cart(db, context.cart_items)
+                return text, suggestions, None, None, records
+            return "Supplier price comparison is available to master accounts only.", [], None, None, []
 
         text, suggestions, records = ChatService._dispatch(m, db, user_role, context, current_employee_id)
         return text, suggestions, None, None, records
@@ -448,6 +485,546 @@ class ChatService:
         )
 
     @staticmethod
+    def _route_add_employee_action(m: str, db: Session, user_role: str):
+        """"add new employee arpit" was being silently swallowed by the
+        material parser (any "add ..." message matched it unconditionally),
+        creating a fake material literally named "new employee arpit".
+        This is the specific, named collision from the product brief -
+        a targeted disambiguation check for this one real bug, not an
+        expansion into broad keyword-rule territory. Checked before the
+        material parser so it never gets a chance to misfire here."""
+        match = re.match(r"^add\s+(?:a\s+|an\s+|new\s+)*employee\s+(?:named\s+)?(.+)", m)
+        if not match:
+            return None
+        name = match.group(1).strip().rstrip(".")
+        if not name:
+            return None
+        if user_role not in ("master",):
+            return "Creating employees requires a master account.", [], None, None, []
+
+        existing = db.query(Employee).filter(Employee.name.ilike(f"%{name}%")).first()
+        if existing:
+            return (
+                f"There's already an employee named {existing.name}.", [], None, None,
+                [{"type": "Employee", "label": existing.name, "sublabel": existing.designation or "",
+                  "path": f"/employees/{existing.id}"}],
+            )
+
+        display_name = " ".join(w.capitalize() for w in name.split())
+        proposal = ProposedAction(
+            action_type="create_employee",
+            summary=f"Create employee \"{display_name}\"",
+            payload={"name": display_name},
+        )
+        return f"Create a new employee named {display_name}?", [], proposal, None, []
+
+    @staticmethod
+    def _route_excel_via_chat(m: str, db: Session, user_role: str):
+        """"pankaj ki August attendance Excel bana do" - resolves the
+        employee and month, then returns a link to the SAME authorized
+        /api/reports/attendance.xlsx endpoint every other export in the
+        app uses. No AI-only export route exists or is created here -
+        this is purely natural-language routing to the existing,
+        already-permission-checked service. Master-only, matching that
+        endpoint's own require_role("master") gate exactly."""
+        if not any(w in m for w in ["excel", "spreadsheet", "xlsx"]):
+            return None
+        if "attendance" not in m:
+            return None
+        if user_role not in ("master",):
+            return "Generating attendance reports requires a master account.", [], []
+
+        month_names = ["january", "february", "march", "april", "may", "june",
+                       "july", "august", "september", "october", "november", "december"]
+        month = next((mn for mn in month_names if mn in m), None)
+        if not month:
+            return "Which month's attendance would you like as Excel?", [], []
+
+        employees = db.query(Employee).all()
+        employee = next((e for e in employees if e.name.lower() in m), None)
+        if not employee:
+            return f"Whose {month.title()} attendance would you like? I couldn't match a name in your message.", [], []
+
+        year = str(datetime.utcnow().year)
+        download_path = f"attendance.xlsx?employee_id={employee.id}&month={month.title()}&year={year}"
+        return (
+            f"Here's {employee.name}'s {month.title()} {year} attendance report.", [],
+            [{"type": "Report", "label": f"{employee.name} - {month.title()} {year}", "sublabel": "Attendance Excel",
+              "actions": [{"label": "Download Excel", "download_path": download_path}]}],
+        )
+
+    @staticmethod
+    def _extract_client_name(m: str) -> Optional[str]:
+        """Regex only, no hard-coded names - covers both Hinglish word
+        orders ("patel ka order", "order patel") since either is
+        natural depending on the speaker. Deliberately narrower than
+        the employee-name extractor's patterns: "order"/"payment" are
+        common enough English words that a looser match would trigger
+        on unrelated sentences too often."""
+        patterns = [
+            r"([a-z]+)\s*(?:'s|ka|ki|ke)\s+(?:order|payment|history|sales history)",
+            r"(?:order|payment|sales history|history)\s+(?:for\s+|of\s+)?([a-z]+)",
+            r"([a-z]+)\s+(?:sales\s+)?history\b",
+            r"next\s+(?:action\s+)?(?:on|for)\s+([a-z]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, m)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _route_client_order_query(m: str, db: Session, user_role: str, context: Optional[ChatContext]):
+        """"patel ka payment?", "order sanket" - resolves a named client
+        to their most recent order and reports its real status, rather
+        than falling through to the generic company-wide summary that
+        doesn't actually answer "how is THIS client's order doing".
+        Returns None (not this kind of query) so process_message falls
+        through to its other branches, matching the established
+        _route_task_query convention."""
+        name = ChatService._extract_client_name(m)
+        if not name and context:
+            # "isme payment kitna baki hai" - deictic follow-up to a
+            # previously-discussed order, same mechanism already used
+            # for the order-risk workspace.
+            record_type, record_id = context.resolved_with_reference(m)
+            if record_type == "order" and record_id and any(w in m for w in ["payment", "order", "baki", "pending"]):
+                order = db.query(Order).filter(Order.id == record_id).first()
+                if order:
+                    return ChatService._describe_client_order(order, user_role)
+            return None
+        if not name:
+            return None
+
+        client = db.query(Client).filter(Client.name.ilike(f"%{name}%")).all()
+        if not client:
+            return None  # not a real client name - let other handlers try this message
+        if len(client) > 1:
+            options = ", ".join(c.name for c in client[:5])
+            return f"I found {len(client)} clients matching \"{name}\": {options}. Which one did you mean?", [], []
+
+        order = db.query(Order).filter(Order.client_id == client[0].id).order_by(Order.order_date.desc()).first()
+        if not order:
+            return f"{client[0].name} has no orders on file yet.", [], []
+        return ChatService._describe_client_order(order, user_role)
+
+    @staticmethod
+    def _describe_client_order(order, user_role: str):
+        client_name = order.client.name if order.client else "Unknown client"
+        lines = [f"{client_name}'s most recent order ({order.order_code}): {order.project_status}."]
+        if user_role in ("master",):
+            balance = float(order.balance or 0)
+            if balance > 0:
+                lines.append(f"Rs {balance:,.2f} is still pending.")
+            else:
+                lines.append("Fully paid.")
+        records = [{
+            "type": "Order", "label": order.order_code, "sublabel": order.project_status,
+            "path": f"/orders/{order.id}",
+        }]
+        return " ".join(lines), [], records
+
+    @staticmethod
+    def _route_sales_history_query(m: str, db: Session, user_role: str):
+        """"patel sales history", "sanket's sales history" - a genuine
+        summary derived from this client's actual orders and estimates,
+        not a fabricated narrative. Financial totals are master-only,
+        matching the same redaction already applied to order/estimate
+        listings elsewhere - a non-master gets counts and status, not
+        money."""
+        if not any(w in m for w in ["sales history", "history"]):
+            return None
+        name = ChatService._extract_client_name(m)
+        if not name:
+            return None
+
+        clients = db.query(Client).filter(Client.name.ilike(f"%{name}%")).all()
+        if not clients:
+            return None
+        if len(clients) > 1:
+            options = ", ".join(c.name for c in clients[:5])
+            return f"I found {len(clients)} clients matching \"{name}\": {options}. Which one did you mean?", [], []
+
+        client = clients[0]
+        orders = db.query(Order).filter(Order.client_id == client.id).all()
+        estimates = db.query(Estimate).filter(Estimate.client_id == client.id).all()
+
+        lines = [f"{client.name}: {len(orders)} order(s), {len(estimates)} estimate(s) on record."]
+        if user_role in ("master",):
+            total_value = sum(float(o.order_value or 0) for o in orders)
+            outstanding = sum(float(o.balance or 0) for o in orders)
+            lines.append(f"Total order value Rs {total_value:,.2f}, of which Rs {outstanding:,.2f} is still outstanding.")
+
+        history_records = [{
+            "type": "Order", "label": o.order_code, "sublabel": o.project_status, "path": f"/orders/{o.id}",
+        } for o in sorted(orders, key=lambda o: o.order_date or datetime.min, reverse=True)[:5]]
+        return " ".join(lines), [], history_records
+
+    @staticmethod
+    def _route_estimate_summary(m: str, db: Session, user_role: str, context: Optional[ChatContext]):
+        """"summarize estimate EST-001", or "summarize this estimate"
+        while viewing one - a genuine summary of the estimate's actual
+        line items and total, not a fabricated narrative. Resolves by
+        explicit code first (works from anywhere), falling back to
+        deictic context (works only while the relevant estimate page
+        is open, or as a same-turn follow-up)."""
+        if not any(w in m for w in ["summarize", "summary"]):
+            return None
+
+        estimate = None
+        code_match = re.search(r"\best-\d+\b", m, re.IGNORECASE)
+        if code_match:
+            estimate = db.query(Estimate).filter(Estimate.estimate_code.ilike(code_match.group(0))).first()
+        elif "estimate" in m and context:
+            record_type, record_id = context.resolved_with_reference(m)
+            if record_type == "estimate" and record_id:
+                estimate = db.query(Estimate).filter(Estimate.id == record_id).first()
+
+        if not estimate:
+            return None
+
+        lines = [f"{estimate.estimate_code} for {estimate.client.name if estimate.client else 'Unknown client'} - status: {estimate.status}."]
+        item_count = len(estimate.line_items)
+        lines.append(f"{item_count} line item(s).")
+        if user_role in ("master",):
+            lines.append(f"Total Rs {float(estimate.total_cost or 0):,.2f}.")
+            if estimate.order_id:
+                lines.append("Already converted to an order.")
+
+        records = [{
+            "type": "Estimate", "label": estimate.estimate_code, "sublabel": estimate.status,
+            "path": f"/estimates/{estimate.id}",
+        }]
+        return " ".join(lines), [], records
+
+    @staticmethod
+    def _route_next_action(m: str, db: Session, context: Optional[ChatContext]):
+        """"what's next on this order" / "recommend next action for
+        sanket" - replicates the exact "Next Action" definition already
+        established on OrderDetailPage (earliest not-DONE task by date),
+        rather than invent a different one. Resolves the order by client
+        name or deictic context - no separate order-code parser, reusing
+        what's already there for order/payment lookups."""
+        if not any(w in m for w in ["next action", "what's next", "whats next", "recommend next"]):
+            return None
+
+        order = None
+        name = ChatService._extract_client_name(m)
+        if name:
+            clients = db.query(Client).filter(Client.name.ilike(f"%{name}%")).all()
+            if len(clients) == 1:
+                order = db.query(Order).filter(Order.client_id == clients[0].id).order_by(Order.order_date.desc()).first()
+        elif context:
+            record_type, record_id = context.resolved_with_reference(m)
+            if record_type == "order" and record_id:
+                order = db.query(Order).filter(Order.id == record_id).first()
+
+        if not order:
+            return None
+
+        next_task = db.query(DailyTask).filter(
+            DailyTask.order_id == order.id, DailyTask.status != "DONE",
+        ).order_by(DailyTask.date.asc()).first()
+
+        if not next_task:
+            return f"{order.order_code}: no open tasks - nothing outstanding to act on next.", [], [{
+                "type": "Order", "label": order.order_code, "sublabel": order.project_status, "path": f"/orders/{order.id}",
+            }]
+
+        line = f"{order.order_code}: next up is \"{next_task.task_description}\""
+        if next_task.employee:
+            line += f" (assigned to {next_task.employee.name})"
+        if next_task.status == "BLOCKED" and next_task.delay_reason:
+            line += f" - currently BLOCKED: {sanitize_untrusted_text(next_task.delay_reason)}"
+        line += "."
+        records = [{
+            "type": "Task", "label": next_task.task_description, "sublabel": next_task.status,
+            "path": f"/daily-tasks/{next_task.id}",
+        }]
+        return line, [], records
+
+    @staticmethod
+    def _production_bottlenecks(db: Session):
+        """"production bottlenecks" - purely a count of real, currently
+        Blocked jobs and jobs still open past their scheduled date,
+        grouped by machine - never an inferred "why" or a fabricated
+        cause, just what the actual records show."""
+        today = datetime.utcnow().date()
+        jobs = db.query(ProductionJob).filter(ProductionJob.status != "Completed").all()
+        blocked = [j for j in jobs if j.status == "Blocked"]
+        overdue = [j for j in jobs if j.date and j.date.date() < today]
+
+        if not blocked and not overdue:
+            return "No production bottlenecks right now - nothing is blocked or overdue.", [], []
+
+        by_machine = {}
+        for j in blocked + overdue:
+            key = j.machine or "Unassigned"
+            by_machine.setdefault(key, set()).add(j.id)
+        ranked = sorted(by_machine.items(), key=lambda kv: len(kv[1]), reverse=True)[:5]
+
+        lines = [f"{len(blocked)} job(s) blocked, {len(overdue)} job(s) overdue and still open."]
+        summary = ", ".join(f"{machine}: {len(job_ids)}" for machine, job_ids in ranked)
+        lines.append(f"By machine - {summary}.")
+        records = [{
+            "type": "ProductionJob", "label": j.job_code, "sublabel": f"{j.machine or 'Unassigned'} - {j.status}",
+            "path": f"/production-jobs/{j.id}",
+        } for j in (blocked + overdue)[:10]]
+        return " ".join(lines), [], records
+
+    @staticmethod
+    def _delayed_projects(db: Session):
+        """Family 12 - "which projects are delayed?" Reuses
+        analytics_service.projects_analytics's real on-hold/stalled
+        detection (On Hold status, or zero progress 14+ days after
+        order_date) rather than a separate ad-hoc query here - so the
+        chatbot's answer can never disagree with what the Analytics
+        page's own drill-down shows for the same question."""
+        result = analytics_service.projects_analytics(db, is_privileged=True)
+        delayed = result["delayed_projects"]
+        if not delayed:
+            return "No projects are currently delayed - nothing is on hold or stalled with zero progress.", [], []
+        records = [{
+            "type": "Order", "label": p["order_id"],
+            "sublabel": f"{p['client'] or 'Client'} - {p['status']} ({p['progress_percent']}% complete)",
+            "path": f"/orders/{p['id']}",
+        } for p in delayed[:10]]
+        return f"{len(delayed)} project(s) are delayed (on hold or stalled with no progress).", [], records
+
+    @staticmethod
+    def _explain_expense_change(db: Session, user_role: str):
+        """Family 12 - "why did expenses increase?" Grounded entirely in
+        analytics_service.expenses_analytics's real month-over-month
+        category breakdown. If the data doesn't actually establish which
+        category drove the change (e.g. too few expense records exist
+        yet), this says so rather than inventing a cause."""
+        if user_role not in ("master",):
+            return "Expense information is available to master accounts only.", [], []
+        result = analytics_service.expenses_analytics(db)
+        change = result["expense_change_percent"]
+        if change is None:
+            return "There isn't enough expense history yet (no recorded expenses last month) to compare against.", [], []
+        deltas = [d for d in result["category_change_this_month"] if d["delta"] != 0]
+        if not deltas:
+            return f"Expenses changed {change:+.1f}% this month, but no single category shows a real change - the totals moved evenly across categories.", [], []
+        direction = "increased" if change >= 0 else "decreased"
+        top = deltas[0]
+        top_direction = "up" if top["delta"] > 0 else "down"
+        lines = [f"Expenses {direction} {abs(change):.1f}% this month versus last month."]
+        lines.append(
+            f"The largest mover is '{top['category']}', {top_direction} Rs {abs(top['delta']):,.2f} "
+            f"(Rs {top['last_month']:,.2f} \u2192 Rs {top['this_month']:,.2f})."
+        )
+        records = [{
+            "type": "ExpenseCategory", "label": d["category"],
+            "sublabel": f"Rs {d['last_month']:,.2f} \u2192 Rs {d['this_month']:,.2f}",
+            "path": "/project-expenses",
+        } for d in deltas[:5]]
+        return " ".join(lines), [], records
+
+    @staticmethod
+    def _whats_changed_this_month(db: Session, user_role: str):
+        """Family 12 - "what changed this month?" A cross-domain rollup
+        built only from analytics_service.month_over_month_summary's
+        real comparisons (revenue, expenses, blocked production, overdue
+        tasks) - never a fabricated narrative. Financial lines are
+        omitted entirely for a non-master viewer, not shown redacted."""
+        is_privileged = user_role in ("master",)
+        result = analytics_service.month_over_month_summary(db, is_privileged=is_privileged)
+        return " ".join(result["summary_lines"]), [], []
+
+    @staticmethod
+    def _route_find_documents(m: str, db: Session, user_role: str):
+        """"find documents for sanket" - locates an order's attached
+        files only after the same permission check the real
+        /api/documents route itself applies (order is not in that
+        route's SENSITIVE_PARENT_TYPES, so this is open) - the AI
+        never gets a shortcut around document authorization just
+        because it queries the database directly rather than calling
+        its own HTTP API."""
+        if not any(w in m for w in ["find document", "documents for", "show document", "files for"]):
+            return None
+        name = ChatService._extract_client_name(m)
+        if not name:
+            return None
+        clients = db.query(Client).filter(Client.name.ilike(f"%{name}%")).all()
+        if len(clients) != 1:
+            return None
+        order = db.query(Order).filter(Order.client_id == clients[0].id).order_by(Order.order_date.desc()).first()
+        if not order:
+            return f"{clients[0].name} has no orders on file yet.", [], []
+
+        documents = db.query(GenericDocument).filter(
+            GenericDocument.parent_type == "order", GenericDocument.parent_id == order.id,
+        ).order_by(GenericDocument.created_at.desc()).all()
+        if not documents:
+            return f"No documents attached to {order.order_code} yet.", [], []
+        records = [{
+            "type": "Document", "label": d.original_filename, "sublabel": sanitize_untrusted_text(d.description) or "",
+            "path": f"/orders/{order.id}",
+        } for d in documents[:10]]
+        return f"{len(documents)} document(s) attached to {order.order_code}.", [], records
+
+    @staticmethod
+    def _follow_up_suggestions(db: Session):
+        """"follow-ups due" - genuinely scheduled follow-ups
+        (follow_up_date on or before today) logged against real client
+        activities, never an inferred "who probably needs a call"
+        without real data behind it."""
+        today = datetime.utcnow().date()
+        due = db.query(ClientActivity).filter(
+            ClientActivity.follow_up_date.isnot(None), ClientActivity.follow_up_date <= datetime.utcnow(),
+            ClientActivity.follow_up_done.is_(False),
+        ).order_by(ClientActivity.follow_up_date.asc()).all()
+        if not due:
+            return "No follow-ups are due right now.", [], []
+        records = [{
+            "type": "Client", "label": a.client.name if a.client else "Client",
+            "sublabel": f"Follow up ({a.follow_up_date.strftime('%d-%m-%Y')}): {sanitize_untrusted_text(a.summary[:60])}",
+            "path": f"/clients/{a.client_id}",
+        } for a in due[:10]]
+        return f"{len(due)} follow-up(s) due.", [], records
+
+    @staticmethod
+    def _delayed_deliveries(db: Session):
+        """"delayed deliveries" - a purchase with a real
+        expected_delivery_date that has passed, still not fully
+        Received. Purchases with no expected_delivery_date set are
+        never included - there's nothing to compare against, so no
+        delay can be honestly claimed."""
+        today = datetime.utcnow()
+        purchases = db.query(Purchase).filter(
+            Purchase.expected_delivery_date.isnot(None), Purchase.expected_delivery_date < today,
+            Purchase.receipt_status != "Received",
+        ).order_by(Purchase.expected_delivery_date.asc()).all()
+        if not purchases:
+            return "No deliveries are currently overdue.", [], []
+        records = [{
+            "type": "Purchase", "label": p.purchase_code,
+            "sublabel": f"{p.supplier.name if p.supplier else 'Supplier'} - expected {p.expected_delivery_date.strftime('%d-%m-%Y')}",
+            "path": "/purchases",
+        } for p in purchases[:10]]
+        word = "delivery" if len(purchases) == 1 else "deliveries"
+        return f"{len(purchases)} {word} overdue.", [], records
+
+    @staticmethod
+    def _summarize_supplier(m: str, db: Session, user_role: str):
+        """"summarize supplier X" - a genuine summary derived from this
+        supplier's real purchase history, not a fabricated narrative.
+        On-time-vs-delayed ratio is computed only from purchases that
+        actually have an expected_delivery_date set - a purchase never
+        given a delivery expectation contributes to neither count."""
+        if not any(w in m for w in ["summarize supplier", "supplier summary"]):
+            return None
+        match = re.search(r"(.+?)\s+supplier\s+summary", m) or re.search(r"summarize supplier\s+(.+?)$", m)
+        if not match:
+            return None
+        name_text = match.group(1).strip()
+        if name_text in ("", "summary"):
+            return None
+
+        suppliers = db.query(Supplier).filter(Supplier.name.ilike(f"%{name_text}%")).all()
+        if not suppliers:
+            all_names = [n for (n,) in db.query(Supplier.name).all()]
+            close = difflib.get_close_matches(name_text, [n.lower() for n in all_names], n=1, cutoff=0.6)
+            if close:
+                suppliers = db.query(Supplier).filter(Supplier.name.ilike(close[0])).all()
+        if len(suppliers) != 1:
+            return None
+        supplier = suppliers[0]
+
+        purchases = db.query(Purchase).filter(Purchase.supplier_id == supplier.id).all()
+        if not purchases:
+            return f"{supplier.name}: no purchases on record yet.", [], [{
+                "type": "Supplier", "label": supplier.name, "sublabel": supplier.category or "",
+                "path": f"/suppliers/{supplier.id}",
+            }]
+
+        with_expected = [p for p in purchases if p.expected_delivery_date]
+        on_time = [p for p in with_expected if p.receipt_status == "Received"]
+        lines = [f"{supplier.name}: {len(purchases)} purchase(s) on record."]
+        if with_expected:
+            lines.append(f"{len(on_time)}/{len(with_expected)} with a tracked delivery date were fully received.")
+        if user_role in ("master",):
+            total_value = sum(float(p.invoice_total or 0) for p in purchases)
+            lines.append(f"Total purchase value Rs {total_value:,.2f}.")
+
+        records = [{
+            "type": "Supplier", "label": supplier.name, "sublabel": f"{len(purchases)} purchases", "path": f"/suppliers/{supplier.id}",
+        }]
+        return " ".join(lines), [], records
+
+    @staticmethod
+    def _daily_briefing(db: Session, user_role: str):
+        """"what needs attention today?" - a genuine cross-module
+        synthesis, not a new query: calls the same, already-proven
+        handlers used elsewhere (low stock, production bottlenecks,
+        delayed projects, and - master only, matching how each already
+        gates itself individually - follow-ups due and delayed
+        deliveries) and combines only the ones that actually found
+        something. Never fabricates a summary when every domain is
+        genuinely clear."""
+        sections = []
+        all_records = []
+        for text, _, records in [
+            ChatService._low_stock(db, user_role),
+            ChatService._production_bottlenecks(db),
+            ChatService._delayed_projects(db),
+        ]:
+            if records:
+                sections.append(text)
+                all_records.extend(records)
+        if user_role in ("master",):
+            for text, _, records in [
+                ChatService._follow_up_suggestions(db),
+                ChatService._delayed_deliveries(db),
+            ]:
+                if records:
+                    sections.append(text)
+                    all_records.extend(records)
+
+        if not sections:
+            return "Nothing needs attention right now - stock, production, projects, and deliveries all look clear.", [], []
+        return " ".join(sections), [], all_records[:15]
+
+    HINDI_ADD_VERBS = ["add kr do", "add kar do", "add karo", "add kro", "daal do", "daal dena", "daal dijiye"]
+    HINDI_FILLER_WORDS = {"ki", "ka", "ke", "wali", "wala", "sheet", "sheets", "add"}
+
+    @staticmethod
+    def _route_ambiguous_hindi_add(m: str, db: Session):
+        """"4 sheet add kr do 12mm ki" - Hindi/Hinglish often places the
+        verb mid-sentence rather than "add X" at the start, a genuinely
+        different shape from parse_add_material_command's English-order
+        parsing. When the message has a quantity, "sheet", and a Hindi
+        add-verb, but no word in it actually matches a real material
+        (just a bare spec like "12mm" with nothing else), this asks
+        which material rather than ever proposing to create or add
+        anything - never a confident guess from a thickness number
+        alone. Returns None (not this ambiguous shape, or a real
+        material WAS found) so the message falls through normally."""
+        has_qty = bool(re.search(r"\b\d+(?:\.\d+)?\b", m))
+        has_sheet = bool(re.search(r"\bsheets?\b", m))
+        has_hindi_verb = any(v in m for v in ChatService.HINDI_ADD_VERBS)
+        if not (has_qty and has_sheet and has_hindi_verb):
+            return None
+
+        words = [w.strip(".,?!") for w in m.split()]
+        candidate_words = [w for w in words if len(w) > 2 and w not in ChatService.HINDI_FILLER_WORDS
+                            and not re.fullmatch(r"\d+(?:\.\d+)?", w)]
+        found_real_material = False
+        for word in candidate_words:
+            like = f"%{word}%"
+            if db.query(Material).filter(or_(
+                Material.name.ilike(like), Material.thickness_size.ilike(like), Material.brand_grade.ilike(like),
+            )).first():
+                found_real_material = True
+                break
+
+        if found_real_material:
+            return None  # a real material name is present - let this fall through normally
+        return "Konsi wali sheet? Please tell me the material - e.g. plywood, HDHMR, or laminate.", [], None, None, []
+
+    @staticmethod
     def _route_material_action(m: str, db: Session, user_role: str):
         """Handles "add N <material> to my material list/cart" style
         commands (Section 1's critical bug). Searches across name,
@@ -532,19 +1109,30 @@ class ChatService:
         # "6Mm"), so capitalize word-by-word instead, leaving any token
         # that's not purely alphabetic untouched.
         guessed_name = " ".join(w.capitalize() if w.isalpha() else w for w in description.split())
-        thickness_match = re.search(r"(\d+(?:\.\d+)?\s*mm)", description)
-        thickness = thickness_match.group(1) if thickness_match else None
+        thickness = extract_thickness(description)
         unit = (parsed["unit"] or "sheet").title() + "s"
 
+        # Same interpretation logic the material creation form's
+        # "intelligent defaults" uses - only applied here (subcategory
+        # pre-filled on the proposal) when it's actually confident;
+        # otherwise the material is proposed uncategorized, same as
+        # before, and the user assigns a category themselves.
+        interpretation = interpret_material_name(db, description)
         payload = {"name": guessed_name, "unit": unit, "thickness_size": thickness, "opening_stock": 0, "minimum_stock": 0}
+        summary_extra = ""
+        if interpretation["confidence"] != "none":
+            payload["subcategory_id"] = interpretation["subcategory_id"]
+            summary_extra = f", category: {interpretation['subcategory_name']}"
         proposal = ProposedAction(
             action_type="create_material",
-            summary=f"Create \"{guessed_name}\"" + (f" ({thickness})" if thickness else "") + f", unit: {unit}",
+            summary=f"Create \"{guessed_name}\"" + (f" ({thickness})" if thickness else "") + f", unit: {unit}" + summary_extra,
             payload=payload,
         )
         lines = ["I couldn't find an exact matching material. I interpreted this as:", guessed_name]
         if thickness:
             lines.append(f"Thickness: {thickness}.")
+        if interpretation["confidence"] != "none":
+            lines.append(f"Category: {interpretation['subcategory_name']}.")
         lines.append(f"Unit: {unit}. Create this material?")
         return " ".join(lines), [], proposal, None, []
 
@@ -569,7 +1157,9 @@ class ChatService:
         if salary_result:
             return salary_result
 
-        if any(w in m for w in ["low stock", "reorder", "alert"]):
+        if any(w in m for w in ["needs reordering", "replenishment", "to replenish"]):
+            return ChatService._replenishment_requirements(db, user_role)
+        if any(w in m for w in ["low stock", "reorder", "alert", "kam hai", "kam h", "material low", "materials low", "materials are low"]):
             return ChatService._low_stock(db, user_role)
         if "out of stock" in m or "out-of-stock" in m:
             return ChatService._out_of_stock(db, user_role)
@@ -581,6 +1171,50 @@ class ChatService:
             if user_role in ("master",):
                 return ChatService._stock_summary(db, user_role)
             return "You don't have access to view this data.", [], []
+        excel_query = ChatService._route_excel_via_chat(m, db, user_role)
+        if excel_query:
+            return excel_query
+        client_order_query = ChatService._route_client_order_query(m, db, user_role, context)
+        if client_order_query:
+            return client_order_query
+        sales_history_query = ChatService._route_sales_history_query(m, db, user_role)
+        if sales_history_query:
+            return sales_history_query
+        estimate_summary = ChatService._route_estimate_summary(m, db, user_role, context)
+        if estimate_summary:
+            return estimate_summary
+        next_action = ChatService._route_next_action(m, db, context)
+        if next_action:
+            return next_action
+        if any(w in m for w in ["bottleneck", "production delay", "delayed production"]):
+            return ChatService._production_bottlenecks(db)
+        if any(w in m for w in ["delayed project", "delayed projects", "which projects are delayed", "projects are behind", "project late", "projects late", "late project"]):
+            return ChatService._delayed_projects(db)
+        if any(w in m for w in ["why did expenses", "why are expenses", "expenses increase", "expenses went up", "expenses go up"]):
+            return ChatService._explain_expense_change(db, user_role)
+        if any(w in m for w in ["what changed this month", "what changed", "changed this month"]):
+            return ChatService._whats_changed_this_month(db, user_role)
+        find_documents = ChatService._route_find_documents(m, db, user_role)
+        if find_documents:
+            return find_documents
+        if (any(w in m for w in ["follow-up", "follow up", "followup"]) and any(w in m for w in ["due", "pending", "today"])) \
+                or any(w in m for w in ["followed up", "who needs follow"]):
+            if user_role in ("master",):
+                return ChatService._follow_up_suggestions(db)
+            return "Follow-up information is available to master accounts only.", [], []
+        if any(w in m for w in ["delayed delivery", "delayed deliveries", "overdue delivery", "overdue deliveries"]):
+            if user_role in ("master",):
+                return ChatService._delayed_deliveries(db)
+            return "Delivery information is available to master accounts only.", [], []
+        supplier_summary = ChatService._summarize_supplier(m, db, user_role)
+        if supplier_summary:
+            return supplier_summary
+        if any(w in m for w in ["needs attention", "what needs attention", "anything urgent", "daily briefing", "morning briefing"]):
+            return ChatService._daily_briefing(db, user_role)
+        if "usage" in m:
+            usage_summary = ChatService._material_usage_summary(m, db)
+            if usage_summary:
+                return usage_summary
         material_query = ChatService._route_material_query(m, db)
         if material_query:
             return material_query
@@ -618,6 +1252,10 @@ class ChatService:
             if user_role in ("master",):
                 return ChatService._pending_purchases(db)
             return "Purchase information is available to master accounts only.", [], []
+        if any(w in m for w in ["pending estimate", "estimates pending", "estimates awaiting", "follow up on estimate", "follow-up on estimate"]):
+            if user_role in ("master",):
+                return ChatService._pending_estimates(db)
+            return "Estimate information is available to master accounts only.", [], []
         if "help" in m:
             return (
                 "I can answer questions about stock/materials, orders, clients, payments "
@@ -641,6 +1279,36 @@ class ChatService:
             if not order:
                 return None
             client_name = order.client.name if order.client else "Unknown client"
+            if "budget" in m:
+                # Family 4 - answers the "Why is this project running at a loss?" /
+                # "How is this project's profitability tracking?" suggestion.
+                # Woodful has no genuine planned/project-budget field - order_value
+                # is the order's price, not a declared cost ceiling - so this never
+                # claims a project is "over budget" (negative profit isn't the same
+                # thing as exceeding a planned budget that doesn't exist here).
+                # Reuses OrderService.profitability() (the exact same figures the
+                # order detail page's own profitability panel already shows) rather
+                # than a second, independently-derived calculation - and stays
+                # behind the same master-only restriction that endpoint already
+                # enforces, so a "user"-role viewer sees no financial figures here
+                # either.
+                if user_role not in ("master",):
+                    return "Profitability details for this project aren't available to your account role.", []
+                figures = OrderService.profitability(db, order)
+                running_at_a_loss = figures["estimated_gross_profit"] < 0
+                lines = [
+                    f"{order.order_code}: order value Rs {figures['order_value']:,.2f}, "
+                    f"actual direct costs so far Rs {figures['actual_direct_costs']:,.2f} "
+                    f"(Rs {figures['material_cost']:,.2f} material + Rs {figures['project_expenses']:,.2f} expenses).",
+                ]
+                if running_at_a_loss:
+                    lines.append(f"Costs so far exceed the order value by Rs {abs(figures['estimated_gross_profit']):,.2f}.")
+                else:
+                    lines.append(
+                        f"Estimated gross profit so far: Rs {figures['estimated_gross_profit']:,.2f} "
+                        f"({figures['gross_margin_percent'] * 100:.1f}% margin)."
+                    )
+                return " ".join(lines), []
             lines = [
                 f"{order.order_code} for {client_name} - {order.project_type or 'project'}.",
                 f"Stage: {order.project_status}. Progress: {order.progress_percent}%.",
@@ -732,6 +1400,16 @@ class ChatService:
                 Material.name.ilike(like), Material.thickness_size.ilike(like), Material.brand_grade.ilike(like),
             ))
         material = query.first()
+        if not material:
+            # Exact substring search found nothing - try a typo-tolerant
+            # fallback before giving up. "hdhr" is genuinely not a
+            # substring of "HDHMR" (a letter is missing), which ILIKE
+            # alone can never bridge - this is the specific, confirmed
+            # gap from the brief's own "6mm hdhr kitna h" example.
+            all_names = [n for (n,) in db.query(Material.name).all()]
+            close = difflib.get_close_matches(material_text, [n.lower() for n in all_names], n=1, cutoff=0.6)
+            if close:
+                material = db.query(Material).filter(Material.name.ilike(close[0])).first()
         if not material:
             return f"I couldn't find a material matching \"{material_text}\".", [], []
 
@@ -949,6 +1627,88 @@ class ChatService:
         return f"{len(low)} materials at or below minimum stock.", [], records
 
     @staticmethod
+    def _replenishment_requirements(db: Session, user_role: str):
+        """"what needs reordering" - the shortfall shown is honest
+        arithmetic on two real stored values (minimum_stock minus
+        current_stock), never a fabricated target level - this app has
+        no "ideal stock" field to invent one from, and the AI must not
+        pretend otherwise."""
+        materials = db.query(Material).filter(Material.current_stock <= Material.minimum_stock).all()
+        if not materials:
+            return "Nothing currently needs reordering - all materials are above their minimum stock level.", [], []
+        records = []
+        for m in materials[:10]:
+            shortfall = (m.minimum_stock or 0) - (m.current_stock or 0)
+            sublabel = f"Need {shortfall} {m.unit} to reach minimum stock"
+            if m.primary_supplier:
+                sublabel += f" - usually supplied by {m.primary_supplier.name}"
+            records.append({
+                "type": "Material", "label": m.name, "sublabel": sublabel, "path": f"/materials/{m.id}",
+            })
+        return f"{len(materials)} material(s) need reordering to reach their minimum stock level.", [], records
+
+    @staticmethod
+    def _material_usage_summary(m: str, db: Session):
+        """"hdhmr usage summary" - a genuine summary of real Issue
+        records for this material, not a fabricated narrative.
+        total_issued is confirmed kept in sync by stock_service.py on
+        every issue - but it's gross issued, not net of any later
+        returns, so it's labeled that way rather than implied to be
+        "net consumed"."""
+        patterns = [
+            r"summarize\s+(.+?)\s+usage",
+            r"usage\s+(?:of|for)\s+(.+?)$",
+            r"(.+?)\s+usage(?:\s+summary)?\b",
+        ]
+        material_text = None
+        for pattern in patterns:
+            match = re.search(pattern, m)
+            if match:
+                material_text = match.group(1).strip()
+                break
+        if not material_text:
+            return None
+
+        significant_words = [w for w in material_text.split() if len(w) > 2]
+        if not significant_words:
+            return None
+        query = db.query(Material)
+        for word in significant_words:
+            like = f"%{word}%"
+            query = query.filter(or_(
+                Material.name.ilike(like), Material.thickness_size.ilike(like), Material.brand_grade.ilike(like),
+            ))
+        material = query.first()
+        if not material:
+            all_names = [n for (n,) in db.query(Material.name).all()]
+            close = difflib.get_close_matches(material_text, [n.lower() for n in all_names], n=1, cutoff=0.6)
+            if close:
+                material = db.query(Material).filter(Material.name.ilike(close[0])).first()
+        if not material:
+            return None
+
+        issues = db.query(Issue).filter(Issue.material_id == material.id).order_by(Issue.date.desc()).all()
+        if not issues:
+            return f"{material.name} has never been issued.", [], []
+
+        by_order = {}
+        for i in issues:
+            key = i.order.order_code if i.order else "No project"
+            by_order[key] = by_order.get(key, 0) + float(i.quantity_issued)
+        top_orders = sorted(by_order.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        top_summary = ", ".join(f"{code}: {qty:g} {material.unit}" for code, qty in top_orders)
+
+        lines = [
+            f"{material.name}: {float(material.total_issued or 0):g} {material.unit} issued in total across {len(issues)} issue(s).",
+            f"Top consumers - {top_summary}.",
+        ]
+        records = [{
+            "type": "Material", "label": material.name, "sublabel": f"{material.current_stock} {material.unit} in stock",
+            "path": f"/materials/{material.id}",
+        }]
+        return " ".join(lines), [], records
+
+    @staticmethod
     def _out_of_stock(db: Session, user_role: str):
         """Distinct from _low_stock - specifically materials at zero,
         not just at-or-below their reorder level."""
@@ -1024,6 +1784,21 @@ class ChatService:
             "path": "/purchases",
         } for p in purchases[:10]]
         return f"{len(purchases)} purchases are pending payment to suppliers.", [], records
+
+    @staticmethod
+    def _pending_estimates(db: Session):
+        """"sent" estimates awaiting a client response - the follow-up
+        list a salesperson actually needs, not every estimate ever
+        created."""
+        estimates = db.query(Estimate).filter(Estimate.status == "sent").order_by(Estimate.created_at.desc()).all()
+        if not estimates:
+            return "No estimates are currently awaiting a client response.", [], []
+        records = [{
+            "type": "Estimate", "label": e.estimate_code,
+            "sublabel": f"{e.client.name if e.client else 'Client'} - Rs {float(e.total_cost or 0):,.2f}",
+            "path": f"/estimates/{e.id}",
+        } for e in estimates[:10]]
+        return f"{len(estimates)} estimates are awaiting a client response.", [], records
 
     @staticmethod
     def _staff_summary(db: Session):

@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { statusClass } from '../utils/statusColors';
 
 function UsersPage() {
   const { user } = useSelector((state) => state.auth);
@@ -73,7 +74,7 @@ function UsersPage() {
   const columns = [
     { key: 'username', label: 'Username' }, { key: 'full_name', label: 'Full Name' },
     { key: 'email', label: 'Email' }, { key: 'role', label: 'Role' },
-    { key: 'is_active', label: 'Status', render: (v) => <span className={`status-badge ${v ? 'status-ok' : 'status-danger'}`}>{v ? 'Active' : 'Inactive'}</span> },
+    { key: 'is_active', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v ? 'Active' : 'Inactive')}`}>{v ? 'Active' : 'Inactive'}</span> },
     { key: 'cannot_be_deleted', label: 'Protected', render: (v) => v ? 'Yes' : 'No' },
     {
       key: 'edit_action', label: '', render: (v, row) => (
@@ -112,7 +113,10 @@ function UsersPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Users</h1>
+        <div>
+          <h1>Users</h1>
+          <p className="page-summary">Manage login accounts and their Master/User access level.</p>
+        </div>
         {isStrictlyMaster && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add User</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
