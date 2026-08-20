@@ -29,7 +29,7 @@ def create_milestone(data: MilestoneCreate, request: Request, db: Session = Depe
     order = db.query(Order).filter(Order.id == data.order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    milestone = Milestone(**data.dict(), business_id=generate_short_id())
+    milestone = Milestone(**data.dict(), business_id=generate_short_id(db))
     db.add(milestone)
     db.commit()
     db.refresh(milestone)

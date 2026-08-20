@@ -49,8 +49,8 @@ function OrdersPage() {
     ordersAPI.list({ ...filterParams, limit: PAGE_SIZE, offset }).then((res) => {
       setOrders(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    }).finally(() => setPageLoading(false));
-    clientsAPI.list().then((res) => setClients(res.data));
+    }).catch(() => {}).finally(() => setPageLoading(false));
+    clientsAPI.list().then((res) => setClients(res.data)).catch(() => {});
   };
 
   useEffect(() => {

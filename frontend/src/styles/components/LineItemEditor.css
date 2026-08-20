@@ -8,6 +8,13 @@
   align-items: center;
 }
 
+/* Family 21 - Product picker column, only present when the caller
+   passes a product list into LineItemEditor. */
+.line-item-editor.has-product-column .line-item-header-row,
+.line-item-editor.has-product-column .line-item-row {
+  grid-template-columns: 1.6fr 2fr 1.3fr 0.7fr 0.9fr 1fr 1.1fr 70px;
+}
+
 .line-item-header-row {
   font-size: 0.7rem;
   font-weight: 700;

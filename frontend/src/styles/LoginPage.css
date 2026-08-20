@@ -20,7 +20,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: var(--space-6) var(--space-7);
+  padding: var(--space-7) var(--space-7) var(--space-6);
 }
 
 .brand-backdrop {
@@ -33,13 +33,17 @@
 
 .login-brand-top {
   position: absolute;
-  top: var(--space-6);
+  top: var(--space-7);
   left: var(--space-7);
   z-index: 1;
 }
 
-.login-logo-small {
-  height: 30px;
+/* Given real presence - the previous 30px treatment read as a small
+   corner mark rather than a brand identity. The logo's own artwork
+   (saw blade, tree-ring, ruler, drawer front, chair) deserves enough
+   scale to actually be legible. */
+.login-logo-mark {
+  height: 46px;
   width: auto;
   display: block;
   filter: brightness(0) invert(1);
@@ -82,6 +86,18 @@
   max-width: 380px;
 }
 
+/* A thin rule that echoes the left panel's ruler/tick-mark motif - the
+   visual link that makes the two halves read as one product rather
+   than "decorative template" + "generic form". */
+.login-form-wrap::before {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 2px;
+  background: var(--color-gold);
+  margin-bottom: var(--space-4);
+}
+
 .login-form-wrap h1 {
   font-size: 2rem;
   margin-bottom: 6px;
@@ -112,8 +128,35 @@
   font-size: 0.85rem;
 }
 
+/* Password label + "Forgot password?" share one row - a deliberate
+   secondary action next to the field it relates to, not a disconnected
+   footer link the user has to hunt for after the button. */
+.form-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.form-label-row label { margin-bottom: 0; }
+
+.forgot-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-gold);
+  text-decoration: none;
+}
+
+.forgot-link:hover { text-decoration: underline; }
+
+.forgot-link:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .form-group input {
-  padding: 12px 14px;
+  padding: 13px 14px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: 0.92rem;
@@ -121,7 +164,7 @@
   background: var(--surface);
   color: var(--text-primary);
   caret-color: var(--color-gold);
-  transition: border-color var(--transition), background var(--transition);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
 
 .form-group input::placeholder {
@@ -132,6 +175,7 @@
 .form-group input:focus {
   outline: none;
   border-color: var(--color-gold);
+  background: var(--surface-elevated);
   box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15);
 }
 
@@ -140,6 +184,17 @@
   color: var(--text-secondary);
   cursor: not-allowed;
   opacity: 1;
+}
+
+/* Browser autofill tends to force its own yellow background - override
+   it to stay on-brand rather than let the field jump to a mismatched
+   color the moment a saved credential fills it in. */
+.form-group input:-webkit-autofill,
+.form-group input:-webkit-autofill:hover,
+.form-group input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 .password-input-row {
@@ -185,13 +240,14 @@
 }
 
 .login-button {
-  padding: 13px 20px;
+  padding: 14px 20px;
   background: var(--color-ink);
   color: var(--color-ivory);
   border: none;
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: 0.95rem;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -210,28 +266,91 @@
   outline-offset: 2px;
 }
 
+/* Tablet/narrow desktop: the two-column split gets tight before it
+   needs to fully stack - give the form panel breathing room first. */
+@media (max-width: 1024px) and (min-width: 901px) {
+  .login-container { grid-template-columns: 0.85fr 1fr; }
+}
+
+/* Below this width the two-column split genuinely doesn't work -
+   recompose rather than just stack. The brand panel becomes a compact
+   header (small logo + tagline inline, decorative artwork scaled down
+   and lowered in opacity so it reads as texture rather than competing
+   for attention), so the form - the actual task the user is here for -
+   dominates the screen immediately: brand, then login, then actions. */
 @media (max-width: 900px) {
   .login-container {
     grid-template-columns: 1fr;
   }
 
   .login-brand-panel {
+    padding: var(--space-5) var(--space-5);
+    min-height: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-4);
+  }
+
+  .brand-backdrop {
+    opacity: 0.45;
+  }
+
+  .login-brand-top {
+    position: static;
+    flex-shrink: 0;
+  }
+
+  .login-logo-mark {
+    height: 32px;
+  }
+
+  .login-brand-content {
+    position: relative;
+    max-width: none;
+  }
+
+  .login-brand-statement {
+    font-size: 0.92rem;
+  }
+
+  .login-brand-descriptor {
+    margin-top: 2px;
+  }
+
+  .login-form-panel {
     padding: var(--space-6) var(--space-5);
-    min-height: 220px;
   }
 }
 
 @media (max-width: 560px) {
   .login-brand-panel {
-    min-height: 140px;
-    padding: var(--space-5) var(--space-4);
+    padding: var(--space-4);
+    gap: var(--space-3);
   }
 
-  .login-brand-statement {
-    font-size: 1rem;
+  .login-brand-descriptor {
+    display: none; /* the compact mobile header keeps only the primary brand line - the descriptor tags become redundant clutter at this width */
   }
 
   .login-form-panel {
     padding: var(--space-5) var(--space-4);
+  }
+
+  .form-label-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+
+/* prefers-reduced-motion is genuinely honored here via MotionConfig
+   reducedMotion="user" in LoginPage.jsx, which disables every
+   motion.* animation on this page (entrance fade, button tap scale,
+   error transition) for users who have requested it at the OS/browser
+   level. The transition rules below cover the plain-CSS hover/focus
+   transitions that MotionConfig doesn't reach. */
+@media (prefers-reduced-motion: reduce) {
+  .login-button, .form-group input, .forgot-link, .password-toggle {
+    transition: none;
   }
 }

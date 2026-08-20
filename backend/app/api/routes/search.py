@@ -12,6 +12,7 @@ from app.models.material import Material
 from app.models.supplier import Supplier
 from app.models.employee import Employee
 from app.models.daily_task import DailyTask
+from app.models.product import Product
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -53,6 +54,13 @@ def global_search(q: Optional[str] = Query(None, min_length=1), db: Session = De
     ).limit(RESULTS_PER_TYPE).all():
         results.append({"type": "Estimate", "id": e.id, "label": e.estimate_code,
                          "sublabel": e.client.name if e.client else "", "path": f"/estimates/{e.id}"})
+
+    for p in db.query(Product).filter(
+        (Product.name.ilike(like)) | (Product.product_code.ilike(like)) |
+        (Product.sku.ilike(like)) | (Product.business_id.ilike(like))
+    ).limit(RESULTS_PER_TYPE).all():
+        results.append({"type": "Product", "id": p.id, "label": p.name,
+                         "sublabel": p.sku or p.product_code, "path": f"/products/{p.id}"})
 
     for m in db.query(Material).filter(
         (Material.name.ilike(like)) | (Material.material_code.ilike(like)) | (Material.business_id.ilike(like))

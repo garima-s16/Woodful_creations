@@ -61,7 +61,7 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db),
     payload = data.dict(exclude={"employee_code"})
     for _ in range(5):
         code = generate_unique_code(db, Employee, "employee_code", "EMP-")
-        employee = Employee(**payload, employee_code=code, business_id=generate_short_id())
+        employee = Employee(**payload, employee_code=code, business_id=generate_short_id(db))
         db.add(employee)
         try:
             db.commit()

@@ -41,7 +41,7 @@ def create_location(data: LocationCreate, db: Session = Depends(get_db),
     if db.query(Location).filter(Location.parent_id == data.parent_id, Location.name == data.name).first():
         raise HTTPException(status_code=400, detail=f'"{data.name}" already exists under this parent.')
 
-    location = Location(**data.dict(), business_id=generate_short_id())
+    location = Location(**data.dict(), business_id=generate_short_id(db))
     db.add(location)
     try:
         db.commit()

@@ -14,6 +14,13 @@ class EstimateLineItemBase(BaseModel):
     quantity: Decimal = Decimal("1")
     unit: Optional[str] = None
     rate: Decimal = Decimal("0")
+    # Family 21 - Product <-> Estimate Line Item relationship. Optional:
+    # a genuinely custom, one-off quoted line can still have no Product
+    # Master entry. When set on create, description/unit/rate are
+    # server-defaulted from the Product's own catalog values if the
+    # caller left them blank - see _build_line_items() in
+    # api/routes/estimates.py.
+    product_id: Optional[int] = None
 
     @field_validator("category")
     @classmethod
@@ -35,6 +42,7 @@ class EstimateLineItemResponse(EstimateLineItemBase):
     amount: Optional[Decimal] = None
     rate: Optional[Decimal] = None
     sort_order: int
+    product_name: Optional[str] = None
 
     class Config:
         from_attributes = True

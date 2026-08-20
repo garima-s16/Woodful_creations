@@ -10,6 +10,7 @@ from app.core.security import get_current_user, require_role
 from app.core.audit import log_action, serializable_fields
 from app.models.estimate import Estimate
 from app.models.estimate_line_item import EstimateLineItem
+from app.models.product import Product
 from app.schemas.estimate import EstimateCreate, EstimateUpdate, EstimateResponse
 from app.utils.id_generator import generate_unique_code, generate_short_id
 
@@ -28,16 +29,34 @@ def _compute_totals(subtotal: Decimal, discount: Decimal, tax_percent: Decimal):
     return tax_amount, taxable + tax_amount
 
 
-def _build_line_items(line_items_data, estimate_id: int = None):
+def _build_line_items(line_items_data, db: Session, estimate_id: int = None):
     """Computes amount = quantity * rate server-side for each line item -
     the frontend may show a running total for UX, but the stored amount
-    is never taken from client input directly."""
+    is never taken from client input directly.
+
+    Family 21 - when product_id is set and the caller left
+    description/unit/rate blank (empty description, rate 0), those are
+    filled in from the Product Master's own catalog values - same
+    convenience default as _build_order_items() in api/routes/orders.py,
+    and whatever the caller DID send still always wins."""
     items = []
     for idx, item in enumerate(line_items_data):
-        amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        description, unit, rate = item.description, item.unit, item.rate
+        if item.product_id:
+            product = db.query(Product).filter(Product.id == item.product_id).first()
+            if not product:
+                raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+            if not description:
+                description = product.name
+            if not unit:
+                unit = product.unit
+            if not rate:
+                rate = product.selling_price
+        qty = item.quantity if item.quantity else Decimal("1")
+        amount = (Decimal(str(qty)) * Decimal(str(rate or 0))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         items.append(EstimateLineItem(
-            estimate_id=estimate_id, description=item.description, category=item.category,
-            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
+            estimate_id=estimate_id, product_id=item.product_id, description=description, category=item.category,
+            quantity=item.quantity, unit=unit, rate=rate, amount=amount, sort_order=idx,
         ))
     return items
 
@@ -82,7 +101,7 @@ def create_estimate(data: EstimateCreate, request: Request, db: Session = Depend
     payload = data.dict(exclude={"estimate_code", "line_items"})
 
     if data.line_items:
-        line_items = _build_line_items(data.line_items)
+        line_items = _build_line_items(data.line_items, db)
         subtotal = sum((item.amount for item in line_items), Decimal("0"))
         # material_cost/labor_cost are legacy summary fields - when real
         # line items are supplied, keep them in sync by category rather
@@ -100,7 +119,7 @@ def create_estimate(data: EstimateCreate, request: Request, db: Session = Depend
 
     for _ in range(5):
         code = generate_unique_code(db, Estimate, "estimate_code", "EST-")
-        estimate = Estimate(**payload, estimate_code=code, business_id=generate_short_id(),
+        estimate = Estimate(**payload, estimate_code=code, business_id=generate_short_id(db),
                              tax_amount=tax_amount, total_cost=total_cost)
         db.add(estimate)
         try:
@@ -150,7 +169,7 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, request: Request, db
         for existing in list(estimate.line_items):
             db.delete(existing)
         db.flush()
-        new_items = _build_line_items(data.line_items, estimate_id=estimate.id)
+        new_items = _build_line_items(data.line_items, db, estimate_id=estimate.id)
         for item in new_items:
             db.add(item)
         db.flush()
@@ -194,7 +213,7 @@ def revise_estimate(estimate_id: int, request: Request, db: Session = Depends(ge
 
     new_code = f"{source.estimate_code.split('-v')[0]}-v{next_version}"
     revision = Estimate(
-        estimate_code=new_code, business_id=generate_short_id(),
+        estimate_code=new_code, business_id=generate_short_id(db),
         client_id=source.client_id, order_id=source.order_id,
         description=source.description, material_cost=source.material_cost, labor_cost=source.labor_cost,
         discount=source.discount, tax_percent=source.tax_percent, tax_amount=source.tax_amount,
@@ -205,7 +224,7 @@ def revise_estimate(estimate_id: int, request: Request, db: Session = Depends(ge
     db.flush()
     for idx, item in enumerate(source.line_items):
         db.add(EstimateLineItem(
-            estimate_id=revision.id, description=item.description, category=item.category,
+            estimate_id=revision.id, product_id=item.product_id, description=item.description, category=item.category,
             quantity=item.quantity, unit=item.unit, rate=item.rate, amount=item.amount, sort_order=idx,
         ))
     db.commit()

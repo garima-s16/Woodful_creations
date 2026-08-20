@@ -42,6 +42,12 @@ from app.models.attendance import Attendance
 from app.models.daily_task import DailyTask
 from app.models.task_comment import TaskComment
 from app.models.production_job import ProductionJob
+from app.models.product_category import ProductCategory, ProductSubcategory
+from app.models.product import Product
+from app.models.product_material import ProductMaterial
+from app.models.order_item import OrderItem
+from app.models.estimate_line_item import EstimateLineItem
+from app.utils.id_generator import generate_short_id
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -320,6 +326,119 @@ def seed_materials(db, suppliers, locations, subcategories):
     return out
 
 
+def seed_product_categories(db):
+    """Family 21 Product Master hierarchy - same Category -> Subcategory
+    shape as the material hierarchy, but a genuinely separate table
+    (a product and a material are different kinds of thing and must
+    never share a category list). Returns a flat dict keyed by
+    subcategory name for seed_products() to reference."""
+    if db.query(ProductCategory).count() > 0:
+        return {s.name: s for s in db.query(ProductSubcategory).all()}
+    rows = [
+        # category, [subcategories]
+        ("Bedroom Furniture", ["Wardrobes", "Beds"]),
+        ("Modular Kitchen", ["Base Units", "Wall Units"]),
+        ("Mandir", ["Wall Mounted"]),
+        ("TV & Entertainment", ["TV Units"]),
+        ("Wall Panels", ["CNC Panels"]),
+        ("Showroom & Display", ["Display Units"]),
+    ]
+    out = {}
+    for cat_name, subcats in rows:
+        category = ProductCategory(name=cat_name, business_id=generate_short_id(db))
+        db.add(category)
+        db.flush()
+        for sub_name in subcats:
+            subcategory = ProductSubcategory(category_id=category.id, name=sub_name, business_id=generate_short_id(db))
+            db.add(subcategory)
+            db.flush()
+            out[sub_name] = subcategory
+    db.commit()
+    logger.info("Seeded %d product categories / %d subcategories", len(rows), len(out))
+    return out
+
+
+def seed_products(db, product_subcategories, materials):
+    """The real Product Master (Family 21) - both standard catalog items
+    (sold repeatedly, e.g. "Sliding Wardrobe - 3 Door") and custom,
+    one-off furniture made for a single client (product_type="custom",
+    no SKU) - both represented the same way so OrderItem/
+    EstimateLineItem can point at either through one relationship.
+    bom gives each standard product a real bill-of-materials against
+    already-seeded Materials - a genuine relational fact, not free text."""
+    if db.query(Product).count() > 0:
+        return {p.sku or p.name: p for p in db.query(Product).all()}
+    rows = [
+        # name, sku, type, subcategory, description, L, W, H, dim_unit, finish, unit,
+        # cost_price, selling_price, tax_percent, lead_time_days, notes, bom[(mat_code, qty, unit)]
+        ("Sliding Wardrobe - 3 Door", "WD-SLD-3D", "standard", "Wardrobes",
+         "3-door sliding wardrobe, laminate finish, soft-close hardware",
+         96, 24, 84, "in", "White Laminate", "Piece", 130000, 180000, 18, 21, "",
+         [("MAT-001", 4, "Sheets"), ("MAT-004", 3, "Sheets"), ("MAT-006", 6, "Nos"), ("MAT-007", 3, "Sets")]),
+        ("Hinged Wardrobe - 2 Door", "WD-HNG-2D", "standard", "Wardrobes",
+         "2-door hinged wardrobe with internal shelving",
+         48, 22, 84, "in", "Walnut Laminate", "Piece", 26000, 36000, 18, 14, "",
+         [("MAT-002", 2, "Sheets"), ("MAT-005", 1, "Sheets"), ("MAT-006", 4, "Nos")]),
+        ("Queen Bed with Storage", "BD-QN-STG", "standard", "Beds",
+         "Queen size bed with hydraulic storage",
+         78, 60, 36, "in", "White Laminate", "Piece", 68000, 95000, 18, 18, "",
+         [("MAT-002", 3, "Sheets"), ("MAT-004", 2, "Sheets")]),
+        ("Modular Kitchen Base Unit - 3ft", "MK-BASE-3", "standard", "Base Units",
+         "3 ft base cabinet with drawers, BWP core",
+         36, 24, 34, "in", "PU White Paint", "Piece", 12000, 18000, 18, 15, "",
+         [("MAT-002", 1, "Sheets"), ("MAT-007", 1, "Sets"), ("MAT-010", 1, "Litres")]),
+        ("Modular Kitchen Wall Unit - 3ft", "MK-WALL-3", "standard", "Wall Units",
+         "3 ft wall cabinet, BWP core",
+         36, 13, 28, "in", "PU White Paint", "Piece", 7000, 10500, 18, 15, "",
+         [("MAT-002", 1, "Sheets"), ("MAT-006", 2, "Nos")]),
+        ("TV Unit - Floating", "TV-FLT-01", "standard", "TV Units",
+         "Wall-mounted floating TV unit with LED panel back",
+         72, 16, 20, "in", "Walnut Laminate", "Piece", 22000, 32000, 18, 12, "",
+         [("MAT-001", 1, "Sheets"), ("MAT-005", 1, "Sheets")]),
+        ("CNC Wall Panel - Floral", "CNC-FLR-01", "standard", "CNC Panels",
+         "Laser-cut floral pattern decorative wall panel",
+         48, 96, 0.75, "in", "Natural Wood", "Sq Ft", 320, 480, 18, 10, "Priced per sheet, sold by area",
+         [("MAT-001", 1, "Sheets")]),
+        ("Custom Pooja Mandir - HDHMR", None, "custom", "Wall Mounted",
+         "Client-specific wall-mounted temple unit, carved front panel - made to order for Nimisha (CL-004)",
+         36, 15, 48, "in", "Natural Wood", "Piece", 88000, 125000, 18, 18,
+         "One-off for order WC-2026-004", [("MAT-001", 2, "Sheets"), ("MAT-009", 10, "Metres")]),
+        ("Custom Showroom Display Unit", None, "custom", "Display Units",
+         "Client-specific showroom display fixture - made to order for Woodful's own showroom (CL-005)",
+         120, 30, 72, "in", "PU White Paint", "Piece", 128000, 180000, 18, 25,
+         "One-off for order WC-2026-005", [("MAT-002", 4, "Sheets"), ("MAT-010", 2, "Litres")]),
+        ("Custom CNC Wall Panel - Client Design", None, "custom", "CNC Panels",
+         "Client-specific carved 3D wall panel design - made to order for Shrangi (CL-003)",
+         60, 96, 1, "in", "Natural Wood", "Piece", 61000, 85000, 18, 12,
+         "One-off for order WC-2026-003", [("MAT-001", 1, "Sheets")]),
+    ]
+    out = {}
+    for idx, (name, sku, ptype, subcat_name, desc, length, width, height, dim_unit, finish, unit,
+              cost, selling, tax, lead_time, notes, bom) in enumerate(rows, start=1):
+        subcategory = product_subcategories.get(subcat_name)
+        product = Product(
+            product_code=f"PROD-{idx:03d}", business_id=generate_short_id(db), sku=sku, name=name,
+            product_type=ptype, subcategory_id=subcategory.id if subcategory else None,
+            category=subcategory.category.name if subcategory else None,
+            description=desc, length=Decimal(str(length)), width=Decimal(str(width)), height=Decimal(str(height)),
+            dimension_unit=dim_unit, finish=finish, unit=unit,
+            cost_price=Decimal(str(cost)), selling_price=Decimal(str(selling)), tax_percent=Decimal(str(tax)),
+            lead_time_days=lead_time, notes=notes, is_active=True,
+        )
+        db.add(product)
+        db.flush()
+        for mat_code, qty, bom_unit in bom:
+            material = materials.get(mat_code)
+            if not material:
+                continue
+            db.add(ProductMaterial(product_id=product.id, material_id=material.id,
+                                    quantity=Decimal(str(qty)), unit=bom_unit))
+        out[sku or name] = product
+    db.commit()
+    logger.info("Seeded %d products", len(rows))
+    return out
+
+
 def seed_clients(db):
     if db.query(Client).count() > 0:
         return {c.client_code: c for c in db.query(Client).all()}
@@ -365,6 +484,51 @@ def seed_orders(db, clients):
     db.commit()
     logger.info("Seeded %d orders", len(rows))
     return out
+
+
+def seed_order_items(db, orders, products):
+    """Family 21 - Product <-> Order Item relationship, applied to the
+    demo data: each order's line items sum to exactly that order's
+    pre-set order_value, so the two representations agree rather than
+    silently drifting apart. Standard-catalog orders (WC-2026-001/002)
+    reference real standard Products; the three orders tied to one-off
+    work each reference their own custom Product (product_type="custom"),
+    demonstrating both kinds of Product Master entry feeding the same
+    OrderItem relationship."""
+    if db.query(OrderItem).count() > 0:
+        return
+    # order_code, [(product_sku_or_name, qty, unit, rate, category), ...]
+    rows = {
+        "WC-2026-001": [
+            ("WD-SLD-3D", 1, "Piece", 180000, "Furniture"),
+            ("BD-QN-STG", 1, "Piece", 95000, "Furniture"),
+            ("TV-FLT-01", 1, "Piece", 50000, "Furniture"),
+        ],
+        "WC-2026-002": [
+            ("MK-BASE-3", 6, "Piece", 18000, "Furniture"),
+            ("MK-WALL-3", 6, "Piece", 12000, "Furniture"),
+            ("WD-HNG-2D", 1, "Piece", 36000, "Furniture"),
+        ],
+        "WC-2026-003": [("Custom CNC Wall Panel - Client Design", 1, "Piece", 85000, "Furniture")],
+        "WC-2026-004": [("Custom Pooja Mandir - HDHMR", 1, "Piece", 125000, "Furniture")],
+        "WC-2026-005": [("Custom Showroom Display Unit", 1, "Piece", 180000, "Furniture")],
+    }
+    count = 0
+    for order_code, items in rows.items():
+        order = orders.get(order_code)
+        if not order:
+            continue
+        for idx, (product_key, qty, unit, rate, category) in enumerate(items):
+            product = products.get(product_key)
+            amount = Decimal(str(qty)) * Decimal(str(rate))
+            db.add(OrderItem(
+                order_id=order.id, product_id=product.id if product else None,
+                description=product.name if product else product_key, category=category,
+                quantity=Decimal(str(qty)), unit=unit, rate=Decimal(str(rate)), amount=amount, sort_order=idx,
+            ))
+            count += 1
+    db.commit()
+    logger.info("Seeded %d order items", count)
 
 
 def seed_estimates(db, clients, orders):
@@ -420,6 +584,59 @@ def seed_estimates(db, clients, orders):
                         reference_number=ref, received_by="Nikhil"))
     db.commit()
     logger.info("Seeded %d payments", len(rows))
+
+
+def seed_estimate_line_items(db, estimates, products):
+    """Family 21 - Product <-> Estimate Line Item relationship, applied
+    to the demo data: each estimate's Material/Labor line items sum to
+    exactly that estimate's pre-set material_cost/labor_cost, so the
+    flat legacy totals and the real itemization agree. Some lines
+    reference a real Product Master entry; others (hardware, generic
+    installation/labor) deliberately have no product_id, demonstrating
+    that a line item never requires a catalog entry."""
+    if db.query(EstimateLineItem).count() > 0:
+        return
+    # estimate_code -> [(product_key_or_None, description, category, qty, unit, rate), ...]
+    rows = {
+        "EST-001": [
+            ("WD-SLD-3D", "Sliding Wardrobe - 3 Door", "Material", 1, "Piece", 150000),
+            (None, "Hardware & Fittings", "Material", 1, "Lot", 50000),
+            (None, "Installation & Labor", "Labor", 1, "Lot", 80000),
+        ],
+        "EST-002": [
+            ("MK-BASE-3", "Modular Kitchen Base Units", "Material", 1, "Lot", 90000),
+            ("MK-WALL-3", "Modular Kitchen Wall Units", "Material", 1, "Lot", 50000),
+            (None, "Installation & Labor", "Labor", 1, "Lot", 50000),
+        ],
+        "EST-003": [
+            ("Custom CNC Wall Panel - Client Design", "CNC Wall Panel - Client Design", "Material", 1, "Piece", 55000),
+            (None, "Installation", "Labor", 1, "Lot", 20000),
+        ],
+        "EST-004": [
+            (None, "Additional Puja Shelf - Material", "Material", 1, "Lot", 30000),
+            (None, "Installation & Labor", "Labor", 1, "Lot", 10000),
+        ],
+        "EST-005": [
+            ("TV-FLT-01", "TV Unit - Floating", "Material", 1, "Piece", 45000),
+            (None, "Installation & Labor", "Labor", 1, "Lot", 15000),
+        ],
+    }
+    count = 0
+    for est_code, items in rows.items():
+        estimate = estimates.get(est_code)
+        if not estimate:
+            continue
+        for idx, (product_key, description, category, qty, unit, rate) in enumerate(items):
+            product = products.get(product_key) if product_key else None
+            amount = Decimal(str(qty)) * Decimal(str(rate))
+            db.add(EstimateLineItem(
+                estimate_id=estimate.id, product_id=product.id if product else None,
+                description=description, category=category,
+                quantity=Decimal(str(qty)), unit=unit, rate=Decimal(str(rate)), amount=amount, sort_order=idx,
+            ))
+            count += 1
+    db.commit()
+    logger.info("Seeded %d estimate line items", count)
 
 
 def seed_payments(db, orders):
@@ -836,34 +1053,51 @@ def seed_notifications(db, materials, orders, employees, tasks):
     logger.info("Seeded notifications")
 
 
+def run_seed(db):
+    """The full idempotent seed sequence - shared by the CLI entry point
+    below and the Family 21 demo reset endpoint
+    (api/routes/demo_reset.py), so there is exactly one place that
+    defines "what does a freshly seeded Woodful demo environment
+    contain" rather than two copies that could drift apart. Every
+    seed_* function here already guards itself with a
+    `if db.query(Model).count() > 0: return` (or equivalent) check, so
+    calling this again against a database that already has data is
+    always a safe no-op re-scan, never a duplicate insert."""
+    seed_master_users(db)
+    locations = seed_locations(db)
+    subcategories = seed_material_hierarchy(db)
+    seed_lookups(db)
+    suppliers = seed_suppliers(db)
+    named_suppliers = seed_named_suppliers(db)
+    materials = seed_materials(db, suppliers, locations, subcategories)
+    seed_supplier_materials(db, suppliers, named_suppliers, materials)
+    product_subcategories = seed_product_categories(db)
+    products = seed_products(db, product_subcategories, materials)
+    clients = seed_clients(db)
+    orders = seed_orders(db, clients)
+    seed_order_items(db, orders, products)
+    estimates = seed_estimates(db, clients, orders)
+    seed_estimate_line_items(db, estimates, products)
+    seed_payments(db, orders)
+    seed_project_expenses(db, orders)
+    seed_purchases(db, suppliers, materials)
+    seed_issues(db, orders, materials)
+    employees = seed_employees(db)
+    seed_salary_slips(db, employees)
+    seed_leaves(db, employees)
+    seed_attendance(db, employees)
+    tasks = seed_daily_tasks(db, employees, orders)
+    seed_task_comments(db, tasks)
+    seed_production_jobs(db, employees, orders, materials)
+    seed_company_holidays(db)
+    seed_notifications(db, materials, orders, employees, tasks)
+    logger.info("Seed complete.")
+
+
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        seed_master_users(db)
-        locations = seed_locations(db)
-        subcategories = seed_material_hierarchy(db)
-        seed_lookups(db)
-        suppliers = seed_suppliers(db)
-        named_suppliers = seed_named_suppliers(db)
-        materials = seed_materials(db, suppliers, locations, subcategories)
-        seed_supplier_materials(db, suppliers, named_suppliers, materials)
-        clients = seed_clients(db)
-        orders = seed_orders(db, clients)
-        seed_estimates(db, clients, orders)
-        seed_payments(db, orders)
-        seed_project_expenses(db, orders)
-        seed_purchases(db, suppliers, materials)
-        seed_issues(db, orders, materials)
-        employees = seed_employees(db)
-        seed_salary_slips(db, employees)
-        seed_leaves(db, employees)
-        seed_attendance(db, employees)
-        tasks = seed_daily_tasks(db, employees, orders)
-        seed_task_comments(db, tasks)
-        seed_production_jobs(db, employees, orders, materials)
-        seed_company_holidays(db)
-        seed_notifications(db, materials, orders, employees, tasks)
-        logger.info("Seed complete.")
+        run_seed(db)
     finally:
         db.close()

@@ -42,7 +42,7 @@ function ClientsPage() {
     clientsAPI.list(params).then((res) => {
       setClients(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    }).finally(() => setPageLoading(false));
+    }).catch(() => {}).finally(() => setPageLoading(false));
   };
 
   useEffect(() => {

@@ -4,14 +4,20 @@ from app.models.base import BaseModel
 # Every entity type this generic table currently supports. Checked
 # against this allowlist on upload so parent_type can never be an
 # arbitrary string - only these tables are ever queried to confirm the
-# parent genuinely exists.
-DOCUMENT_PARENT_TYPES = {"order", "supplier", "purchase", "employee"}
+# parent genuinely exists. "product" (Family 21) covers both reference
+# images and general attachments for the Product Master - reused
+# deliberately rather than adding a dedicated ProductImage/
+# ProductAttachment table, since this generic mechanism already has
+# the exact validation/authorization/storage discipline that requirement
+# needs (extension allowlist, MIME check, streamed size limit, random
+# server-side filename).
+DOCUMENT_PARENT_TYPES = {"order", "supplier", "purchase", "employee", "product"}
 
 
 class GenericDocument(BaseModel):
-    """A file attached to an order, supplier, purchase, or employee
-    record. One table for all four (and any future entity), rather
-    than a near-identical dedicated table per type - client and
+    """A file attached to an order, supplier, purchase, employee, or
+    product record. One table for all five (and any future entity),
+    rather than a near-identical dedicated table per type - client and
     payment documents already have their own established, tested
     tables (ClientDocument, PaymentDocument) and are deliberately left
     as-is rather than migrated here, to avoid touching working data.

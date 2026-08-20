@@ -57,7 +57,7 @@ class NotificationService:
             notification_type=notification_type, severity=severity, title=title, message=message,
             recipient_user_id=recipient_user_id, related_entity_type=related_entity_type,
             related_entity_id=related_entity_id, action_path=action_path, dedup_key=dedup_key,
-            business_id=generate_short_id(),
+            business_id=generate_short_id(db),
         )
         db.add(notification)
         db.commit()

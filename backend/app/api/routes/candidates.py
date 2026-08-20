@@ -44,7 +44,7 @@ def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(g
 def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
                       auth=Depends(require_role("master"))):
     for _ in range(5):
-        candidate = Candidate(**data.dict(), business_id=generate_short_id())
+        candidate = Candidate(**data.dict(), business_id=generate_short_id(db))
         db.add(candidate)
         try:
             db.commit()

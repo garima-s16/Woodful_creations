@@ -39,12 +39,12 @@ function ClientDetailPage() {
 
   const load = useCallback(() => {
     clientsAPI.get(clientId).then((res) => setClient(res.data)).catch(() => setClient(null));
-    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data));
+    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data)).catch(() => {});
     if (canViewFinancials) {
       paymentsAPI.list({ client_id: clientId }).then((res) => setPayments(res.data)).catch(() => setPayments([]));
     }
-    estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data));
-    clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data));
+    estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data)).catch(() => {});
+    clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data)).catch(() => {});
   }, [clientId, canViewFinancials]);
 
   useEffect(load, [load]);

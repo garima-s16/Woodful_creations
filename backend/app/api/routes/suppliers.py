@@ -31,7 +31,7 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db),
     payload = data.dict(exclude={"supplier_code"})
     for _ in range(5):
         code = generate_unique_code(db, Supplier, "supplier_code", "SUP-")
-        supplier = Supplier(**payload, supplier_code=code, business_id=generate_short_id())
+        supplier = Supplier(**payload, supplier_code=code, business_id=generate_short_id(db))
         db.add(supplier)
         try:
             db.commit()

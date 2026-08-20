@@ -26,7 +26,7 @@ def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Dep
 def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db),
                         auth=Depends(require_role("master"))):
     for _ in range(5):
-        interview = Interview(**data.dict(), business_id=generate_short_id())
+        interview = Interview(**data.dict(), business_id=generate_short_id(db))
         db.add(interview)
         try:
             db.commit()

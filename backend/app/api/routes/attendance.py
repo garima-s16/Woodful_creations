@@ -35,7 +35,7 @@ def mark_attendance(data: AttendanceCreate, db: Session = Depends(get_db), auth=
     if auth.get("role", "user") not in ("master",) and data.employee_id != auth.get("employee_id"):
         raise HTTPException(status_code=403, detail="You can only mark attendance for yourself.")
     for _ in range(5):
-        record = Attendance(**data.dict(), business_id=generate_short_id())
+        record = Attendance(**data.dict(), business_id=generate_short_id(db))
         db.add(record)
         try:
             db.commit()

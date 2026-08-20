@@ -82,7 +82,7 @@ class StockService:
         invoice_total = taxable_value + gst_amount
 
         purchase = Purchase(
-            purchase_code=purchase_code, business_id=generate_short_id(), date=data.date,
+            purchase_code=purchase_code, business_id=generate_short_id(db), date=data.date,
             expected_delivery_date=data.expected_delivery_date, supplier_id=data.supplier_id,
             material_id=data.material_id, quantity=data.quantity, unit=data.unit, rate=data.rate,
             taxable_value=taxable_value, gst_percent=data.gst_percent, gst_amount=gst_amount,
@@ -189,7 +189,7 @@ class StockService:
         transfer = StockTransfer(
             material_id=data.material_id, quantity=data.quantity, from_location_id=from_location_id,
             to_location_id=data.to_location_id, transferred_by=data.transferred_by, remarks=data.remarks,
-            business_id=generate_short_id(),
+            business_id=generate_short_id(db),
         )
         db.add(transfer)
         db.flush()  # assigns transfer.id, needed as the ledger entries' reference_id below
@@ -290,7 +290,7 @@ class StockService:
             material_id=data.material_id, adjustment_type=data.adjustment_type,
             related_issue_id=data.related_issue_id,
             quantity_delta=data.quantity_delta, stock_before=stock_before, stock_after=stock_after,
-            reason=data.reason, adjusted_by=data.adjusted_by, business_id=generate_short_id(),
+            reason=data.reason, adjusted_by=data.adjusted_by, business_id=generate_short_id(db),
             location_id=data.location_id,
         )
         db.add(adjustment)

@@ -31,12 +31,12 @@ function SettingsPage() {
     settingsAPI.types().then((res) => {
       setLookupTypes(res.data.lookup_types);
       setSelected(res.data.lookup_types[0]);
-    });
+    }).catch(() => {});
   }, []);
 
   const loadValues = (type) => {
     if (!type) return;
-    settingsAPI.list(type).then((res) => setValues(res.data));
+    settingsAPI.list(type).then((res) => setValues(res.data)).catch(() => {});
   };
 
   useEffect(() => loadValues(selected), [selected]);

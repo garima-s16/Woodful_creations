@@ -63,7 +63,7 @@ def create_client(data: ClientCreate, db: Session = Depends(get_db), auth=Depend
     payload = data.dict(exclude={"client_code"})
     for _ in range(5):
         code = generate_unique_code(db, Client, "client_code", "CL-")
-        client = Client(**payload, client_code=code, business_id=generate_short_id())
+        client = Client(**payload, client_code=code, business_id=generate_short_id(db))
         db.add(client)
         try:
             db.commit()

@@ -168,7 +168,7 @@ def create_material(data: MaterialCreate, db: Session = Depends(get_db),
 
     for _ in range(5):
         code = generate_unique_code(db, Material, "material_code", "MAT-")
-        material = Material(**payload, material_code=code, business_id=generate_short_id())
+        material = Material(**payload, material_code=code, business_id=generate_short_id(db))
         db.add(material)
         try:
             db.flush()

@@ -323,7 +323,7 @@ class ChatService:
         for _ in range(5):
             code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
             task = DailyTask(
-                task_code=code, business_id=generate_short_id(), date=datetime.utcnow(),
+                task_code=code, business_id=generate_short_id(db), date=datetime.utcnow(),
                 employee_id=employee.id, order_id=order_id, task_description=task_text.capitalize(),
                 status="TO DO",
             )

@@ -23,10 +23,10 @@ function ProductionJobsPage() {
 
   const load = () => {
     setPageLoading(true);
-    productionJobsAPI.list().then((res) => setJobs(res.data)).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data));
-    ordersAPI.list().then((res) => setOrders(res.data));
-    materialsAPI.list().then((res) => setMaterials(res.data));
+    productionJobsAPI.list().then((res) => setJobs(res.data)).catch(() => {}).finally(() => setPageLoading(false));
+    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
+    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => {});
     settingsAPI.list('production-stages').then((res) => setStages(res.data)).catch(() => setStages([]));
   };
   useEffect(load, []);

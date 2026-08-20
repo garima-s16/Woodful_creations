@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  HomeIcon, MaterialIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon, MobileAppIcon,
+  HomeIcon, MaterialIcon, ProductIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon, MobileAppIcon,
   OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
   LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, AnalyticsIcon,
 } from './icons';
@@ -23,6 +23,7 @@ function Sidebar({ isOpen, user, onClose }) {
     {
       name: 'Inventory',
       items: [
+        { path: '/products', label: 'Product Master', icon: ProductIcon },
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [

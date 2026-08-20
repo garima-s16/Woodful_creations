@@ -20,7 +20,7 @@ function SalarySlipsPage() {
   const load = () => {
     setPageLoading(true);
     salarySlipsAPI.list().then((res) => setSlips(res.data)).catch(() => setError('Unable to load salary slips.')).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data));
+    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
   };
   useEffect(load, []);
 

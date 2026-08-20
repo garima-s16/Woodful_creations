@@ -25,7 +25,7 @@ function EmployeesPage() {
     setPageLoading(true);
     const params = {};
     if (searchTerm) params.search = searchTerm;
-    employeesAPI.list(params).then((res) => setEmployees(res.data)).finally(() => setPageLoading(false));
+    employeesAPI.list(params).then((res) => setEmployees(res.data)).catch(() => {}).finally(() => setPageLoading(false));
   };
   useEffect(() => {
     load();

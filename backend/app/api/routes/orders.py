@@ -12,6 +12,7 @@ from app.models.order import Order
 from app.models.order_comment import OrderComment
 from app.models.ai_workspace_report import AIWorkspaceReport
 from app.models.order_item import OrderItem
+from app.models.product import Product
 from app.models.estimate import Estimate
 from app.models.daily_task import DailyTask
 from app.models.task_comment import TaskComment
@@ -83,20 +84,39 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
     return _serialize_orders(query.all(), auth.get("role", "user"))
 
 
-def _build_order_items(items_data, order_id: int = None):
+def _build_order_items(items_data, db: Session, order_id: int = None):
     """Computes amount = quantity * rate server-side for each item -
     never trusted from client input directly, matching the estimate
     line items pattern (including ROUND_HALF_UP - Python's default
     quantize rounding is banker's rounding, which would silently
     disagree with how estimate amounts are computed for the exact same
-    calculation)."""
+    calculation).
+
+    Family 21 - when product_id is set and the caller left
+    description/unit/rate blank (empty description, rate 0), those are
+    filled in from the Product Master's own catalog values as a
+    convenience default - but whatever the caller DID send always wins,
+    since a custom quote frequently needs a different price/description
+    than the catalog default for the same underlying product."""
     from decimal import Decimal, ROUND_HALF_UP
     result = []
     for idx, item in enumerate(items_data):
-        amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        description, unit, rate = item.description, item.unit, item.rate
+        if item.product_id:
+            product = db.query(Product).filter(Product.id == item.product_id).first()
+            if not product:
+                raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+            if not description:
+                description = product.name
+            if not unit:
+                unit = product.unit
+            if not rate:
+                rate = product.selling_price
+        qty = item.quantity if item.quantity else Decimal("1")
+        amount = (Decimal(str(qty)) * Decimal(str(rate or 0))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         result.append(OrderItem(
-            order_id=order_id, description=item.description, category=item.category,
-            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
+            order_id=order_id, product_id=item.product_id, description=description, category=item.category,
+            quantity=item.quantity, unit=unit, rate=rate, amount=amount, sort_order=idx,
         ))
     return result
 
@@ -125,14 +145,14 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
         # estimate line it came from via source_estimate_item_id.
         order_items = [
             OrderItem(
-                description=li.description, category=li.category, quantity=li.quantity,
+                product_id=li.product_id, description=li.description, category=li.category, quantity=li.quantity,
                 unit=li.unit, rate=li.rate, amount=li.amount,
                 source_estimate_item_id=li.id, sort_order=idx,
             )
             for idx, li in enumerate(source_estimate.line_items)
         ]
     elif data.items:
-        order_items = _build_order_items(data.items)
+        order_items = _build_order_items(data.items, db)
     else:
         order_items = []
 
@@ -143,7 +163,7 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
     year = datetime.utcnow().year
     for _ in range(5):
         code = generate_unique_code(db, Order, "order_code", f"WC-{year}-")
-        order = Order(**payload, order_code=code, business_id=generate_short_id(),
+        order = Order(**payload, order_code=code, business_id=generate_short_id(db),
                       advance=advance, total_received=advance, balance=payload["order_value"] - advance)
         db.add(order)
         try:
@@ -194,7 +214,7 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         for existing in list(order.items):
             db.delete(existing)
         db.flush()
-        new_items = _build_order_items(data.items, order_id=order.id)
+        new_items = _build_order_items(data.items, db, order_id=order.id)
         for item in new_items:
             db.add(item)
         db.flush()

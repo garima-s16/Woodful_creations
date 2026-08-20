@@ -34,6 +34,8 @@ const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const PurchaseImportPage = lazy(() => import('./pages/PurchaseImportPage'));
 const MobileAppPage = lazy(() => import('./pages/MobileAppPage'));
 const MaterialDetailPage = lazy(() => import('./pages/MaterialDetailPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
+const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
 const SuppliersPage = lazy(() => import('./pages/SuppliersPage'));
 const SupplierDetailPage = lazy(() => import('./pages/SupplierDetailPage'));
 const PurchasesPage = lazy(() => import('./pages/PurchasesPage'));
@@ -170,6 +172,8 @@ function AppRoutes() {
         <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
         <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
         <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
+        <Route path="/products" element={<Protected><ProductsPage /></Protected>} />
+        <Route path="/products/:productId" element={<Protected><ProductDetailPage /></Protected>} />
         <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />
         <Route path="/purchases/import" element={<Protected><PurchaseImportPage /></Protected>} />
         <Route path="/mobile-app" element={<Protected><MobileAppPage /></Protected>} />

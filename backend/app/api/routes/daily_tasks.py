@@ -49,7 +49,7 @@ def create_daily_task(data: DailyTaskCreate, db: Session = Depends(get_db), auth
         payload["created_by"] = auth.get("email")
     for _ in range(5):
         code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
-        task = DailyTask(**payload, task_code=code, business_id=generate_short_id())
+        task = DailyTask(**payload, task_code=code, business_id=generate_short_id(db))
         db.add(task)
         try:
             db.commit()
@@ -158,7 +158,7 @@ def complete_and_assign_next(task_id: int, data: CompleteAndAssignNext, db: Sess
     }
     for _ in range(5):
         code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
-        next_task = DailyTask(**payload, task_code=code, business_id=generate_short_id())
+        next_task = DailyTask(**payload, task_code=code, business_id=generate_short_id(db))
         db.add(next_task)
         try:
             db.commit()

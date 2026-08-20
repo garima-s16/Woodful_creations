@@ -4,11 +4,34 @@ import '../styles/components/LineItemEditor.css';
 
 const CATEGORIES = ['Material', 'Labor', 'Furniture', 'Hardware', 'Installation', 'Transportation', 'Design', 'Service', 'Other'];
 
-const emptyRow = () => ({ description: '', category: '', quantity: '1', unit: '', rate: '0' });
+const emptyRow = () => ({ description: '', category: '', quantity: '1', unit: '', rate: '0', product_id: null });
 
-function LineItemEditor({ items, onChange }) {
+// Family 21 - Product <-> Order/Estimate Item relationship. `products`
+// is optional (existing callers that don't pass it simply don't get the
+// picker column, so nothing that doesn't need this breaks) - a real
+// catalog/custom Product Master entry, or genuinely none at all for a
+// one-off line.
+function LineItemEditor({ items, onChange, products = [] }) {
   const updateRow = (idx, field, value) => {
     const next = items.map((row, i) => (i === idx ? { ...row, [field]: value } : row));
+    onChange(next);
+  };
+
+  const selectProduct = (idx, productId) => {
+    const product = products.find((p) => String(p.id) === String(productId));
+    const next = items.map((row, i) => {
+      if (i !== idx) return row;
+      if (!product) return { ...row, product_id: null };
+      return {
+        ...row,
+        product_id: product.id,
+        // Only fill in blanks - never overwrite something the user
+        // already typed, matching the backend's own default-fill rule.
+        description: row.description || product.name,
+        unit: row.unit || product.unit,
+        rate: (!row.rate || row.rate === '0') ? String(product.selling_price ?? row.rate) : row.rate,
+      };
+    });
     onChange(next);
   };
 
@@ -24,13 +47,25 @@ function LineItemEditor({ items, onChange }) {
 
   const subtotal = items.reduce((sum, row) => sum + (Number(row.quantity) || 0) * (Number(row.rate) || 0), 0);
 
+  const hasProducts = products.length > 0;
+
   return (
-    <div className="line-item-editor">
+    <div className={`line-item-editor ${hasProducts ? 'has-product-column' : ''}`}>
       <div className="line-item-header-row">
+        {hasProducts && <span>Product</span>}
         <span>Description</span><span>Category</span><span>Qty</span><span>Unit</span><span>Rate</span><span>Amount</span><span />
       </div>
       {items.map((row, idx) => (
         <div className="line-item-row" key={idx}>
+          {hasProducts && (
+            <select
+              value={row.product_id || ''} onChange={(e) => selectProduct(idx, e.target.value || null)}
+              title="Link this line to a Product Master entry (optional)"
+            >
+              <option value="">Custom / no product</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ''}</option>)}
+            </select>
+          )}
           <input
             type="text" placeholder="e.g. Wardrobe" value={row.description}
             onChange={(e) => updateRow(idx, 'description', e.target.value)}

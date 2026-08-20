@@ -128,6 +128,7 @@
 .status-neutral { background: var(--border-color); color: var(--text-secondary); }
 .status-danger, .status-overdue, .status-out-of-stock { background: var(--danger-bg); color: var(--danger); }
 .status-muted { background: var(--color-charcoal-elevated); color: var(--text-secondary); opacity: 0.75; }
+.text-muted { color: var(--text-secondary); font-size: 0.85rem; }
 .status-info { background: var(--info-bg); color: var(--info); }
 
 @media (max-width: 900px) {
@@ -154,6 +155,12 @@
 .dashboard-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-gold); font-weight: 700; }
 .dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
 .dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
+
+.dashboard-error-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4);
+  padding: var(--space-6); color: var(--text-secondary);
+}
+.dashboard-error-state p { margin: 0; font-size: 0.95rem; }
 
 .founder-attention-list { display: flex; flex-direction: column; gap: 12px; }
 .founder-attention-row {

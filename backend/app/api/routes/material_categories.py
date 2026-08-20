@@ -28,7 +28,7 @@ def create_category(data: MaterialCategoryCreate, db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     if db.query(MaterialCategory).filter(MaterialCategory.name == data.name).first():
         raise HTTPException(status_code=400, detail=f'A category named "{data.name}" already exists.')
-    category = MaterialCategory(**data.dict(), business_id=generate_short_id())
+    category = MaterialCategory(**data.dict(), business_id=generate_short_id(db))
     db.add(category)
     try:
         db.commit()
@@ -50,7 +50,7 @@ def create_subcategory(data: MaterialSubcategoryCreate, db: Session = Depends(ge
     ).first():
         raise HTTPException(status_code=400, detail=f'"{data.name}" already exists under {category.name}.')
 
-    subcategory = MaterialSubcategory(**data.dict(), business_id=generate_short_id())
+    subcategory = MaterialSubcategory(**data.dict(), business_id=generate_short_id(db))
     db.add(subcategory)
     try:
         db.commit()

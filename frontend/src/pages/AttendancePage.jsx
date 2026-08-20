@@ -34,8 +34,8 @@ function AttendancePage() {
 
   const load = () => {
     setPageLoading(true);
-    attendanceAPI.list().then((res) => setRecords(res.data)).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data));
+    attendanceAPI.list().then((res) => setRecords(res.data)).catch(() => {}).finally(() => setPageLoading(false));
+    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
   };
   useEffect(() => {
     load();

@@ -29,7 +29,7 @@ def create_project_expense(data: ProjectExpenseCreate, request: Request, db: Ses
     payload = data.dict(exclude={"expense_code"})
     for _ in range(5):
         code = generate_unique_code(db, ProjectExpense, "expense_code", "EXP-")
-        expense = ProjectExpense(**payload, expense_code=code, business_id=generate_short_id())
+        expense = ProjectExpense(**payload, expense_code=code, business_id=generate_short_id(db))
         db.add(expense)
         try:
             db.commit()

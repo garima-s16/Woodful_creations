@@ -90,6 +90,37 @@ export const stockAPI = {
   locationStock: (materialId) => client.get(`/api/stock/locations/${materialId}`),
 };
 
+export const productsAPI = {
+  list: (params) => client.get('/api/products/', { params }),
+  get: (id) => client.get(`/api/products/${id}`),
+  create: (data) => client.post('/api/products/', data),
+  update: (id, data) => client.put(`/api/products/${id}`, data),
+  remove: (id) => client.delete(`/api/products/${id}`),
+};
+
+export const productCategoriesAPI = {
+  list: () => client.get('/api/product-categories/'),
+  createCategory: (data) => client.post('/api/product-categories/', data),
+  createSubcategory: (data) => client.post('/api/product-categories/subcategories', data),
+  getSubcategory: (id) => client.get(`/api/product-categories/subcategories/${id}`),
+};
+
+export const productImportAPI = {
+  templateUrl: `${API_URL}/api/product-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/product-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/product-imports/commit', { rows }),
+};
+
+export const demoAPI = {
+  reset: () => client.post('/api/demo/reset'),
+};
+
 export const purchaseImportAPI = {
   templateUrl: `${API_URL}/api/purchase-imports/template`,
   preview: (file) => {

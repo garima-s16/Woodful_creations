@@ -20,7 +20,7 @@ function ProjectExpensesPage() {
 
   const load = () => {
     projectExpensesAPI.list().then((res) => setExpenses(res.data)).catch(() => setError('You do not have permission to view expenses.'));
-    ordersAPI.list().then((res) => setOrders(res.data));
+    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
   };
   useEffect(load, []);
 

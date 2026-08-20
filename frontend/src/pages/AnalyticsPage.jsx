@@ -8,6 +8,30 @@ import Table from '../components/common/Table';
 import SimpleBarChart from '../components/common/SimpleBarChart';
 import { formatCurrency, formatPercent } from '../utils/currency';
 
+function useAnalyticsFetch(fetchFn) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
+  useEffect(() => {
+    setError('');
+    fetchFn().then((r) => setData(r.data)).catch(() => setError('Unable to load this data. Please try again.'));
+    // fetchFn is intentionally not a dependency - it's a new closure on
+    // every render, and including it would re-fetch on every render
+    // rather than only on mount/explicit retry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryKey]);
+  return { data, error, retry: () => setRetryKey((k) => k + 1) };
+}
+
+function AnalyticsErrorState({ error, onRetry }) {
+  return (
+    <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+      <span style={{ color: 'var(--text-secondary)' }}>{error}</span>
+      <button className="btn-secondary" onClick={onRetry}>Try Again</button>
+    </div>
+  );
+}
+
 const TABS_MASTER = ['Sales & Revenue', 'Inventory', 'Purchases', 'Production', 'Projects', 'Tasks',
   'Payments', 'Expenses', 'Workforce', 'Operations'];
 const TABS_USER = ['Inventory', 'Production', 'Projects', 'Tasks', 'Workforce', 'Operations'];
@@ -53,9 +77,9 @@ function ExcelButton({ href, label = 'Export Excel' }) {
 
 function SalesTab({ isPrivileged }) {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.sales(6).then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.sales(6));
   if (!isPrivileged) return <Card><div className="card-body">Sales & revenue analytics are available to master accounts only.</div></Card>;
+  if (error) return <Card><AnalyticsErrorState error={error} onRetry={retry} /></Card>;
   if (!data) return <div className="card-body">Loading...</div>;
 
   const scrollToOutstanding = (drill) => {
@@ -104,8 +128,8 @@ function SalesTab({ isPrivileged }) {
 
 function InventoryTab({ isPrivileged }) {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.inventory().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.inventory());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -140,8 +164,8 @@ function InventoryTab({ isPrivileged }) {
 }
 
 function PurchasesTab() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.purchases(6).then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.purchases(6));
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -172,8 +196,8 @@ function PurchasesTab() {
 }
 
 function ProductionTab() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.production().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.production());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -206,8 +230,8 @@ function ProductionTab() {
 
 function ProjectsTab({ isPrivileged }) {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.projects().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.projects());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -250,8 +274,8 @@ function ProjectsTab({ isPrivileged }) {
 }
 
 function TasksTab() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.tasks().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.tasks());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -280,8 +304,8 @@ function TasksTab() {
 }
 
 function PaymentsTab() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.payments(6).then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.payments(6));
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -310,8 +334,8 @@ function PaymentsTab() {
 }
 
 function ExpensesTab() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.expenses(6).then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.expenses(6));
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -355,8 +379,8 @@ function ExpensesTab() {
 }
 
 function WorkforceTab({ isPrivileged }) {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.workforce().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.workforce());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -386,8 +410,8 @@ function WorkforceTab({ isPrivileged }) {
 }
 
 function OperationsTab({ isPrivileged }) {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.operations().then((r) => setData(r.data)); }, []);
+  const { data, error, retry } = useAnalyticsFetch(() => analyticsAPI.operations());
+  if (error) return <AnalyticsErrorState error={error} onRetry={retry} />;
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <div className="secondary-metrics">
@@ -405,9 +429,8 @@ function OperationsTab({ isPrivileged }) {
 }
 
 function WhatsChanged() {
-  const [data, setData] = useState(null);
-  useEffect(() => { analyticsAPI.whatsChanged().then((r) => setData(r.data)); }, []);
-  if (!data) return null;
+  const { data, error } = useAnalyticsFetch(() => analyticsAPI.whatsChanged());
+  if (error || !data) return null;
   return (
     <Card title="What Changed This Month">
       <div className="card-body">

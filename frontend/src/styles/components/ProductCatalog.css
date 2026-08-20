@@ -1,0 +1,61 @@
+/* Product Master (Family 21) - reuses the generic catalog/category-pill/
+   view-toggle/empty-state classes already defined in MaterialCatalog.css
+   (imported alongside this file) so the two catalogs share one visual
+   system; only the product card itself is defined here. */
+
+.product-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--space-4); margin-bottom: var(--space-5);
+}
+.product-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-5); }
+
+.product-card {
+  background: var(--surface); border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  padding: var(--space-4); cursor: pointer; transition: all var(--transition);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.product-card:hover { border-color: var(--color-gold); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+.product-card-media {
+  height: 120px; border-radius: var(--radius-sm); background: var(--color-charcoal-elevated);
+  display: flex; align-items: center; justify-content: center; color: var(--color-gold);
+  overflow: hidden;
+}
+.product-card-media img { width: 100%; height: 100%; object-fit: cover; }
+
+.product-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.product-card-name { font-weight: 700; font-size: 0.95rem; line-height: 1.3; }
+.product-card-meta { font-size: 0.76rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+.product-card-type-badge {
+  flex-shrink: 0; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 3px 8px; border-radius: 100px;
+}
+.product-card-type-badge.standard { background: rgba(58, 125, 68, 0.15); color: #3a7d44; }
+.product-card-type-badge.custom { background: rgba(192, 138, 69, 0.18); color: var(--color-gold); }
+
+.product-card-price-row { display: flex; align-items: baseline; justify-content: space-between; margin-top: auto; }
+.product-card-price { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); }
+.product-card-inactive { opacity: 0.55; }
+
+.product-row-card {
+  display: flex; align-items: center; gap: var(--space-4); padding: 10px var(--space-4);
+  background: var(--surface); border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  cursor: pointer; transition: all var(--transition);
+}
+.product-row-card:hover { border-color: var(--color-gold); }
+.product-row-card .product-row-name { flex: 1; font-weight: 600; font-size: 0.88rem; }
+.product-row-card .product-row-meta { flex: 1; font-size: 0.8rem; color: var(--text-secondary); }
+.product-row-card .product-row-price { font-weight: 700; font-size: 0.9rem; width: 110px; text-align: right; }
+
+.product-bom-editor { margin: 10px 0 16px; }
+.product-bom-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 32px; gap: 8px; align-items: center; margin-bottom: 6px;
+}
+.product-bom-row select, .product-bom-row input {
+  padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.82rem; width: 100%;
+}
+.product-bom-add { margin-top: 4px; }
+
+@media (max-width: 640px) {
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}

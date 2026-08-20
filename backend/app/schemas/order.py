@@ -16,6 +16,13 @@ class OrderItemBase(BaseModel):
     quantity: Decimal = Decimal("1")
     unit: Optional[str] = None
     rate: Decimal = Decimal("0")
+    # Family 21 - Product <-> Order Item relationship. Optional: a
+    # genuinely custom, one-off order line can still have no Product
+    # Master entry. When set on create, description/unit/rate are
+    # server-defaulted from the Product's own catalog values if the
+    # caller left them blank - see _build_order_items() in
+    # api/routes/orders.py.
+    product_id: Optional[int] = None
 
     @field_validator("category")
     @classmethod
@@ -38,6 +45,7 @@ class OrderItemResponse(OrderItemBase):
     rate: Optional[Decimal] = None
     source_estimate_item_id: Optional[int] = None
     sort_order: int
+    product_name: Optional[str] = None
 
     class Config:
         from_attributes = True

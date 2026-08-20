@@ -14,6 +14,7 @@ from app.models.order import Order
 from app.models.supplier import Supplier
 from app.models.purchase import Purchase
 from app.models.employee import Employee
+from app.models.product import Product
 from app.schemas.generic_document import GenericDocumentResponse
 from app.utils.validators import validate_file_signature
 from app.core.storage import get_storage_backend
@@ -28,7 +29,7 @@ DOC_ALLOWED_MIME_TYPES = {
     "image/jpeg", "image/png",
 }
 
-PARENT_MODELS = {"order": Order, "supplier": Supplier, "purchase": Purchase, "employee": Employee}
+PARENT_MODELS = {"order": Order, "supplier": Supplier, "purchase": Purchase, "employee": Employee, "product": Product}
 # Sensitive parent types (salary-adjacent or financial) require master
 # to even read the document list/download - matching how those
 # entities' own sensitive fields are already redacted/restricted

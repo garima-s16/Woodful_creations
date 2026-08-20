@@ -124,12 +124,12 @@ function OrderDetailPage() {
       clientsAPI.get(res.data.client_id).then((r) => setClient(r.data)).catch(() => {});
     }).catch(() => setError('Unable to load this order.'));
 
-    materialsAPI.list().then((res) => setMaterials(res.data));
-    employeesAPI.list().then((res) => setEmployees(res.data));
-    issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data));
-    dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data));
+    materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => {});
+    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
+    issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data)).catch(() => {});
+    dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data)).catch(() => {});
     ordersAPI.aiReports(orderId).then((res) => setAiReports(res.data)).catch(() => setAiReports([]));
-    productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data));
+    productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data)).catch(() => {});
 
     paymentsAPI.list({ order_id: orderId }).then((res) => setPayments(res.data)).catch(() => setPayments('forbidden'));
     projectExpensesAPI.list({ order_id: orderId }).then((res) => setExpenses(res.data)).catch(() => setExpenses('forbidden'));
@@ -290,12 +290,20 @@ function OrderDetailPage() {
         <Card title="Order Scope">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{canViewFinancials && <><th>Rate</th><th>Amount</th></>}</tr>
+              <tr><th>Description</th><th>Product</th><th>Category</th><th>Qty</th><th>Unit</th>{canViewFinancials && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {order.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td><td>{item.category || '-'}</td>
+                  <td>{item.description}</td>
+                  <td>
+                    {item.product_id ? (
+                      <Link to={`/products/${item.product_id}`} className="btn-link">{item.product_name}</Link>
+                    ) : (
+                      <span className="text-muted">Custom / no product</span>
+                    )}
+                  </td>
+                  <td>{item.category || '-'}</td>
                   <td>{Number(item.quantity)}</td><td>{item.unit || '-'}</td>
                   {canViewFinancials && <><td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td></>}
                 </tr>

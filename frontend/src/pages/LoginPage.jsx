@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { authAPI } from '../utils/api';
@@ -29,6 +29,43 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [parallaxOffset, setParallaxOffset] = useState({ x: 0, y: 0 });
+  const brandPanelRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return undefined; // parallax is a decorative extra, never shown to users who asked for less motion
+
+    const MAX_OFFSET = 10; // px - subtle, "this has depth", never "this is showing off"
+
+    const handlePointerMove = (e) => {
+      if (rafRef.current) return; // already have a frame queued - drop this event rather than queue more work
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const panel = brandPanelRef.current;
+        if (!panel) return;
+        const rect = panel.getBoundingClientRect();
+        const relX = (e.clientX - rect.left) / rect.width - 0.5; // -0.5..0.5
+        const relY = (e.clientY - rect.top) / rect.height - 0.5;
+        setParallaxOffset({ x: relX * MAX_OFFSET * 2, y: relY * MAX_OFFSET * 2 });
+      });
+    };
+
+    const panel = brandPanelRef.current;
+    const handlePointerLeave = () => setParallaxOffset({ x: 0, y: 0 });
+    if (panel) {
+      panel.addEventListener('mousemove', handlePointerMove);
+      panel.addEventListener('mouseleave', handlePointerLeave);
+    }
+    return () => {
+      if (panel) {
+        panel.removeEventListener('mousemove', handlePointerMove);
+        panel.removeEventListener('mouseleave', handlePointerLeave);
+      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   const performLogin = async (loginIdentifier, loginPassword) => {
     setError('');
@@ -60,17 +97,35 @@ function LoginPage() {
   };
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="login-page">
       <div className="login-container">
-        <div className="login-brand-panel">
-          <BrandBackdrop />
-          <div className="login-brand-top">
-            <img src="/logo-transparent.png" alt="Woodful Creations" className="login-logo-small" />
-          </div>
-          <div className="login-brand-content">
+        <div className="login-brand-panel" ref={brandPanelRef}>
+          <motion.div
+            initial={{ opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <BrandBackdrop offset={parallaxOffset} />
+          </motion.div>
+          <motion.div
+            className="login-brand-top"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <img src="/logo-transparent.png" alt="Woodful Creations" className="login-logo-mark" />
+          </motion.div>
+          <motion.div
+            className="login-brand-content"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
             <p className="login-brand-statement">Precision crafted, order by order.</p>
             <p className="login-brand-descriptor">Furniture &middot; Materials &middot; Production &middot; Projects</p>
-          </div>
+          </motion.div>
         </div>
 
         <div className="login-form-panel">
@@ -78,7 +133,7 @@ function LoginPage() {
             className="login-form-wrap"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.35, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           >
             <h1>Sign in to Woodful</h1>
             <p className="login-form-subtitle">Welcome back — let's get to work.</p>
@@ -99,7 +154,10 @@ function LoginPage() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="password">Password</label>
+                <div className="form-label-row">
+                  <label htmlFor="password">Password</label>
+                  <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
+                </div>
                 <div className="password-input-row">
                   <input
                     id="password"
@@ -137,19 +195,18 @@ function LoginPage() {
 
               <motion.button
                 type="submit" className="login-button" disabled={loading}
+                whileHover={loading ? {} : { y: -1 }}
                 whileTap={{ scale: 0.98 }}
               >
                 {loading ? 'Signing in...' : 'Sign In'}
               </motion.button>
             </form>
-            <p className="login-form-subtitle" style={{ marginTop: 'var(--space-5)' }}>
-              <Link to="/forgot-password">Forgot your password?</Link>
-            </p>
           </motion.div>
         </div>
       </div>
       <Footer />
     </div>
+    </MotionConfig>
   );
 }
 

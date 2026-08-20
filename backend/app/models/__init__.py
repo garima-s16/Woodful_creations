@@ -52,6 +52,11 @@ from app.models.interview import Interview
 from app.models.audit import AuditLog
 from app.models.automation_log import AutomationLog
 
+from app.models.id_counter import IdCounter
+from app.models.product_category import ProductCategory, ProductSubcategory
+from app.models.product import Product
+from app.models.product_material import ProductMaterial
+
 __all__ = [
     "Base", "BaseModel", "User", "Notification", "PersonalCartItem",
     "Unit", "MaterialCategory", "StockStatus", "StockPaymentStatus", "Location", "SupplierTerm",
@@ -65,4 +70,5 @@ __all__ = [
     "GenericDocument", "StockLedgerEntry", "IntegrationSyncLog",
     "Candidate", "Interview",
     "AuditLog", "AutomationLog",
+    "IdCounter", "ProductCategory", "ProductSubcategory", "Product", "ProductMaterial",
 ]

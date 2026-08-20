@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
+import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI, productsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -16,6 +16,7 @@ function EstimatesPage() {
   const [estimates, setEstimates] = useState([]);
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingEstimate, setEditingEstimate] = useState(null);
@@ -26,9 +27,10 @@ function EstimatesPage() {
 
   const load = () => {
     setPageLoading(true);
-    estimatesAPI.list().then((res) => setEstimates(res.data)).finally(() => setPageLoading(false));
-    clientsAPI.list().then((res) => setClients(res.data));
-    ordersAPI.list().then((res) => setOrders(res.data));
+    estimatesAPI.list().then((res) => setEstimates(res.data)).catch(() => {}).finally(() => setPageLoading(false));
+    clientsAPI.list().then((res) => setClients(res.data)).catch(() => {});
+    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    productsAPI.list({ active_only: true }).then((res) => setProducts(res.data)).catch(() => setProducts([]));
   };
   useEffect(load, []);
 
@@ -40,6 +42,7 @@ function EstimatesPage() {
       .map((row) => ({
         description: row.description, category: row.category || null,
         quantity: row.quantity || '1', unit: row.unit || null, rate: row.rate || '0',
+        product_id: row.product_id || null,
       }));
     try {
       await estimatesAPI.create({
@@ -135,7 +138,7 @@ function EstimatesPage() {
       <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
       <Modal isOpen={showAdd} title="New Estimate" onClose={() => setShowAdd(false)}>
         <h4 style={{ marginBottom: 8 }}>Line Items</h4>
-        <LineItemEditor items={lineItems} onChange={setLineItems} />
+        <LineItemEditor items={lineItems} onChange={setLineItems} products={products} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Estimate" />
       </Modal>
       <Modal isOpen={!!editingEstimate} title={`Edit ${editingEstimate?.estimate_code || ''}`} onClose={() => setEditingEstimate(null)}>

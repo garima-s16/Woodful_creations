@@ -63,7 +63,7 @@ class OrderService:
         for _ in range(5):
             receipt_code = generate_unique_code(db, Payment, "receipt_code", "RCPT-")
             payment = Payment(
-                receipt_code=receipt_code, business_id=generate_short_id(), date=data.date, order_id=data.order_id,
+                receipt_code=receipt_code, business_id=generate_short_id(db), date=data.date, order_id=data.order_id,
                 payment_type=data.payment_type, payment_mode=data.payment_mode, amount=data.amount,
                 reference_number=reference_number, received_by=data.received_by, remarks=data.remarks,
             )

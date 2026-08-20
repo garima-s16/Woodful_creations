@@ -40,7 +40,7 @@ def create_production_job(data: ProductionJobCreate, db: Session = Depends(get_d
     payload = data.dict(exclude={"job_code"})
     for _ in range(5):
         code = generate_unique_code(db, ProductionJob, "job_code", "JOB-")
-        job = ProductionJob(**payload, job_code=code, business_id=generate_short_id())
+        job = ProductionJob(**payload, job_code=code, business_id=generate_short_id(db))
         db.add(job)
         try:
             db.commit()

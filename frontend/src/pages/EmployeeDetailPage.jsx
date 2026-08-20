@@ -35,11 +35,11 @@ function EmployeeDetailPage() {
     employeesAPI.get(employeeId).then((res) => setEmployee(res.data)).catch(() => setEmployee(null));
     attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data)).catch(() => setAttendance([]));
     leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data)).catch(() => setLeaves([]));
-    dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data));
+    dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data)).catch(() => {});
     // production_jobs doesn't support an employee_id filter server-side yet;
     // filter client-side here rather than fetch nothing.
-    productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId))));
-    ordersAPI.list().then((res) => setOrders(res.data));
+    productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId)))).catch(() => {});
+    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
   }, [employeeId]);
 
   useEffect(load, [load]);

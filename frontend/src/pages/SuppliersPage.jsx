@@ -23,7 +23,7 @@ function SuppliersPage() {
 
   const load = () => {
     setPageLoading(true);
-    suppliersAPI.list().then((res) => setSuppliers(res.data)).finally(() => setPageLoading(false));
+    suppliersAPI.list().then((res) => setSuppliers(res.data)).catch(() => {}).finally(() => setPageLoading(false));
   };
   useEffect(() => {
     load();

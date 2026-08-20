@@ -12,6 +12,16 @@ class OrderItem(BaseModel):
     __tablename__ = "order_items"
 
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    # Family 21 - Product <-> Order Item relationship: which catalog/
+    # custom Product this line actually is, so an order identifies
+    # exactly what was ordered rather than only a free-text description.
+    # Nullable - an order can still carry a genuinely one-off line with
+    # no Product Master entry (e.g. a miscellaneous service charge);
+    # when set, description/unit/rate are still stored on the item
+    # itself (never re-read from the Product at display time) so a
+    # later price change on the Product can't silently rewrite a
+    # historical order.
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     description = Column(String(255), nullable=False)
     category = Column(String(100), nullable=True)
     quantity = Column(Numeric(10, 2), nullable=False, default=1)
@@ -23,3 +33,8 @@ class OrderItem(BaseModel):
 
     order = relationship("Order", back_populates="items")
     source_estimate_item = relationship("EstimateLineItem")
+    product = relationship("Product", back_populates="order_items")
+
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None

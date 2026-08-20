@@ -117,12 +117,20 @@ function EstimateDetailPage() {
         <Card title="Line Items">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{isPrivileged && <><th>Rate</th><th>Amount</th></>}</tr>
+              <tr><th>Description</th><th>Product</th><th>Category</th><th>Qty</th><th>Unit</th>{isPrivileged && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {estimate.line_items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td><td>{item.category || '-'}</td>
+                  <td>{item.description}</td>
+                  <td>
+                    {item.product_id ? (
+                      <Link to={`/products/${item.product_id}`} className="btn-link">{item.product_name}</Link>
+                    ) : (
+                      <span className="text-muted">Custom / no product</span>
+                    )}
+                  </td>
+                  <td>{item.category || '-'}</td>
                   <td>{Number(item.quantity)}</td><td>{item.unit || '-'}</td>
                   {isPrivileged && <><td>{formatCurrency(item.rate)}</td><td>{formatCurrency(item.amount)}</td></>}
                 </tr>

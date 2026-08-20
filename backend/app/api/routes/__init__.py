@@ -39,6 +39,10 @@ from app.api.routes import integrations
 from app.api.routes import automation
 from app.api.routes import communication
 from app.api.routes import analytics
+from app.api.routes import product_categories
+from app.api.routes import products
+from app.api.routes import product_imports
+from app.api.routes import demo_reset
 
 all_routers = [
     auth.router,
@@ -82,4 +86,8 @@ all_routers = [
     automation.router,
     communication.router,
     analytics.router,
+    product_categories.router,
+    products.router,
+    product_imports.router,
+    demo_reset.router,
 ]
