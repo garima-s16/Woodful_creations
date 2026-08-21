@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.models.order import Order
 from app.models.estimate import Estimate
+from app.models.client import Client
+from app.models.product import Product
 from app.models.salary_slip import SalarySlip
 from app.models.payment import Payment
 from app.models.leave import Leave
@@ -99,7 +101,8 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
 
     if estimate.line_items:
         item_rows = [
-            [item.description, item.category or "-", f"{float(item.quantity):g}", item.unit or "-",
+            [(f"{item.product_code} - {item.description}" if item.product_id else item.description),
+             item.category or "-", f"{float(item.quantity):g}", item.unit or "-",
              format_inr(item.rate), format_inr(item.amount)]
             for item in estimate.line_items
         ]
@@ -138,6 +141,113 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
     if estimate.remarks:
         elements.append(Spacer(1, 10))
         elements.append(Paragraph(f'<font color="#70685D" size="8">REMARKS</font><br/>{pdf_text(estimate.remarks)}', styles["body"]))
+
+    elements.append(Spacer(1, 24))
+    elements.append(Paragraph(build_footer_text(), styles["footer"]))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_client_pdf(client: Client) -> BytesIO:
+    """Client profile/summary document (Family 103 section 6) - contact
+    information plus a real sales summary derived from the client's
+    actual Orders (Family 103: "only include information that is
+    actually supported by the current codebase" - no fabricated
+    relationships). Uses the same Woodful document header/footer as
+    every other generated PDF."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
+                             leftMargin=0.6 * inch, rightMargin=0.6 * inch)
+    styles = get_styles()
+    elements = build_header("CLIENT PROFILE", client.client_code, datetime.utcnow().strftime("%d %b %Y"), client.business_id)
+
+    contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("PHONE", client.phone)]
+    if client.alternate_phone:
+        contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("ALTERNATE PHONE", client.alternate_phone)]
+    elements.append(section_table(
+        [contact_row,
+         [("EMAIL", client.email or "-"), ("CITY", client.city or "-")],
+         [("ADDRESS", client.address or "-"), ("SITE ADDRESS", client.site_address or "-")],
+         [("GSTIN", client.gstin or "-"), ("STATUS", client.status)],
+         [("LEAD SOURCE", client.lead_source or "-"), ("CLIENT SINCE", _fmt_date(client.created_at))]],
+        [3.5 * inch, 3.5 * inch],
+    ))
+    elements.append(Spacer(1, 16))
+
+    orders = client.orders or []
+    if orders:
+        total_value = sum(float(o.order_value or 0) for o in orders)
+        total_received = sum(float(o.total_received or 0) for o in orders)
+        outstanding = sum(float(o.balance or 0) for o in orders)
+        elements.append(Paragraph("SALES SUMMARY", styles["section_label"]))
+        elements.append(line_items_table(
+            ["Metric", "Value"],
+            [["Total Orders", str(len(orders))],
+             ["Total Order Value", format_inr(total_value)],
+             ["Total Received", format_inr(total_received)],
+             ["Outstanding Balance", format_inr(outstanding)]],
+            [5 * inch, 2 * inch],
+        ))
+        elements.append(Spacer(1, 14))
+        elements.append(Paragraph("ORDER HISTORY", styles["section_label"]))
+        elements.append(line_items_table(
+            ["Order", "Date", "Status", "Value"],
+            [[o.order_code, _fmt_date(o.order_date), o.project_status, format_inr(o.order_value)]
+             for o in sorted(orders, key=lambda o: o.order_date or datetime.min, reverse=True)],
+            [1.6 * inch, 1.6 * inch, 2 * inch, 1.8 * inch],
+        ))
+    else:
+        elements.append(Paragraph(
+            '<font color="#70685D" size="9">No orders yet.</font>', styles["body"],
+        ))
+
+    if client.remarks:
+        elements.append(Spacer(1, 14))
+        elements.append(Paragraph(f'<font color="#70685D" size="8">NOTES</font><br/>{pdf_text(client.remarks)}', styles["body"]))
+
+    elements.append(Spacer(1, 24))
+    elements.append(Paragraph(build_footer_text(), styles["footer"]))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_product_pdf(product: Product) -> BytesIO:
+    """Product Master detail document (Family 104 section 40)."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
+                             leftMargin=0.6 * inch, rightMargin=0.6 * inch)
+    styles = get_styles()
+    elements = build_header("PRODUCT", product.product_code, datetime.utcnow().strftime("%d %b %Y"), product.business_id)
+
+    dims = "-"
+    if product.length and product.width and product.height:
+        dims = f"{product.length}\u00d7{product.width}\u00d7{product.height} {product.dimension_unit or ''}".strip()
+
+    elements.append(section_table(
+        [[("PRODUCT NAME", product.name), ("TYPE", product.product_type.title())],
+         [("CATEGORY", product.category or "-"), ("SUBCATEGORY", product.subcategory or "-")],
+         [("UNIT", product.unit), ("DIMENSIONS", dims)],
+         [("PRIMARY MATERIAL", product.primary_material or "-"), ("FINISH", product.finish or "-")],
+         [("DEFAULT RATE", format_inr(product.selling_price) if product.selling_price is not None else "-"),
+          ("GST %", f"{float(product.gst_percent)}%" if product.gst_percent is not None else "-")],
+         [("STATUS", "Active" if product.is_active else "Inactive"), ("", "")]],
+        [3.5 * inch, 3.5 * inch],
+    ))
+
+    if product.specifications:
+        elements.append(Spacer(1, 14))
+        elements.append(Paragraph(
+            f'<font color="#70685D" size="8">DESCRIPTION / SPECIFICATIONS</font><br/>{pdf_text(product.specifications)}',
+            styles["body"],
+        ))
+
+    if product.notes:
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph(f'<font color="#70685D" size="8">NOTES</font><br/>{pdf_text(product.notes)}', styles["body"]))
 
     elements.append(Spacer(1, 24))
     elements.append(Paragraph(build_footer_text(), styles["footer"]))
@@ -399,10 +509,11 @@ def generate_salary_slip_pdf(slip: SalarySlip, db: Session) -> BytesIO:
 
 def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
     """Client invoice for an order - order value, payment history, and
-    balance due. There is no separate GST/line-item model for orders in
-    this system (unlike Purchases, which do carry GST), so this reflects
-    the order as a single line item plus its actual payment history -
-    it does not invent a tax breakdown the data doesn't support."""
+    balance due. Shows the order's actual line items (with real Product
+    references and discount/GST, added alongside Product Master) when
+    they exist; falls back to a single flat line only for older/bare
+    orders that predate itemization, the same legacy-fallback pattern
+    generate_estimate_pdf already uses."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.6 * inch, bottomMargin=0.7 * inch,
                              leftMargin=0.6 * inch, rightMargin=0.6 * inch)
@@ -420,11 +531,33 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
     ))
     elements.append(Spacer(1, 14))
 
-    elements.append(line_items_table(
-        ["Description", "Amount"],
-        [[order.project_type or "Project", format_inr(order.order_value)]],
-        [5 * inch, 2 * inch],
-    ))
+    if order.items:
+        item_rows = [
+            [(f"{item.product_code} - {item.description}" if item.product_id else item.description),
+             f"{float(item.quantity):g}", item.unit or "-", format_inr(item.rate), format_inr(item.amount)]
+            for item in order.items
+        ]
+        totals_rows = []
+        if order.items_subtotal is not None:
+            totals_rows.append(["Subtotal", "", "", "", format_inr(order.items_subtotal)])
+        if order.discount:
+            totals_rows.append(["Discount", "", "", "", f"-{format_inr(order.discount)}"])
+        if order.tax_amount:
+            totals_rows.append([f"GST ({float(order.tax_percent or 0)}%)", "", "", "", format_inr(order.tax_amount)])
+        totals_rows.append(["Grand Total", "", "", "", format_inr(order.order_value)])
+        elements.append(line_items_table(
+            ["Description", "Qty", "Unit", "Rate", "Amount"],
+            item_rows,
+            [2.6 * inch, 0.7 * inch, 0.9 * inch, 1.3 * inch, 1.5 * inch],
+            totals_rows=totals_rows,
+        ))
+    else:
+        # Legacy fallback for orders created before itemization existed.
+        elements.append(line_items_table(
+            ["Description", "Amount"],
+            [[order.project_type or "Project", format_inr(order.order_value)]],
+            [5 * inch, 2 * inch],
+        ))
 
     if payments:
         elements.append(Spacer(1, 16))

@@ -12,14 +12,14 @@ def _login(client, test_user):
 
 def test_master_sees_client_total_sales(client, test_user):
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Client RBAC Master Test"}).json()
+    created = client.post("/api/clients/", json={"name": "Client RBAC Master Test", "phone": "9000010049"}).json()
     resp = client.get(f"/api/clients/{created['id']}").json()
     assert resp["total_sales"] is not None
 
 
 def test_employee_client_total_sales_is_genuinely_null(client, test_user, db_session):
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Client RBAC Employee Test"}).json()
+    created = client.post("/api/clients/", json={"name": "Client RBAC Employee Test", "phone": "9000010050"}).json()
     client.post("/api/orders/", json={
         "client_id": created["id"], "order_date": "2026-08-16T00:00:00", "order_value": "80000.00", "advance": "0",
     })

@@ -8,7 +8,7 @@ from app.models.notification import Notification
 from app.models.material import Material
 from app.models.order import Order
 from app.models.purchase import Purchase
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 # Notification types whose content is inherently financial - even when
 # broadcast (no specific recipient), only master should see these.
@@ -57,7 +57,7 @@ class NotificationService:
             notification_type=notification_type, severity=severity, title=title, message=message,
             recipient_user_id=recipient_user_id, related_entity_type=related_entity_type,
             related_entity_id=related_entity_id, action_path=action_path, dedup_key=dedup_key,
-            business_id=generate_short_id(db),
+            business_id=generate_business_id(db),
         )
         db.add(notification)
         db.commit()

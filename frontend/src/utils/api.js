@@ -68,6 +68,56 @@ export const materialsAPI = {
   interpretName: (name) => client.get('/api/materials/interpret-name', { params: { name } }),
 };
 
+export const productsAPI = {
+  list: (params) => client.get('/api/products/', { params }),
+  get: (id) => client.get(`/api/products/${id}`),
+  create: (data, confirmDuplicate = false) => client.post('/api/products/', data, { params: { confirm_duplicate: confirmDuplicate } }),
+  update: (id, data) => client.put(`/api/products/${id}`, data),
+  remove: (id) => client.delete(`/api/products/${id}`),
+};
+
+export const productImportAPI = {
+  templateUrl: `${API_URL}/api/product-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/product-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/product-imports/commit', { rows }),
+};
+
+export const ratesAPI = {
+  list: (params) => client.get('/api/rate-cards/', { params }),
+  get: (id) => client.get(`/api/rate-cards/${id}`),
+  history: (id) => client.get(`/api/rate-cards/${id}/history`),
+  create: (data) => client.post('/api/rate-cards/', data),
+  revise: (id, data) => client.put(`/api/rate-cards/${id}`, data),
+  override: (id, data) => client.post(`/api/rate-cards/${id}/override`, data),
+  deactivate: (id) => client.post(`/api/rate-cards/${id}/deactivate`),
+};
+
+export const rateImportAPI = {
+  templateUrl: `${API_URL}/api/rate-card-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/rate-card-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/rate-card-imports/commit', { rows }),
+};
+
+export const clientProductRateAPI = {
+  list: (params) => client.get('/api/client-product-rates/', { params }),
+  create: (data) => client.post('/api/client-product-rates/', data),
+  update: (id, data) => client.put(`/api/client-product-rates/${id}`, data),
+  remove: (id) => client.delete(`/api/client-product-rates/${id}`),
+  resolve: (data) => client.post('/api/client-product-rates/resolve', data),
+};
+
 export const materialCategoriesAPI = {
   list: () => client.get('/api/material-categories/'),
   createCategory: (data) => client.post('/api/material-categories/', data),
@@ -90,37 +140,6 @@ export const stockAPI = {
   locationStock: (materialId) => client.get(`/api/stock/locations/${materialId}`),
 };
 
-export const productsAPI = {
-  list: (params) => client.get('/api/products/', { params }),
-  get: (id) => client.get(`/api/products/${id}`),
-  create: (data) => client.post('/api/products/', data),
-  update: (id, data) => client.put(`/api/products/${id}`, data),
-  remove: (id) => client.delete(`/api/products/${id}`),
-};
-
-export const productCategoriesAPI = {
-  list: () => client.get('/api/product-categories/'),
-  createCategory: (data) => client.post('/api/product-categories/', data),
-  createSubcategory: (data) => client.post('/api/product-categories/subcategories', data),
-  getSubcategory: (id) => client.get(`/api/product-categories/subcategories/${id}`),
-};
-
-export const productImportAPI = {
-  templateUrl: `${API_URL}/api/product-imports/template`,
-  preview: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return client.post('/api/product-imports/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-  commit: (rows) => client.post('/api/product-imports/commit', { rows }),
-};
-
-export const demoAPI = {
-  reset: () => client.post('/api/demo/reset'),
-};
-
 export const purchaseImportAPI = {
   templateUrl: `${API_URL}/api/purchase-imports/template`,
   preview: (file) => {
@@ -131,6 +150,26 @@ export const purchaseImportAPI = {
     });
   },
   commit: (rows) => client.post('/api/purchase-imports/commit', { rows }),
+};
+
+export const clientImportAPI = {
+  templateUrl: `${API_URL}/api/client-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/client-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/client-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/client-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+    });
+  },
 };
 
 export const personalCartAPI = {

@@ -23,6 +23,7 @@ class Employee(BaseModel):
     monthly_salary = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String(20), nullable=False, default="Active")
     emergency_contact = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
     remarks = Column(Text, nullable=True)
     # Payroll/statutory identifiers - needed for salary slip generation.
     # All nullable: not administrative data every employee record will

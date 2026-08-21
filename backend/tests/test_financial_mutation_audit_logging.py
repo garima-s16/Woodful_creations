@@ -12,7 +12,7 @@ def _login(client, test_user):
 
 def test_update_payment_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Audit Client", "phone": "9000010126"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-21T00:00:00", "order_value": "40000", "advance": "0",
     }).json()
@@ -33,7 +33,7 @@ def test_update_payment_is_audit_logged(client, test_user):
 
 def test_create_order_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Audit Client", "phone": "9000010127"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-21T00:00:00", "order_value": "25000", "advance": "0",
     }).json()
@@ -46,7 +46,7 @@ def test_create_order_is_audit_logged(client, test_user):
 
 def test_update_order_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Update Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Update Audit Client", "phone": "9000010128"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-21T00:00:00", "order_value": "25000", "advance": "0",
     }).json()
@@ -62,7 +62,7 @@ def test_update_order_is_audit_logged(client, test_user):
 
 def test_create_and_update_project_expense_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Expense Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Expense Audit Client", "phone": "9000010129"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-21T00:00:00", "order_value": "30000", "advance": "0",
     }).json()

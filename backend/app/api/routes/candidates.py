@@ -12,7 +12,7 @@ from app.core.security import require_role
 from app.core.config import settings
 from app.models.candidate import Candidate
 from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 from app.utils.validators import validate_file_signature
 from app.core.storage import get_storage_backend
@@ -44,7 +44,7 @@ def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(g
 def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
                       auth=Depends(require_role("master"))):
     for _ in range(5):
-        candidate = Candidate(**data.dict(), business_id=generate_short_id(db))
+        candidate = Candidate(**data.dict(), business_id=generate_business_id(db))
         db.add(candidate)
         try:
             db.commit()

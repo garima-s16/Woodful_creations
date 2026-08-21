@@ -4,8 +4,15 @@ def validate_email(email: str) -> bool:
     return re.match(pattern, email) is not None
 
 def validate_phone(phone: str) -> bool:
+    """Mandatory rule: a mobile number must be exactly 10 digits - no
+    country code prefix, no more, no less. Matches the Indian mobile
+    number convention Woodful's own business data uses throughout.
+    Callers should show 'Please enter valid mobile number' when this
+    returns False (the exact wording used on both the client form and
+    the Excel import error report).
+    """
     import re
-    pattern = r'^[+]?[0-9]{10,}$'
+    pattern = r'^[0-9]{10}$'
     return re.match(pattern, phone) is not None
 
 def validate_username(username: str) -> bool:

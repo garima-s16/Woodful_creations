@@ -10,7 +10,7 @@ def _login(client, test_user):
 
 def test_create_estimate_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Audit Client", "phone": "9000010056"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()
@@ -23,7 +23,7 @@ def test_create_estimate_is_audit_logged(client, test_user):
 
 def test_update_estimate_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Update Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Update Audit Client", "phone": "9000010057"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()
@@ -40,7 +40,7 @@ def test_update_estimate_is_audit_logged(client, test_user):
 
 def test_revise_estimate_is_audit_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Revise Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Revise Audit Client", "phone": "9000010058"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()

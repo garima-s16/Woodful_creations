@@ -1,4 +1,5 @@
 from app.models.base import Base, BaseModel
+from app.models.id_sequence import IdSequence
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.personal_cart_item import PersonalCartItem
@@ -15,6 +16,9 @@ from app.models.material_category import MaterialCategory, MaterialSubcategory
 from app.models.material_attribute import MaterialAttributeDefinition, MaterialAttributeValue
 from app.models.material import Material
 from app.models.supplier_material import SupplierMaterial
+from app.models.product import Product, ProductMaterial
+from app.models.rate_card import RateCard
+from app.models.client_product_rate import ClientProductRate
 from app.models.purchase import Purchase
 from app.models.stock_transaction import StockTransfer, StockAdjustment
 from app.models.issue import Issue
@@ -52,17 +56,15 @@ from app.models.interview import Interview
 from app.models.audit import AuditLog
 from app.models.automation_log import AutomationLog
 
-from app.models.id_counter import IdCounter
-from app.models.product_category import ProductCategory, ProductSubcategory
-from app.models.product import Product
-from app.models.product_material import ProductMaterial
-
 __all__ = [
-    "Base", "BaseModel", "User", "Notification", "PersonalCartItem",
+    "Base", "BaseModel", "IdSequence", "User", "Notification", "PersonalCartItem",
     "Unit", "MaterialCategory", "StockStatus", "StockPaymentStatus", "Location", "SupplierTerm",
     "Department", "TaskStatus", "AttendanceStatus", "Machine",
     "ProjectStatus", "Priority", "PaymentMode", "LeadSource", "ProjectType", "ExpenseCategory", "ProductionStage",
-    "Supplier", "Material", "MaterialCategory", "MaterialSubcategory", "SupplierMaterial", "Location",
+    "Supplier", "Material", "MaterialCategory", "MaterialSubcategory", "SupplierMaterial", "Product", "ProductMaterial",
+    "RateCard",
+    "ClientProductRate",
+    "Location",
     "MaterialAttributeDefinition", "MaterialAttributeValue", "Purchase", "Issue", "StockTransfer", "StockAdjustment",
     "Client", "ClientActivity", "Order", "OrderItem", "Payment", "ProjectExpense", "Estimate", "EstimateLineItem",
     "Employee", "Attendance", "Leave", "DailyTask", "TaskComment", "OrderComment", "AIWorkspaceReport", "ProductionJob", "SalarySlip",
@@ -70,5 +72,4 @@ __all__ = [
     "GenericDocument", "StockLedgerEntry", "IntegrationSyncLog",
     "Candidate", "Interview",
     "AuditLog", "AutomationLog",
-    "IdCounter", "ProductCategory", "ProductSubcategory", "Product", "ProductMaterial",
 ]

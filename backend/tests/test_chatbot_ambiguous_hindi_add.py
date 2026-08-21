@@ -50,7 +50,7 @@ def test_chat_endpoint_does_not_500_on_client_order_query(client, test_user):
     inside _dispatch and must return correctly through the real HTTP
     endpoint, not just compile."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "TupleBugRegressionClient"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "TupleBugRegressionClient", "phone": "9000010027"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "10000", "advance": "0",
     })

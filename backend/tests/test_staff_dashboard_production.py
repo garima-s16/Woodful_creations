@@ -10,7 +10,7 @@ def _login(client, test_user):
 
 def test_staff_dashboard_includes_production_status_summary(client, test_user):
     _login(client, test_user)
-    order_client = client.post("/api/clients/", json={"name": "Staff Dashboard Production Client"}).json()
+    order_client = client.post("/api/clients/", json={"name": "Staff Dashboard Production Client", "phone": "9000010184"}).json()
     order = client.post("/api/orders/", json={
         "client_id": order_client["id"], "order_date": "2026-08-18T00:00:00", "order_value": "50000", "advance": "0",
     }).json()
@@ -33,7 +33,7 @@ def test_staff_dashboard_production_summary_reflects_real_counts_not_hardcoded(c
     _login(client, test_user)
     before = client.get("/api/dashboard/staff").json()["production_status_summary"]
 
-    order_client = client.post("/api/clients/", json={"name": "Staff Dashboard Production Client 2"}).json()
+    order_client = client.post("/api/clients/", json={"name": "Staff Dashboard Production Client 2", "phone": "9000010185"}).json()
     order = client.post("/api/orders/", json={
         "client_id": order_client["id"], "order_date": "2026-08-18T00:00:00", "order_value": "30000", "advance": "0",
     }).json()

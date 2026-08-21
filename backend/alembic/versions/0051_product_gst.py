@@ -1,0 +1,26 @@
+"""Add gst_percent to products (Family 104 Product Master) - a default/
+reference GST value only; historical Estimate/Order line items already
+store their own tax_percent independently and are never affected by
+changes to this.
+
+Revision ID: 0051
+Revises: 0050
+Create Date: 2026-08-21
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = "0051"
+down_revision = "0050"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    with op.batch_alter_table("products") as batch_op:
+        batch_op.add_column(sa.Column("gst_percent", sa.Numeric(5, 2), nullable=True, server_default="18"))
+
+
+def downgrade() -> None:
+    with op.batch_alter_table("products") as batch_op:
+        batch_op.drop_column("gst_percent")

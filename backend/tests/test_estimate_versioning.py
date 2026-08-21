@@ -4,7 +4,7 @@ def _login(client, test_user):
 
 
 def _create_client(client):
-    resp = client.post("/api/clients/", json={"client_code": "CL-VER", "name": "Versioning Test Client"})
+    resp = client.post("/api/clients/", json={"client_code": "CL-VER", "name": "Versioning Test Client", "phone": "9000010075"})
     return resp.json()["id"]
 
 

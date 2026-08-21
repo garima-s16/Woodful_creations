@@ -17,14 +17,15 @@ def test_order_balance_recomputes_correctly_when_items_change(client, test_user)
     the correct balance after an item-driven order_value change,
     verifying the refactor didn't change behavior."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Recompute Totals Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Recompute Totals Test Client", "phone": "9000010176"}).json()["id"]
+    product_id = client.post("/api/products/", json={"name": "Custom wardrobe", "unit": "Nos"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "10000", "advance": "2000",
     }).json()
     assert float(order["balance"]) == 8000.0
 
     updated = client.put(f"/api/orders/{order['id']}", json={
-        "items": [{"description": "Custom wardrobe", "quantity": "1", "rate": "25000", "amount": "25000"}],
+        "items": [{"description": "Custom wardrobe", "quantity": "1", "rate": "25000", "amount": "25000", "product_id": product_id}],
     }).json()
     assert float(updated["order_value"]) == 25000.0
     assert float(updated["balance"]) == 23000.0  # 25000 - 2000 advance, matching recompute_totals()'s formula
@@ -34,7 +35,7 @@ def test_order_balance_stays_consistent_after_a_payment(client, test_user):
     """The same balance field, now updated via a completely different
     code path (payments.py) - both must agree on the same number."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Consistency Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Consistency Test Client", "phone": "9000010177"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "20000", "advance": "0",
     }).json()
@@ -46,7 +47,7 @@ def test_order_balance_stays_consistent_after_a_payment(client, test_user):
 
 def test_chatbot_sales_history_summary(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Shrangi"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Shrangi", "phone": "9000010178"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "30000", "advance": "10000",
     })
@@ -62,7 +63,7 @@ def test_chatbot_sales_history_hides_money_for_non_master(client, test_user, db_
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Khushaal"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Khushaal", "phone": "9000010179"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "40000", "advance": "0",
     })

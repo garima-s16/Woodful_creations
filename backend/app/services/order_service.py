@@ -17,7 +17,7 @@ from app.models.task_comment import TaskComment
 from app.models.milestone import Milestone
 from app.models.notification import Notification
 from app.schemas.payment import PaymentCreate
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 
 CASH_MODES = {"cash"}  # payment_mode is free-text on the model; compare case-insensitively
 
@@ -63,7 +63,7 @@ class OrderService:
         for _ in range(5):
             receipt_code = generate_unique_code(db, Payment, "receipt_code", "RCPT-")
             payment = Payment(
-                receipt_code=receipt_code, business_id=generate_short_id(db), date=data.date, order_id=data.order_id,
+                receipt_code=receipt_code, business_id=generate_business_id(db), date=data.date, order_id=data.order_id,
                 payment_type=data.payment_type, payment_mode=data.payment_mode, amount=data.amount,
                 reference_number=reference_number, received_by=data.received_by, remarks=data.remarks,
             )

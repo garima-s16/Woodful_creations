@@ -24,7 +24,7 @@ def test_materials_are_low_phrasing_now_matches(client, test_user):
 def test_who_needs_followed_up_phrasing_now_matches(client, test_user):
     from datetime import datetime, timedelta
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Followed Up Phrasing Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Followed Up Phrasing Test Client", "phone": "9000010101"}).json()["id"]
     past_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00")
     client.post("/api/client-activities/", json={
         "client_id": client_id, "activity_type": "Call", "date": "2026-08-15T00:00:00",
@@ -71,7 +71,7 @@ def test_daily_briefing_excludes_master_only_sections_for_non_master(client, tes
     from app.models.user import User
     from datetime import datetime, timedelta
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Briefing RBAC Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Briefing RBAC Test Client", "phone": "9000010102"}).json()["id"]
     past_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00")
     client.post("/api/client-activities/", json={
         "client_id": client_id, "activity_type": "Call", "date": "2026-08-15T00:00:00",

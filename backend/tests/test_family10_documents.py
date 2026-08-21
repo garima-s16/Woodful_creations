@@ -11,7 +11,7 @@ def _login(client, test_user):
 
 def test_upload_and_download_order_document(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Doc Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Doc Test Client", "phone": "9000010080"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -36,7 +36,7 @@ def test_order_documents_are_open_read(client, test_user, db_session):
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Doc Open Read Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Doc Open Read Client", "phone": "9000010081"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "3000", "advance": "0",
     }).json()
@@ -79,7 +79,7 @@ def test_upload_requires_master_regardless_of_parent_type(client, test_user, db_
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Upload Perm Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Upload Perm Client", "phone": "9000010082"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
     }).json()
@@ -102,7 +102,7 @@ def test_download_rejects_mismatched_parent_id(client, test_user):
     """The core IDOR protection - a real document_id under the WRONG
     parent_id in the URL must not be accessible."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "IDOR Doc Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "IDOR Doc Client", "phone": "9000010083"}).json()["id"]
     order_a = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
     }).json()
@@ -125,7 +125,7 @@ def test_upload_rejects_nonexistent_parent(client, test_user):
 
 def test_chatbot_find_documents(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Mayank"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Mayank", "phone": "9000010084"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -141,7 +141,7 @@ def test_chatbot_find_documents(client, test_user):
 
 def test_chatbot_find_documents_no_documents(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Brajwal"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Brajwal", "phone": "9000010085"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
     })

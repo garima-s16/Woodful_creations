@@ -11,7 +11,7 @@ from app.models.supplier import Supplier
 from app.models.purchase import Purchase
 from app.models.supplier_material import SupplierMaterial
 from app.schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -31,7 +31,7 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db),
     payload = data.dict(exclude={"supplier_code"})
     for _ in range(5):
         code = generate_unique_code(db, Supplier, "supplier_code", "SUP-")
-        supplier = Supplier(**payload, supplier_code=code, business_id=generate_short_id(db))
+        supplier = Supplier(**payload, supplier_code=code, business_id=generate_business_id(db))
         db.add(supplier)
         try:
             db.commit()

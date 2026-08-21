@@ -19,6 +19,18 @@ class Order(BaseModel):
     order_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     delivery_date = Column(DateTime, nullable=True)
     order_value = Column(Numeric(12, 2), nullable=False, default=0)
+    # Discount/GST (Family 102 Test 4: "Direct Order... discount
+    # percentage, discount amount, taxable amount, GST percentage, GST
+    # amount, grand total") - previously missing entirely; order_value
+    # was just a raw sum of line items with no way to apply either.
+    # discount is an absolute amount (same meaning as Estimate.discount,
+    # not a percentage) - see app/utils/calculations.py, the same
+    # formula both entities now share. order_value itself IS the grand
+    # total (what the client actually owes), computed server-side as
+    # items_subtotal - discount + tax_amount.
+    discount = Column(Numeric(12, 2), nullable=False, default=0)
+    tax_percent = Column(Numeric(5, 2), nullable=False, default=18)
+    tax_amount = Column(Numeric(12, 2), nullable=False, default=0)
     advance = Column(Numeric(12, 2), nullable=False, default=0)
     other_received = Column(Numeric(12, 2), nullable=False, default=0)
     total_received = Column(Numeric(12, 2), nullable=False, default=0)
@@ -43,6 +55,24 @@ class Order(BaseModel):
     milestones = relationship("Milestone", back_populates="order", cascade="all, delete-orphan")
     items = relationship("OrderItem", back_populates="order",
                           cascade="all, delete-orphan", order_by="OrderItem.sort_order")
+
+    @property
+    def source_estimate(self):
+        """The estimate this order was converted from, if any - derived
+        from the estimates relationship (the FK actually lives on
+        Estimate.order_id) rather than duplicated as a stored column.
+        At most one, in practice: the atomic claim in the order-creation
+        route (see orders.py) means only one estimate can ever end up
+        pointing order_id at a given order."""
+        return self.estimates[0] if self.estimates else None
+
+    @property
+    def source_estimate_id(self):
+        return self.source_estimate.id if self.source_estimate else None
+
+    @property
+    def source_estimate_code(self):
+        return self.source_estimate.estimate_code if self.source_estimate else None
 
     @property
     def items_subtotal(self):

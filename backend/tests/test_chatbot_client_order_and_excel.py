@@ -13,7 +13,7 @@ def _login(client, test_user):
 def test_client_order_query_hindi_possessive(client, test_user):
     """"patel ka payment?" - the brief's own example."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Patel"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Patel", "phone": "9000010029"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "50000", "advance": "20000",
     }).json()
@@ -26,7 +26,7 @@ def test_client_order_query_hindi_possessive(client, test_user):
 def test_client_order_query_reversed_word_order(client, test_user):
     """"order sanket" - the brief's other explicit example."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Sanket"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Sanket", "phone": "9000010030"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "30000", "advance": "0",
     }).json()
@@ -39,8 +39,8 @@ def test_client_order_query_asks_when_ambiguous(client, test_user):
     """Never confidently guess when multiple clients match - the
     brief's own explicit instruction."""
     _login(client, test_user)
-    client.post("/api/clients/", json={"name": "Ashu Kumar"})
-    client.post("/api/clients/", json={"name": "Ashu Singh"})
+    client.post("/api/clients/", json={"name": "Ashu Kumar", "phone": "9000010031"})
+    client.post("/api/clients/", json={"name": "Ashu Singh", "phone": "9000010032"})
 
     resp = client.post("/api/chat/", json={"message": "ashu ka order"})
     assert "which one" in resp.json()["response"].lower()
@@ -52,7 +52,7 @@ def test_client_order_query_employee_sees_no_payment_figure(client, test_user, d
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Mahek"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Mahek", "phone": "9000010033"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "40000", "advance": "0",
     })

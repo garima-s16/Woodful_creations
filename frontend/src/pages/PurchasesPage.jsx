@@ -27,8 +27,8 @@ function PurchasesPage() {
   const load = () => {
     setPageLoading(true);
     purchasesAPI.list().then((res) => setPurchases(res.data)).catch(() => setError('You do not have permission to view purchases.')).finally(() => setPageLoading(false));
-    suppliersAPI.list().then((res) => setSuppliers(res.data)).catch(() => {});
-    materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => {});
+    suppliersAPI.list().then((res) => setSuppliers(res.data));
+    materialsAPI.list().then((res) => setMaterials(res.data));
     locationsAPI.list().then((res) => setLocations(res.data)).catch(() => setLocations([]));
   };
   useEffect(load, []);

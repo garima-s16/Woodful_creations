@@ -17,7 +17,7 @@ def test_chat_generic_low_stock_question(client, test_user):
 
 def test_chat_contextual_order_summary_uses_real_order(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Test Client", "phone": "9000010012"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "project_type": "Dining Table",
         "order_date": "2026-08-01T00:00:00", "order_value": "80000.00", "advance": "20000.00",
@@ -70,7 +70,7 @@ def test_chat_without_context_ignores_this_order_phrasing(client, test_user):
 
 def test_chat_payment_with_amount_and_mode_in_one_message_proposes_immediately(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client", "phone": "9000010013"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "50000.00", "advance": "0",
     }).json()
@@ -95,7 +95,7 @@ def test_chat_payment_with_amount_and_mode_in_one_message_proposes_immediately(c
 
 def test_chat_payment_without_mode_asks_instead_of_defaulting_to_cash(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 4"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 4", "phone": "9000010014"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "40000.00", "advance": "0",
     }).json()
@@ -116,7 +116,7 @@ def test_chat_payment_without_mode_asks_instead_of_defaulting_to_cash(client, te
 
 def test_chat_completes_payment_across_two_turns(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 5"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 5", "phone": "9000010015"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "60000.00", "advance": "0",
     }).json()
@@ -147,7 +147,7 @@ def test_chat_completes_payment_across_two_turns(client, test_user):
 
 def test_chat_continues_asking_if_second_turn_still_has_no_mode(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 6"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 6", "phone": "9000010016"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "25000.00", "advance": "0",
     }).json()
@@ -169,7 +169,7 @@ def test_chat_continues_asking_if_second_turn_still_has_no_mode(client, test_use
 
 def test_chat_payment_proposal_without_amount_asks_for_one(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 2"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 2", "phone": "9000010017"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "30000.00", "advance": "0",
     }).json()
@@ -189,7 +189,7 @@ def test_chat_payment_proposal_requires_master_or_manager(client, test_user, db_
     from app.models.user import User
 
     _login(client, test_user)
-    order_client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 3"}).json()["id"]
+    order_client_id = client.post("/api/clients/", json={"name": "Chat Payment Client 3", "phone": "9000010018"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": order_client_id, "order_date": "2026-08-01T00:00:00", "order_value": "20000.00", "advance": "0",
     }).json()
@@ -231,7 +231,7 @@ def test_low_stock_returns_clickable_records(client, test_user):
 
 def test_outstanding_payments_returns_clickable_order_records(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chat Records Payment Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Records Payment Client", "phone": "9000010019"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "50000.00", "advance": "10000.00",
     }).json()

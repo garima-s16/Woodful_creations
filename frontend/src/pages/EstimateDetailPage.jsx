@@ -91,7 +91,7 @@ function EstimateDetailPage() {
               {revising ? 'Creating...' : 'Create New Version'}
             </button>
           )}
-          {isPrivileged && !estimate.order_id && estimate.status !== 'rejected' && (
+          {isPrivileged && !estimate.order_id && estimate.status === 'approved' && (
             <button className="btn-primary" onClick={() => setShowConvert(true)}>Convert to Order</button>
           )}
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`estimates/${estimate.id}/quote.pdf`)} target="_blank" rel="noreferrer">
@@ -117,17 +117,15 @@ function EstimateDetailPage() {
         <Card title="Line Items">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Product</th><th>Category</th><th>Qty</th><th>Unit</th>{isPrivileged && <><th>Rate</th><th>Amount</th></>}</tr>
+              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{isPrivileged && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {estimate.line_items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td>
                   <td>
-                    {item.product_id ? (
-                      <Link to={`/products/${item.product_id}`} className="btn-link">{item.product_name}</Link>
-                    ) : (
-                      <span className="text-muted">Custom / no product</span>
+                    {item.description}
+                    {item.product_name && (
+                      <div className="order-item-product-link">{item.product_code} &middot; {item.product_name}</div>
                     )}
                   </td>
                   <td>{item.category || '-'}</td>

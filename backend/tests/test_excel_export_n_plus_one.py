@@ -34,7 +34,7 @@ def test_tasks_export_query_count_does_not_scale_with_row_count(client, test_use
     query count stays bounded rather than growing linearly."""
     _login(client, test_user)
     for i in range(8):
-        client_id = client.post("/api/clients/", json={"name": f"N+1 Test Client {i}"}).json()["id"]
+        client_id = client.post("/api/clients/", json={"name": f"N+1 Test Client {i}", "phone": "9000010077"}).json()["id"]
         order = client.post("/api/orders/", json={
             "client_id": client_id, "order_date": "2026-08-21T00:00:00", "order_value": "10000", "advance": "0",
         }).json()

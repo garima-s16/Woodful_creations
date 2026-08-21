@@ -28,7 +28,7 @@ def _create_and_login_employee(client, db_session, username, email):
 
 
 def _seed_order(client):
-    client_id = client.post("/api/clients/", json={"name": "PDF RBAC Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "PDF RBAC Client", "phone": "9000010073"}).json()["id"]
     return client.post("/api/orders/", json={
         "client_id": client_id, "project_type": "TV Unit",
         "order_date": "2026-08-01T00:00:00", "order_value": "50000.00", "advance": "10000.00",
@@ -36,7 +36,7 @@ def _seed_order(client):
 
 
 def _seed_estimate(client):
-    client_id = client.post("/api/clients/", json={"name": "PDF RBAC Estimate Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "PDF RBAC Estimate Client", "phone": "9000010074"}).json()["id"]
     return client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "30000", "labor_cost": "10000",
     }).json()

@@ -23,7 +23,7 @@ def _make_payment(client, client_id):
 
 def test_upload_and_download_payment_document(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Doc Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Doc Test Client", "phone": "9000010121"}).json()["id"]
     payment = _make_payment(client, client_id)
 
     files = {"file": ("upi_screenshot.png", io.BytesIO(b"fake png bytes"), "image/png")}
@@ -36,7 +36,7 @@ def test_upload_and_download_payment_document(client, test_user):
 
 def test_payment_document_upload_rejects_disallowed_extension(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Doc Bad Ext Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Doc Bad Ext Client", "phone": "9000010122"}).json()["id"]
     payment = _make_payment(client, client_id)
 
     files = {"file": ("data.docx", io.BytesIO(b"not allowed for payments"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
@@ -48,7 +48,7 @@ def test_payment_document_requires_master(client, test_user, db_session):
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Doc Permission Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Doc Permission Client", "phone": "9000010123"}).json()["id"]
     payment = _make_payment(client, client_id)
     employee = client.post("/api/employees/", json={"name": "Payment Doc Permission Employee"}).json()
     user = User(
@@ -69,7 +69,7 @@ def test_payment_document_download_rejects_mismatched_payment_id(client, test_us
     """The core IDOR protection - a real document_id under the WRONG
     payment_id in the URL must not be accessible."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Doc IDOR Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Doc IDOR Client", "phone": "9000010124"}).json()["id"]
     payment_a = _make_payment(client, client_id)
     payment_b = _make_payment(client, client_id)
     files = {"file": ("real.pdf", io.BytesIO(b"%PDF-1.4 real content"), "application/pdf")}
@@ -82,7 +82,7 @@ def test_payment_document_download_rejects_mismatched_payment_id(client, test_us
 def test_payment_document_upload_logs_are_audited(client, test_user, db_session):
     from app.models.audit import AuditLog
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Doc Audit Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Doc Audit Client", "phone": "9000010125"}).json()["id"]
     payment = _make_payment(client, client_id)
 
     files = {"file": ("audited.pdf", io.BytesIO(b"%PDF-1.4 audited"), "application/pdf")}

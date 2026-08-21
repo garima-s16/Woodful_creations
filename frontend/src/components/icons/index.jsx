@@ -14,7 +14,7 @@ const base = {
 
 export const DashboardIcon = (p) => <svg {...base} {...p}><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></svg>;
 export const MaterialIcon = (p) => <svg {...base} {...p}><path d="M12 2 21 7v10l-9 5-9-5V7z" /><path d="M3 7l9 5 9-5" /><path d="M12 12v9" /></svg>;
-export const ProductIcon = (p) => <svg {...base} {...p}><path d="M20.5 7.3 12 2 3.5 7.3v9.4L12 22l8.5-5.3z" /><path d="M3.5 7.3 12 12l8.5-4.7" /><path d="M12 12v10" /><path d="M8 5.1l8 4.7" /></svg>;
+export const ProductIcon = (p) => <svg {...base} {...p}><path d="M20.5 7.3 12 12l-8.5-4.7" /><path d="M12 12v9" /><path d="m4 7.3 8-4.6 8 4.6-8 4.7-8-4.7Z" /><path d="M20.5 7.3v9.4L12 21l-8.5-4.3V7.3" /></svg>;
 export const SupplierIcon = (p) => <svg {...base} {...p}><rect x="3" y="8" width="13" height="11" rx="1" /><path d="M16 11h3l2 3v5h-5" /><circle cx="7.5" cy="19" r="1.5" /><circle cx="17.5" cy="19" r="1.5" /></svg>;
 export const LocationIcon = (p) => <svg {...base} {...p}><path d="M12 21s-7-6.1-7-11.5A7 7 0 0119 9.5C19 14.9 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>;
 export const PurchaseIcon = (p) => <svg {...base} {...p}><path d="M3 6h18" /><path d="M5 6l1 13a2 2 0 002 2h8a2 2 0 002-2l1-13" /><path d="M9 10v4M15 10v4" /></svg>;

@@ -20,9 +20,9 @@ function IssuesPage() {
 
   const load = () => {
     setPageLoading(true);
-    issuesAPI.list().then((res) => setIssues(res.data)).catch(() => {}).finally(() => setPageLoading(false));
-    materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => {});
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    issuesAPI.list().then((res) => setIssues(res.data)).finally(() => setPageLoading(false));
+    materialsAPI.list().then((res) => setMaterials(res.data));
+    ordersAPI.list().then((res) => setOrders(res.data));
     locationsAPI.list().then((res) => setLocations(res.data)).catch(() => setLocations([]));
   };
   useEffect(load, []);

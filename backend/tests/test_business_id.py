@@ -10,7 +10,7 @@ def _login(client, test_user):
 
 def test_client_gets_10_char_business_id(client, test_user):
     _login(client, test_user)
-    resp = client.post("/api/clients/", json={"name": "Business ID Test Client"})
+    resp = client.post("/api/clients/", json={"name": "Business ID Test Client", "phone": "9000010005"})
     assert resp.status_code == 201
     body = resp.json()
     assert body["business_id"] is not None
@@ -23,7 +23,7 @@ def test_business_ids_are_unique_across_records(client, test_user):
     _login(client, test_user)
     ids = set()
     for i in range(5):
-        resp = client.post("/api/clients/", json={"name": f"Uniqueness Test Client {i}"})
+        resp = client.post("/api/clients/", json={"name": f"Uniqueness Test Client {i}", "phone": "9000010006"})
         ids.add(resp.json()["business_id"])
     assert len(ids) == 5
 
@@ -58,7 +58,7 @@ def test_employee_gets_10_char_business_id(client, test_user):
 
 def test_order_gets_10_char_business_id(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Business ID Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Business ID Client", "phone": "9000010007"}).json()["id"]
     resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
     })
@@ -72,7 +72,7 @@ def test_business_id_not_accepted_from_client_input(client, test_user):
     """The business_id must be server-generated, same guarantee as the
     sequential codes - a client-supplied value must be ignored."""
     _login(client, test_user)
-    resp = client.post("/api/clients/", json={"name": "Spoof Test Client", "business_id": "FAKE000001"})
+    resp = client.post("/api/clients/", json={"name": "Spoof Test Client", "business_id": "FAKE000001", "phone": "9000010008"})
     assert resp.status_code == 201
     assert resp.json()["business_id"] != "FAKE000001"
     assert BUSINESS_ID_PATTERN.match(resp.json()["business_id"])
@@ -80,7 +80,7 @@ def test_business_id_not_accepted_from_client_input(client, test_user):
 
 def test_estimate_gets_10_char_business_id(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Business ID Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Business ID Client", "phone": "9000010009"}).json()["id"]
     resp = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "50000.00", "labor_cost": "20000.00", "tax_percent": "18",
     })
@@ -108,7 +108,7 @@ def test_purchase_gets_10_char_business_id(client, test_user):
 
 def test_payment_gets_10_char_business_id(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Business ID Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Business ID Client", "phone": "9000010010"}).json()["id"]
     order_id = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "20000.00", "advance": "0",
     }).json()["id"]
@@ -148,7 +148,7 @@ def test_production_job_gets_10_char_business_id(client, test_user):
 
 def test_project_expense_gets_10_char_business_id(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Expense Business ID Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Expense Business ID Client", "phone": "9000010011"}).json()["id"]
     order_id = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "15000.00", "advance": "0",
     }).json()["id"]

@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.location import Location
 from app.schemas.location import LocationCreate, LocationResponse, LocationTreeResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/locations", tags=["locations"])
 
@@ -41,7 +41,7 @@ def create_location(data: LocationCreate, db: Session = Depends(get_db),
     if db.query(Location).filter(Location.parent_id == data.parent_id, Location.name == data.name).first():
         raise HTTPException(status_code=400, detail=f'"{data.name}" already exists under this parent.')
 
-    location = Location(**data.dict(), business_id=generate_short_id(db))
+    location = Location(**data.dict(), business_id=generate_business_id(db))
     db.add(location)
     try:
         db.commit()

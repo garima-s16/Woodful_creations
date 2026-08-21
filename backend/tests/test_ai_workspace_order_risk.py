@@ -15,7 +15,7 @@ def _login(client, test_user):
 
 def test_blocking_query_creates_persisted_report(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "AI Workspace Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "AI Workspace Client", "phone": "9000010001"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "60000", "advance": "10000",
     }).json()
@@ -41,7 +41,7 @@ def test_blocking_query_creates_persisted_report(client, test_user):
 
 def test_order_with_no_blockers_is_on_track(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "AI Workspace On Track Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "AI Workspace On Track Client", "phone": "9000010002"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "20000", "advance": "0",
     }).json()
@@ -60,7 +60,7 @@ def test_deictic_followup_triggers_order_risk_check(client, test_user):
     """"usme kya scene hai" style follow-up, using last turn's
     conversational memory mechanism together with this one."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "AI Workspace Deictic Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "AI Workspace Deictic Client", "phone": "9000010003"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "35000", "advance": "0",
     }).json()
@@ -84,7 +84,7 @@ def test_employee_viewing_master_created_report_does_not_see_payment(client, tes
     time based on the CURRENT viewer's role, not the role that
     created the report."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "AI Workspace Redaction Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "AI Workspace Redaction Client", "phone": "9000010004"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "50000", "advance": "5000",
     }).json()

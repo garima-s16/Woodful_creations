@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { ordersAPI, clientsAPI, reportsAPI } from '../utils/api';
+import LineItemEditor, { emptyRow } from '../components/LineItemEditor';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -13,7 +14,7 @@ import Pagination from '../components/common/Pagination';
 const PAGE_SIZE = 25;
 
 const STAGE_OPTIONS = ['Enquiry', 'Designing', 'Approved', 'Material Purchase', 'Cutting', 'Edge Banding',
-  'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold']
+  'Assembly', 'Painting', 'Ready for Dispatch', 'Installation', 'Completed', 'On Hold', 'Cancelled']
   .map((s) => ({ value: s, label: s }));
 const SIMPLE_STATUS_OPTIONS = ['Pending', 'In Progress', 'Completed'].map((s) => ({ value: s, label: s }));
 const PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Urgent'].map((s) => ({ value: s, label: s }));
@@ -30,6 +31,8 @@ function OrdersPage() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
+  const [orderLineItems, setOrderLineItems] = useState([emptyRow()]);
+  const [selectedClientId, setSelectedClientId] = useState('');
   const [statusOrder, setStatusOrder] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
   const [error, setError] = useState('');
@@ -49,8 +52,8 @@ function OrdersPage() {
     ordersAPI.list({ ...filterParams, limit: PAGE_SIZE, offset }).then((res) => {
       setOrders(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    }).catch(() => {}).finally(() => setPageLoading(false));
-    clientsAPI.list().then((res) => setClients(res.data)).catch(() => {});
+    }).finally(() => setPageLoading(false));
+    clientsAPI.list().then((res) => setClients(res.data));
   };
 
   useEffect(() => {
@@ -83,18 +86,32 @@ function OrdersPage() {
   };
 
   const handleCreate = async (formData) => {
+    if (!selectedClientId) {
+      setError('Please select a client first.');
+      return;
+    }
     setLoading(true);
     setError('');
+    const validItems = orderLineItems
+      .filter((row) => row.description.trim())
+      .map((row) => ({
+        description: row.description, category: row.category || null,
+        quantity: row.quantity || '1', unit: row.unit || null, rate: row.rate || '0',
+        product_id: row.product_id ? Number(row.product_id) : null,
+      }));
     try {
       await ordersAPI.create({
         ...formData,
-        client_id: Number(formData.client_id),
+        client_id: Number(selectedClientId),
         order_date: new Date(formData.order_date).toISOString(),
         delivery_date: formData.delivery_date ? new Date(formData.delivery_date).toISOString() : null,
         order_value: formData.order_value || '0',
         advance: formData.advance || '0',
+        items: validItems,
       });
       setShowAdd(false);
+      setOrderLineItems([emptyRow()]);
+      setSelectedClientId('');
       load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create order');
@@ -174,9 +191,11 @@ function OrdersPage() {
   ];
 
   const createFields = [
-    { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
     { name: 'project_type', label: 'Project Type', section: 'Client & Project' },
-    { name: 'order_value', label: 'Order Value', type: 'number', required: true, section: 'Commercial' },
+    { name: 'order_value', label: 'Order Value', type: 'number', section: 'Commercial',
+      hint: 'Only used if no line items are added below - line items compute this automatically.' },
+    { name: 'discount', label: 'Discount (amount)', type: 'number', section: 'Commercial' },
+    { name: 'tax_percent', label: 'GST %', type: 'number', section: 'Commercial' },
     { name: 'advance', label: 'Advance', type: 'number', section: 'Commercial' },
     { name: 'order_date', label: 'Order Date', type: 'date', required: true, section: 'Schedule' },
     { name: 'delivery_date', label: 'Delivery Date', type: 'date', section: 'Schedule' },
@@ -228,7 +247,16 @@ function OrdersPage() {
           onPageChange={goToPage}
         />
       )}
-      <Modal isOpen={showAdd} title="New Order" onClose={() => setShowAdd(false)}>
+      <Modal isOpen={showAdd} title="New Order" onClose={() => { setShowAdd(false); setSelectedClientId(''); }}>
+        <div className="form-group">
+          <label className="form-label">Client *</label>
+          <select className="form-input" value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>
+            <option value="">Select a client...</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <h4 style={{ marginBottom: 8 }}>Order Items</h4>
+        <LineItemEditor items={orderLineItems} onChange={setOrderLineItems} clientId={selectedClientId} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Order" />
       </Modal>
 

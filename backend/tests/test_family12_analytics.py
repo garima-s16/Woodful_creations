@@ -33,7 +33,7 @@ def _seed_master_data(client):
     """Creates one of everything Family 12 aggregates, using the real
     module endpoints (not direct DB inserts) so every figure analytics
     reports on is a genuine authoritative record."""
-    client_obj = client.post("/api/clients/", json={"name": "Analytics Test Client"}).json()
+    client_obj = client.post("/api/clients/", json={"name": "Analytics Test Client", "phone": "9000010086"}).json()
     order = client.post("/api/orders/", json={
         "client_id": client_obj["id"], "order_date": "2026-06-01T00:00:00",
         "order_value": "100000", "advance": "20000",

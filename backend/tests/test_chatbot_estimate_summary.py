@@ -10,10 +10,11 @@ def _login(client, test_user):
 
 def test_summarize_estimate_by_explicit_code(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Summary Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Summary Test Client", "phone": "9000010037"}).json()["id"]
+    product_id = client.post("/api/products/", json={"name": "18mm Plywood Panel", "unit": "Sheets"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id,
-        "line_items": [{"description": "18mm Plywood Panel", "category": "Material", "quantity": "2", "rate": "2500", "amount": "5000"}],
+        "line_items": [{"description": "18mm Plywood Panel", "category": "Material", "quantity": "2", "rate": "2500", "amount": "5000", "product_id": product_id}],
     }).json()
 
     resp = client.post("/api/chat/", json={"message": f"summarize estimate {estimate['estimate_code']}"})
@@ -28,7 +29,7 @@ def test_summarize_estimate_hides_money_for_non_master(client, test_user, db_ses
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Summary RBAC Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Summary RBAC Client", "phone": "9000010038"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "5000"}).json()
 
     employee = client.post("/api/employees/", json={"name": "Estimate Summary RBAC Employee"}).json()
@@ -49,7 +50,7 @@ def test_summarize_this_estimate_via_deictic_context(client, test_user):
     """"summarize this estimate" while the estimate's page is open -
     resolved via record_type/record_id context, no code needed."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate Summary Deictic Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate Summary Deictic Client", "phone": "9000010039"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "7000"}).json()
 
     resp = client.post("/api/chat/", json={

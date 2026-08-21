@@ -113,6 +113,41 @@
   padding: 2px 7px;
   margin-left: 8px;
 }
+.client-id-cell { display: flex; flex-direction: column; gap: 3px; }
+.client-id-cell .business-id-badge { margin-left: 0; align-self: flex-start; }
+.client-id-cell .client-id-ref { font-size: 0.72rem; color: var(--text-tertiary, var(--text-secondary)); }
+
+/* Excel import (Clients, Purchases, Products) */
+.import-dropzone {
+  border: 2px dashed var(--border-color); border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-5); text-align: center; cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.import-dropzone:hover, .import-dropzone.drag-over {
+  border-color: var(--color-gold); background: rgba(192, 138, 69, 0.06);
+}
+.import-dropzone-title { font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
+.import-dropzone-hint { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
+
+.import-file-selected {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4); margin-top: var(--space-3);
+  background: var(--surface-elevated);
+}
+.import-file-name { font-weight: 600; margin-right: 10px; }
+.import-file-size { color: var(--text-secondary); font-size: 0.85rem; }
+
+.import-result-grid {
+  display: flex; gap: var(--space-6); margin: var(--space-4) 0;
+}
+.import-result-grid > div { display: flex; flex-direction: column; }
+.import-result-number { font-size: 1.8rem; font-weight: 700; color: var(--color-gold); }
+.import-result-label { font-size: 0.78rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.import-row-error { font-size: 0.76rem; color: var(--danger); margin-top: 3px; }
+
+.order-item-product-link { font-size: 0.76rem; color: var(--color-gold-soft); margin-top: 2px; }
 .detail-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-3); }
 .detail-meta-item { font-size: 0.85rem; }
 .detail-meta-label { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; display: block; margin-bottom: 2px; }
@@ -128,7 +163,6 @@
 .status-neutral { background: var(--border-color); color: var(--text-secondary); }
 .status-danger, .status-overdue, .status-out-of-stock { background: var(--danger-bg); color: var(--danger); }
 .status-muted { background: var(--color-charcoal-elevated); color: var(--text-secondary); opacity: 0.75; }
-.text-muted { color: var(--text-secondary); font-size: 0.85rem; }
 .status-info { background: var(--info-bg); color: var(--info); }
 
 @media (max-width: 900px) {
@@ -155,12 +189,6 @@
 .dashboard-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-gold); font-weight: 700; }
 .dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
 .dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
-
-.dashboard-error-state {
-  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4);
-  padding: var(--space-6); color: var(--text-secondary);
-}
-.dashboard-error-state p { margin: 0; font-size: 0.95rem; }
 
 .founder-attention-list { display: flex; flex-direction: column; gap: 12px; }
 .founder-attention-row {

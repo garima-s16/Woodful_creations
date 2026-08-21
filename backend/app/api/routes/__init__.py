@@ -3,6 +3,12 @@ from app.api.routes import settings
 from app.api.routes import suppliers
 from app.api.routes import materials
 from app.api.routes import material_categories
+from app.api.routes import products
+from app.api.routes import product_imports
+from app.api.routes import client_imports
+from app.api.routes import rate_cards
+from app.api.routes import rate_card_imports
+from app.api.routes import client_product_rates
 from app.api.routes import supplier_materials
 from app.api.routes import locations
 from app.api.routes import notifications
@@ -39,10 +45,6 @@ from app.api.routes import integrations
 from app.api.routes import automation
 from app.api.routes import communication
 from app.api.routes import analytics
-from app.api.routes import product_categories
-from app.api.routes import products
-from app.api.routes import product_imports
-from app.api.routes import demo_reset
 
 all_routers = [
     auth.router,
@@ -50,6 +52,12 @@ all_routers = [
     suppliers.router,
     materials.router,
     material_categories.router,
+    products.router,
+    product_imports.router,
+    client_imports.router,
+    rate_cards.router,
+    rate_card_imports.router,
+    client_product_rates.router,
     supplier_materials.router,
     locations.router,
     notifications.router,
@@ -86,8 +94,4 @@ all_routers = [
     automation.router,
     communication.router,
     analytics.router,
-    product_categories.router,
-    products.router,
-    product_imports.router,
-    demo_reset.router,
 ]

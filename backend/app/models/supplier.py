@@ -16,6 +16,7 @@ class Supplier(BaseModel):
     phone = Column(String(20), nullable=True)
     gstin = Column(String(20), nullable=True)
     payment_terms = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
     remarks = Column(Text, nullable=True)
 
     materials = relationship("Material", back_populates="primary_supplier")

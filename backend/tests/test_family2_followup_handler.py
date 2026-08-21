@@ -12,7 +12,7 @@ def _login(client, test_user):
 
 def test_follow_up_due_shows_past_due_activity(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Follow Up Handler Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Follow Up Handler Test Client", "phone": "9000010112"}).json()["id"]
     past_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%dT00:00:00")
     client.post("/api/client-activities/", json={
         "client_id": client_id, "activity_type": "Call", "date": "2026-08-15T00:00:00",
@@ -28,7 +28,7 @@ def test_follow_up_due_shows_past_due_activity(client, test_user):
 
 def test_future_follow_up_not_shown_as_due(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Future Follow Up Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Future Follow Up Test Client", "phone": "9000010113"}).json()["id"]
     future_date = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
     client.post("/api/client-activities/", json={
         "client_id": client_id, "activity_type": "Note", "date": "2026-08-19T00:00:00",

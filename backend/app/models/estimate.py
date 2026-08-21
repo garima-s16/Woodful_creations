@@ -25,6 +25,12 @@ class Estimate(BaseModel):
     labor_cost = Column(Numeric(12, 2), nullable=False, default=0)
     discount = Column(Numeric(12, 2), nullable=False, default=0)
     tax_percent = Column(Numeric(5, 2), nullable=False, default=18)
+    # Estimate-specific margin override (pricing priority level 4, see
+    # app/utils/pricing_priority.py) - applies to this estimate's line
+    # items that don't have a more specific override (explicit
+    # line-item price or customer-specific pricing), without touching
+    # any Product's own global margin_percent.
+    margin_percent_override = Column(Numeric(5, 2), nullable=True)
     tax_amount = Column(Numeric(12, 2), nullable=False, default=0)
     total_cost = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String(20), nullable=False, default="draft", index=True)  # draft/sent/approved/rejected

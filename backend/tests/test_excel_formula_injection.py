@@ -12,7 +12,7 @@ def _login(client, test_user):
 
 def test_malicious_client_name_is_escaped_in_export(client, test_user):
     _login(client, test_user)
-    client.post("/api/clients/", json={"name": '=cmd|"/c calc"!A1'})
+    client.post("/api/clients/", json={"name": '=cmd|"/c calc"!A1', "phone": "9000010078"})
 
     resp = client.get("/api/reports/clients.xlsx")
     assert resp.status_code == 200

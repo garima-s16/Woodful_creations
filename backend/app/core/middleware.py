@@ -20,7 +20,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # API responses are JSON, so a strict CSP that blocks everything but
         # same-origin is safe here; the React app is served separately.
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
-        return response
 
 
 class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
@@ -43,3 +42,4 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Too many requests. Please slow down and try again shortly."},
             )
         return await call_next(request)
+        return response

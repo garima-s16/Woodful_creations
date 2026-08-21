@@ -34,7 +34,7 @@ def _login(client, identifier="test@example.com", password="TestPass123!"):
 
 
 def _make_client(client, name):
-    return client.post("/api/clients/", json={"name": name}).json()["id"]
+    return client.post("/api/clients/", json={"name": name, "phone": "9000010087"}).json()["id"]
 
 
 def _make_employee(client, name):

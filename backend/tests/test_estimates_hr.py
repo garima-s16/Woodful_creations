@@ -5,7 +5,7 @@ def _login(client, test_user):
 
 def test_estimate_computes_tax_and_total(client, test_user):
     _login(client, test_user)
-    create_resp = client.post("/api/clients/", json={"name": "Estimate Client"})
+    create_resp = client.post("/api/clients/", json={"name": "Estimate Client", "phone": "9000010076"})
     client_id = create_resp.json()["id"]
 
     resp = client.post("/api/estimates/", json={

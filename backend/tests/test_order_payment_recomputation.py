@@ -19,7 +19,7 @@ def _login(client, test_user):
 
 def test_advance_alone_is_reflected_in_total_received(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Advance Only Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Advance Only Test Client", "phone": "9000010144"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "50000", "advance": "10000",
     }).json()
@@ -32,7 +32,7 @@ def test_advance_does_not_disappear_after_a_payment_is_recorded(client, test_use
     the advance must still be counted after a payment is added, not
     silently dropped."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Advance Persistence Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Advance Persistence Test Client", "phone": "9000010145"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "50000", "advance": "10000",
     }).json()
@@ -48,7 +48,7 @@ def test_advance_does_not_disappear_after_a_payment_is_recorded(client, test_use
 
 def test_multiple_payments_accumulate_correctly_with_advance(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Multiple Payments Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Multiple Payments Test Client", "phone": "9000010146"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "50000", "advance": "10000",
     }).json()
@@ -71,7 +71,7 @@ def test_editing_a_payment_amount_recomputes_correctly(client, test_user):
     payment must correctly recompute the order's totals, not just a
     newly-created one."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Edited Payment Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Edited Payment Test Client", "phone": "9000010147"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "50000", "advance": "10000",
     }).json()
@@ -97,7 +97,7 @@ def test_no_delete_endpoint_exists_for_payments(client, test_user):
     endpoint is ever added, this test will fail and signal that the
     "deleted payment" regression scenario now needs real coverage."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "No Delete Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "No Delete Test Client", "phone": "9000010148"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "10000", "advance": "0",
     }).json()

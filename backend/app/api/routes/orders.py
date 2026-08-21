@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.core.audit import log_action, serializable_fields
 from app.models.order import Order
+from app.models.client import Client
 from app.models.order_comment import OrderComment
 from app.models.ai_workspace_report import AIWorkspaceReport
 from app.models.order_item import OrderItem
@@ -23,7 +24,9 @@ from app.schemas.order_comment import OrderCommentCreate, OrderCommentResponse
 from app.services.order_service import OrderService
 from app.services.notification_service import NotificationService
 from app.services.mention_service import notify_mentions
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
+from app.utils.status_rules import validate_order_status_value, ORDER_PROJECT_STATUSES
+from app.utils.calculations import compute_totals
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -31,15 +34,19 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 def _serialize_orders(orders, role: str):
     """Employees can see order status/progress/client/project info, but
-    not money - order_value, advance, other_received, total_received,
-    balance, items_subtotal, and payment_status are genuinely nulled
-    here, including each order item's rate/amount (redacting only the
-    order-level total while leaving line-item pricing visible would
-    let anyone just sum the items back to the real total)."""
+    not money - order_value, discount, tax_percent, tax_amount, advance,
+    other_received, total_received, balance, items_subtotal, and
+    payment_status are genuinely nulled here, including each order
+    item's rate/amount (redacting only the order-level total while
+    leaving line-item pricing visible would let anyone just sum the
+    items back to the real total)."""
     responses = [OrderResponse.model_validate(o) for o in orders]
     if role not in ("master",):
         for r in responses:
             r.order_value = None
+            r.discount = None
+            r.tax_percent = None
+            r.tax_amount = None
             r.advance = None
             r.other_received = None
             r.total_received = None
@@ -84,7 +91,7 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
     return _serialize_orders(query.all(), auth.get("role", "user"))
 
 
-def _build_order_items(items_data, db: Session, order_id: int = None):
+def _build_order_items(db, items_data, order_id: int = None):
     """Computes amount = quantity * rate server-side for each item -
     never trusted from client input directly, matching the estimate
     line items pattern (including ROUND_HALF_UP - Python's default
@@ -92,31 +99,34 @@ def _build_order_items(items_data, db: Session, order_id: int = None):
     disagree with how estimate amounts are computed for the exact same
     calculation).
 
-    Family 21 - when product_id is set and the caller left
-    description/unit/rate blank (empty description, rate 0), those are
-    filled in from the Product Master's own catalog values as a
-    convenience default - but whatever the caller DID send always wins,
-    since a custom quote frequently needs a different price/description
-    than the catalog default for the same underlying product."""
+    Also validates every supplied product_id actually references a
+    real, active Product Master row (Family 102 Test 2 / Product ID
+    requirement: order line items must reference "the actual Product
+    records ... used by the ERP", not just any integer, and product_id
+    is now mandatory - Pydantic already rejects a missing one with
+    "Product ID is required" before this function ever runs)."""
     from decimal import Decimal, ROUND_HALF_UP
+
+    product_ids = {item.product_id for item in items_data if item.product_id is not None}
+    if product_ids:
+        found_products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+        missing = product_ids - set(found_products.keys())
+        if missing:
+            raise HTTPException(status_code=400, detail="Invalid Product ID")
+        inactive = [p.name for p in found_products.values() if not p.is_active]
+        if inactive:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot use inactive product(s) on a new order: {', '.join(inactive)}",
+            )
+
     result = []
     for idx, item in enumerate(items_data):
-        description, unit, rate = item.description, item.unit, item.rate
-        if item.product_id:
-            product = db.query(Product).filter(Product.id == item.product_id).first()
-            if not product:
-                raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
-            if not description:
-                description = product.name
-            if not unit:
-                unit = product.unit
-            if not rate:
-                rate = product.selling_price
-        qty = item.quantity if item.quantity else Decimal("1")
-        amount = (Decimal(str(qty)) * Decimal(str(rate or 0))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         result.append(OrderItem(
-            order_id=order_id, product_id=item.product_id, description=description, category=item.category,
-            quantity=item.quantity, unit=unit, rate=rate, amount=amount, sort_order=idx,
+            order_id=order_id, description=item.description, category=item.category,
+            quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
+            product_id=item.product_id, is_custom_item=item.is_custom_item,
         ))
     return result
 
@@ -125,8 +135,44 @@ def _build_order_items(items_data, db: Session, order_id: int = None):
 def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_db),
                   auth=Depends(require_role("master"))):
     from decimal import Decimal
+    from app.utils.client_matching import find_or_create_client
 
-    payload = data.dict(exclude={"order_code", "advance", "items", "from_estimate_id"})
+    payload = data.dict(exclude={
+        "order_code", "advance", "items", "from_estimate_id",
+        "client_name", "client_phone", "client_email", "client_contact_person",
+        "client_address", "client_city", "client_lead_source",
+    })
+
+    client_was_created = False
+    if data.client_id is not None:
+        client = db.query(Client).filter(Client.id == data.client_id).first()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+    else:
+        # Client recognition intake (see app/utils/client_matching.py):
+        # reuses an existing client only when BOTH name and phone match;
+        # otherwise creates a new client here, in the same request, so
+        # the order never ends up pointing at a client_id that doesn't
+        # really represent this person.
+        try:
+            client, client_was_created = find_or_create_client(
+                db, data.client_name, data.client_phone,
+                email=data.client_email, contact_person=data.client_contact_person,
+                address=data.client_address, city=data.client_city, lead_source=data.client_lead_source,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        if client_was_created:
+            # Committed on its own, separate from the order's own
+            # retry-on-order-code-collision loop below - otherwise a
+            # rollback from an order_code collision would also undo
+            # this brand-new client, and the retry would then try to
+            # reuse a client.id that no longer exists.
+            db.commit()
+            db.refresh(client)
+    payload["client_id"] = client.id
     advance = data.advance
 
     source_estimate = None
@@ -134,8 +180,12 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
         source_estimate = db.query(Estimate).filter(Estimate.id == data.from_estimate_id).first()
         if not source_estimate:
             raise HTTPException(status_code=404, detail="Source estimate not found")
-        if source_estimate.status == "rejected":
-            raise HTTPException(status_code=400, detail="This estimate was rejected and cannot be converted into an order.")
+        if source_estimate.status != "approved":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only an approved estimate can be converted into an order "
+                        f"(this estimate is '{source_estimate.status}').",
+            )
         if source_estimate.order_id:
             raise HTTPException(status_code=400, detail="This estimate has already been converted to an order.")
 
@@ -145,26 +195,45 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
         # estimate line it came from via source_estimate_item_id.
         order_items = [
             OrderItem(
-                product_id=li.product_id, description=li.description, category=li.category, quantity=li.quantity,
+                description=li.description, category=li.category, quantity=li.quantity,
                 unit=li.unit, rate=li.rate, amount=li.amount,
-                source_estimate_item_id=li.id, sort_order=idx,
+                source_estimate_item_id=li.id, sort_order=idx, product_id=li.product_id,
             )
             for idx, li in enumerate(source_estimate.line_items)
         ]
     elif data.items:
-        order_items = _build_order_items(data.items, db)
+        order_items = _build_order_items(db, data.items)
     else:
         order_items = []
 
+    # Discount/tax_percent: when converting from an estimate, inherit
+    # the estimate's own values unless the caller explicitly overrode
+    # them (Family 102 Test 1: "Discount is preserved... GST is
+    # preserved... from the Estimate"). model_fields_set distinguishes
+    # "caller sent discount explicitly" from "used the schema default".
+    explicit_fields = data.model_fields_set
+    discount = data.discount if "discount" in explicit_fields or not source_estimate else source_estimate.discount
+    tax_percent = data.tax_percent if "tax_percent" in explicit_fields or not source_estimate else source_estimate.tax_percent
+
     if order_items:
-        items_total = sum((i.amount for i in order_items), Decimal("0"))
-        payload["order_value"] = items_total
+        items_subtotal = sum((i.amount for i in order_items), Decimal("0"))
+        tax_amount, grand_total = compute_totals(items_subtotal, discount, tax_percent)
+        payload["order_value"] = grand_total
+    else:
+        # No line items at all - a bare order with just a caller-supplied
+        # total (e.g. a quick internal-work order). discount/tax still
+        # apply to whatever order_value was given, same formula.
+        tax_amount, grand_total = compute_totals(data.order_value, discount, tax_percent)
+        payload["order_value"] = grand_total
+    payload["discount"] = discount
+    payload["tax_percent"] = tax_percent
 
     year = datetime.utcnow().year
     for _ in range(5):
         code = generate_unique_code(db, Order, "order_code", f"WC-{year}-")
-        order = Order(**payload, order_code=code, business_id=generate_short_id(db),
-                      advance=advance, total_received=advance, balance=payload["order_value"] - advance)
+        order = Order(**payload, order_code=code, business_id=generate_business_id(db),
+                      advance=advance, total_received=advance, balance=payload["order_value"] - advance,
+                      tax_amount=tax_amount)
         db.add(order)
         try:
             db.flush()
@@ -175,15 +244,48 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
             item.order_id = order.id
             db.add(item)
         if source_estimate:
-            source_estimate.order_id = order.id
-            db.add(source_estimate)
+            # Compare-and-swap: only claims the estimate if order_id is
+            # still NULL, checked and set in one atomic statement rather
+            # than a separate read-then-write - two concurrent conversion
+            # requests (e.g. a doubled-up button click) racing past the
+            # earlier order_id check above can't both win here. The
+            # loser's whole order (and its items, still uncommitted)
+            # rolls back rather than leaving an order that no longer has
+            # a valid claim on its source estimate.
+            #
+            # status="closed" is set in this SAME atomic statement -
+            # a converted estimate is automatically closed, distinct
+            # from merely "approved" (approved-but-not-yet-converted
+            # vs approved-and-now-an-order are different, useful
+            # states to tell apart in the Estimate list/detail UI).
+            from sqlalchemy import update as sa_update
+            claim_result = db.execute(
+                sa_update(Estimate.__table__)
+                .where(Estimate.id == source_estimate.id, Estimate.order_id.is_(None))
+                .values(order_id=order.id, status="closed")
+            )
+            if claim_result.rowcount != 1:
+                db.rollback()
+                raise HTTPException(status_code=409, detail="This estimate has already been converted to an order.")
         db.commit()
         db.refresh(order)
-        log_action(db, request, user_id=auth.get("user_id"), action="create_order", module_name="orders",
+        log_action(db, request, user_id=auth.get("user_id"),
+                   action="convert_estimate_to_order" if source_estimate else "create_order",
+                   module_name="orders",
                    record_id=order.id, new_value={
                        "client_id": order.client_id, "order_code": order.order_code,
                        "order_value": float(order.order_value or 0), "advance": float(order.advance or 0),
+                       "client_created_via_recognition": client_was_created,
+                       "source_estimate_id": source_estimate.id if source_estimate else None,
+                       "source_estimate_code": source_estimate.estimate_code if source_estimate else None,
                    })
+        if source_estimate:
+            # Separate entry on the Estimate's own audit trail (not just
+            # the Order's) - so "when did this estimate close" is
+            # discoverable from the estimate side too.
+            log_action(db, request, user_id=auth.get("user_id"), action="close_estimate", module_name="estimates",
+                       record_id=source_estimate.id, old_value={"status": "approved"},
+                       new_value={"status": "closed", "order_id": order.id, "order_code": order.order_code})
         return order
     raise HTTPException(status_code=500, detail="Unable to generate a unique order code, please try again")
 
@@ -206,22 +308,50 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         raise HTTPException(status_code=404, detail="Order not found")
 
     update_fields = data.dict(exclude_unset=True, exclude={"items"})
+
+    for field_name in ("project_status", "design_status", "execution_status", "delivery_status"):
+        if field_name in update_fields:
+            error = validate_order_status_value(field_name, update_fields[field_name])
+            if error:
+                raise HTTPException(status_code=400, detail=error)
+
     old_value = serializable_fields(order, update_fields.keys())
     for field, value in update_fields.items():
         setattr(order, field, value)
+
+    recompute_needed = (
+        data.items is not None or "discount" in update_fields
+        or "tax_percent" in update_fields or "order_value" in update_fields
+    )
 
     if data.items is not None:
         for existing in list(order.items):
             db.delete(existing)
         db.flush()
-        new_items = _build_order_items(data.items, db, order_id=order.id)
+        new_items = _build_order_items(db, data.items, order_id=order.id)
         for item in new_items:
             db.add(item)
         db.flush()
-        order.order_value = sum((i.amount for i in new_items), Decimal("0"))
+        subtotal_base = sum((i.amount for i in new_items), Decimal("0"))
+    elif order.items:
+        # Items weren't touched this call, but discount/tax_percent (or
+        # a direct order_value) may have been - recompute from the
+        # REAL current items total, not the old order_value (which is
+        # already a grand total; reusing it as input would double-apply
+        # the discount/tax on top of itself).
+        subtotal_base = order.items_subtotal or Decimal("0")
+    else:
+        # A bare lump-sum order with no line items at all - the
+        # caller's order_value IS the subtotal input to discount/tax,
+        # same as the equivalent branch in create_order.
+        subtotal_base = order.order_value or Decimal("0")
 
-    if data.items is not None or "order_value" in update_fields:
-        order.recompute_totals()
+    if recompute_needed:
+        tax_amount, grand_total = compute_totals(subtotal_base, order.discount, order.tax_percent)
+        order.tax_amount = tax_amount
+        order.order_value = grand_total
+
+    order.recompute_totals()
 
     db.add(order)
     db.commit()
@@ -229,7 +359,10 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
     new_value = serializable_fields(order, update_fields.keys())
     if data.items is not None:
         new_value["items_changed"] = True
-    log_action(db, request, user_id=auth.get("user_id"), action="update_order", module_name="orders",
+    action = "cancel_order" if update_fields.get("project_status") == "Cancelled" else (
+        "change_order_status" if "project_status" in update_fields else "update_order"
+    )
+    log_action(db, request, user_id=auth.get("user_id"), action=action, module_name="orders",
                record_id=order.id, old_value=old_value, new_value=new_value)
     return order
 

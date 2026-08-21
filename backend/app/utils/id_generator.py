@@ -14,37 +14,55 @@ column is unique-indexed) rather than relying on this function alone
 to guarantee uniqueness - see generate_unique_code below, which does
 both in one call.
 
-generate_short_id below is a separate, distinct kind of identifier
-(Family 21 - "GLOBAL 10-CHARACTER IDs"): a 10-character, uppercase
-alphanumeric, GLOBALLY UNIQUE, INCREMENTAL, centrally-generated
-external identifier used alongside the sequential codes above rather
-than replacing them - the sequential codes stay genuinely useful for
-humans scanning a list (EMP-011 sorts and reads naturally); the
-10-character ID exists for contexts that specifically want a fixed-
-length external identifier, unique not just within its own table but
-across every entity type in the entire system.
+generate_business_id below is the current, forward-looking generator for
+that same kind of field: a centralized, incremental, 10-character
+alphanumeric external ID (e.g. 000000014K), shared by every business
+entity in the system (clients, suppliers, employees, products,
+materials, estimates, orders, payments, tasks, production jobs,
+expenses, projects, purchases, ...) rather than one scheme per entity
+type. "Incremental" here means every ID is derived from a single
+strictly-increasing database sequence (see IdSequence /
+app/models/id_sequence.py) - two different entity types created back to
+back get two different, ordered business_ids from the same counter, the
+same way Stripe- or GitHub-style object IDs work. This is deliberately
+not the human-readable "EST-001"-style prefix code - that field
+continues to exist separately (estimate_code, client_code, ...) for
+people scanning a list; business_id is the opaque system identifier that
+should be used wherever a business object needs to be referenced,
+exported, or looked up externally, and it is never typed in by hand.
 
-Before Family 21, this was a random `secrets.choice` string. It is now
-backed by a single centralized, atomically-incremented counter (see
-models/id_counter.py) encoded in base36 - still exactly 10 uppercase
-alphanumeric characters (36**10 ~ 3.66e15 possible values, far beyond
-any realistic table size), still passes every existing
-`^[A-Z0-9]{10}$` format check, but now genuinely incremental and
-generated from exactly one place in the codebase, per the brief:
-"Centralize ID generation ... never manually typed ... safe against
-duplicates/concurrent creation."
+generate_short_id below is the original, now-legacy generator this one
+replaces for new code: a random (not incremental) 10-character
+alphanumeric string. It remains here only because existing Alembic
+migrations (0007, 0010) call it during one-time historical data
+backfills, and a migration's behavior must never change after it has
+already run against real databases. No new code should call it -
+use generate_business_id instead.
 """
 import re
+import secrets
 import string
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.id_counter import IdCounter
-
-SHORT_ID_ALPHABET = string.digits + string.ascii_uppercase  # base36, 0-9 then A-Z
+SHORT_ID_ALPHABET = string.ascii_uppercase + string.digits
 SHORT_ID_LENGTH = 10
-GLOBAL_COUNTER_NAME = "global"
+
+# Base36: digits then uppercase letters, so every generated business_id
+# stays within the same [A-Z0-9]{10} shape already established (and
+# already asserted by tests/test_business_id.py) for the legacy random
+# IDs - callers and UI don't need to know which generator produced a
+# given value.
+_BASE36_ALPHABET = string.digits + string.ascii_uppercase
+
+
+def _to_base36(n: int) -> str:
+    if n == 0:
+        return _BASE36_ALPHABET[0]
+    digits = []
+    while n:
+        n, remainder = divmod(n, 36)
+        digits.append(_BASE36_ALPHABET[remainder])
+    return "".join(reversed(digits))
 
 
 def next_sequence_number(db: Session, model, code_column: str, prefix: str) -> int:
@@ -77,76 +95,38 @@ def generate_unique_code(db: Session, model, code_column: str, prefix: str, pad:
     return format_code(prefix, n, pad)
 
 
-def _base36(number: int) -> str:
-    if number == 0:
-        return "0"
-    digits = []
-    while number > 0:
-        number, rem = divmod(number, 36)
-        digits.append(SHORT_ID_ALPHABET[rem])
-    return "".join(reversed(digits))
+def generate_business_id(db: Session) -> str:
+    """The centralized, incremental, system-generated 10-character
+    external ID for any business entity - see the module docstring.
 
+    Implementation: insert one row into id_sequences and flush (not
+    commit) to obtain its autoincrement primary key without ending the
+    caller's transaction. That integer is guaranteed unique and
+    strictly increasing by the database engine itself - concurrent
+    callers each get a distinct number with no race window - then it's
+    base36-encoded and zero-padded to exactly 10 characters.
 
-def _next_global_counter_value(db: Session) -> int:
-    """Atomically increments and returns the single global counter used
-    for every entity type's 10-character ID.
-
-    Implementation note: this deliberately does UPDATE then SELECT
-    (both against the *same* session/transaction) rather than a single
-    `UPDATE ... RETURNING`. RETURNING support/behavior differs across
-    the SQLite and Postgres driver versions this app is deployed
-    against, whereas UPDATE-then-SELECT-in-the-same-transaction is
-    universally supported and just as safe: the UPDATE statement alone
-    is what provides the atomicity (it takes a row lock on Postgres, and
-    SQLite takes a write lock on the whole database for the duration of
-    the write transaction), and the SELECT immediately after sees this
-    same transaction's own uncommitted write. A second, concurrent
-    caller's UPDATE simply blocks until this transaction commits or
-    rolls back - it can never observe or reuse the same value.
+    Callers should still create the owning entity and commit within the
+    same retry-on-IntegrityError loop already used for the human-
+    readable sequential codes (see generate_unique_code) - not because
+    this function can collide with itself, but so a rolled-back attempt
+    (e.g. a sequential-code collision on the *same* insert) doesn't
+    leave the entity half-created.
     """
-    # Ensure the singleton counter row exists. Uses a plain existence
-    # check + insert (not INSERT ... ON CONFLICT, which is not portable
-    # across SQLite/Postgres syntax) - safe because a lost race here
-    # just means a harmless duplicate-row IntegrityError, caught below.
-    row = db.query(IdCounter).filter(IdCounter.name == GLOBAL_COUNTER_NAME).first()
-    if row is None:
-        try:
-            db.execute(
-                text("INSERT INTO id_counters (name, next_value, created_at, updated_at) "
-                     "VALUES (:name, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"),
-                {"name": GLOBAL_COUNTER_NAME},
-            )
-            db.flush()
-        except IntegrityError:
-            # Another concurrent request already created it - fine,
-            # just re-read below.
-            db.rollback()
+    from app.models.id_sequence import IdSequence
 
-    db.execute(
-        text("UPDATE id_counters SET next_value = next_value + 1, updated_at = CURRENT_TIMESTAMP WHERE name = :name"),
-        {"name": GLOBAL_COUNTER_NAME},
-    )
-    result = db.execute(
-        text("SELECT next_value FROM id_counters WHERE name = :name"),
-        {"name": GLOBAL_COUNTER_NAME},
-    ).fetchone()
-    return int(result[0])
+    seq = IdSequence()
+    db.add(seq)
+    db.flush()
+    return _to_base36(seq.id).rjust(SHORT_ID_LENGTH, _BASE36_ALPHABET[0])
 
 
-def generate_short_id(db: Session) -> str:
-    """The centralized, atomic, incremental 10-character global ID
-    (base36, e.g. "0000000001", "0000000002", ...). Requires a live db
-    session because generation is now a real atomic database operation,
-    not a client-side random draw - this is the one and only place in
-    the codebase that should ever compute one of these; every route/
-    service imports this function rather than re-implementing it.
-
-    Still followed by a caller-side retry-on-IntegrityError loop for
-    the overall insert (same discipline as generate_unique_code) - not
-    because this function can collide with itself (the atomic counter
-    guarantees a fresh, never-before-issued value every call), but so a
-    failed insert for an unrelated reason (e.g. a duplicate sequential
-    code) can cleanly retry the whole row, counter value included.
-    """
-    n = _next_global_counter_value(db)
-    return _base36(n).upper().zfill(SHORT_ID_LENGTH)
+def generate_short_id() -> str:
+    """A random 10-character alphanumeric ID (uppercase letters + digits,
+    e.g. A7K92P4XQ1). Uses `secrets` (cryptographically strong), not
+    `random` - collision probability across even a very large table is
+    negligible (36^10 possible values), but callers should still wrap
+    their insert in a retry-on-IntegrityError loop, same as
+    generate_unique_code, since the column is unique-indexed and two
+    concurrent requests could theoretically collide."""
+    return "".join(secrets.choice(SHORT_ID_ALPHABET) for _ in range(SHORT_ID_LENGTH))

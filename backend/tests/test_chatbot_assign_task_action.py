@@ -43,7 +43,7 @@ def test_assign_task_unknown_employee_gives_clear_message(client, test_user):
 def test_assign_task_links_order_from_context(client, test_user):
     _login(client, test_user)
     client.post("/api/employees/", json={"name": "Shweta Chat Assign"})
-    client_id = client.post("/api/clients/", json={"name": "Chat Assign Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chat Assign Client", "phone": "9000010028"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "20000", "advance": "0",
     }).json()

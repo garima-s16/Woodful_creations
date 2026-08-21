@@ -20,7 +20,7 @@ from app.models.client_activity import ClientActivity
 from app.models.client_document import ClientDocument
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientWithStats
 from app.schemas.client_document import ClientDocumentResponse
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 
 # A broader allowlist than resumes (candidates.py) - client documents
 # genuinely include contracts/ID proofs (PDF/DOC) as well as site
@@ -63,7 +63,7 @@ def create_client(data: ClientCreate, db: Session = Depends(get_db), auth=Depend
     payload = data.dict(exclude={"client_code"})
     for _ in range(5):
         code = generate_unique_code(db, Client, "client_code", "CL-")
-        client = Client(**payload, client_code=code, business_id=generate_short_id(db))
+        client = Client(**payload, client_code=code, business_id=generate_business_id(db))
         db.add(client)
         try:
             db.commit()

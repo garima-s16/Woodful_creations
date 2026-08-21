@@ -28,7 +28,7 @@ def test_order_pdf_generates_with_malicious_remarks(client, test_user):
     resp_login = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
     assert resp_login.status_code == 200
 
-    client_id = client.post("/api/clients/", json={"name": "PDF Safety Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "PDF Safety Client", "phone": "9000010170"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "10000", "advance": "0",
         "remarks": '<b onclick="evil()">Fake &injected tag</b> & unescaped <ampersand',

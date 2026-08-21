@@ -1,117 +1,122 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { productsAPI, documentsAPI } from '../utils/api';
+import { productsAPI, reportsAPI } from '../utils/api';
 import Card from '../components/common/Card';
-import DocumentsPanel from '../components/DocumentsPanel';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { formatCurrency } from '../utils/currency';
 
 function ProductDetailPage() {
   const { productId } = useParams();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const isPrivileged = user?.role === 'master';
+  const isMaster = user?.role === 'master';
+
   const [product, setProduct] = useState(null);
-  const [notFound, setNotFound] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [error, setError] = useState('');
 
-  const load = useCallback(() => {
-    productsAPI.get(productId).then((res) => setProduct(res.data)).catch(() => setNotFound(true));
-  }, [productId]);
+  const load = () => {
+    setLoading(true);
+    productsAPI.get(productId).then((res) => setProduct(res.data)).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(load, [load]);
+  const toggleActive = async () => {
+    await productsAPI.update(product.id, { is_active: !product.is_active });
+    load();
+  };
 
-  if (notFound) return <div className="page"><p>Product not found.</p></div>;
-  if (!product) return <div className="page">Loading...</div>;
+  const confirmDelete = async () => {
+    setError('');
+    try {
+      await productsAPI.remove(product.id);
+      navigate('/products');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'This product cannot be deleted - it has historical references. Deactivate it instead.');
+      setPendingDelete(false);
+    }
+  };
 
-  const dims = [product.length, product.width, product.height].filter((d) => d != null);
+  if (loading) return <div className="page"><p>Loading...</p></div>;
+  if (!product) return <div className="page"><p>Product not found.</p></div>;
 
   return (
     <div className="page">
       <div className="detail-header">
         <div>
-          <Link to="/products" className="btn-link">&larr; Back to Product Master</Link>
+          <Link to="/products" className="btn-link">&larr; Back to Products</Link>
           <h1 className="detail-title" style={{ marginTop: 8 }}>{product.name}</h1>
           <div className="detail-subtitle">
-            {product.product_code} &middot; {product.product_type === 'custom' ? 'Custom' : 'Standard'}
-            {product.category ? ` · ${product.category}` : ''}
-            {' '}<span className={`status-badge ${product.is_active ? 'status-ok' : 'status-muted'}`}>{product.is_active ? 'Active' : 'Inactive'}</span>
+            {product.category || 'Uncategorized'}
             {product.business_id && <span className="business-id-badge">{product.business_id}</span>}
+            <span className={`status-badge ${product.is_active ? 'status-ok' : 'status-muted'}`} style={{ marginLeft: 8 }}>
+              {product.is_active ? 'Active' : 'Inactive'}
+            </span>
           </div>
         </div>
-        {isPrivileged && (
-          <div className="detail-header-actions">
-            <button className="btn-secondary" onClick={() => navigate('/products', { state: { openEditId: product.id } })}>
-              Manage in Product Master
+        {isMaster && (
+          <div className="page-actions">
+            <button className="btn-secondary" onClick={toggleActive}>
+              {product.is_active ? 'Deactivate' : 'Activate'}
             </button>
+            <a className="btn-secondary" href={reportsAPI.downloadUrl(`products/${product.id}/product.pdf`)} target="_blank" rel="noreferrer">
+              Export PDF
+            </a>
+            <a className="btn-secondary" href={reportsAPI.downloadUrl(`products.xlsx?search=${encodeURIComponent(product.product_code)}`)} target="_blank" rel="noreferrer">
+              Export Excel
+            </a>
+            <button className="btn-link" onClick={() => setPendingDelete(true)}>Delete</button>
           </div>
         )}
       </div>
 
-      <div className="kpi-row">
-        <Card><div className="card-body"><div className="detail-meta-label">Selling Price</div><h3>{formatCurrency(product.selling_price)}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Cost Price</div><h3>{product.cost_price != null ? formatCurrency(product.cost_price) : 'Restricted'}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Margin</div><h3>{product.margin != null ? formatCurrency(product.margin) : 'Restricted'}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Lead Time</div><h3>{product.lead_time_days ? `${product.lead_time_days} days` : '-'}</h3></div></Card>
-      </div>
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
-      <Card title="Details">
-        <div className="card-body">
-          <div className="detail-meta">
-            <div className="detail-meta-item"><span className="detail-meta-label">SKU</span><span className="detail-meta-value">{product.sku || '-'}</span></div>
-            <div className="detail-meta-item"><span className="detail-meta-label">Unit</span><span className="detail-meta-value">{product.unit}</span></div>
-            <div className="detail-meta-item"><span className="detail-meta-label">Finish</span><span className="detail-meta-value">{product.finish || '-'}</span></div>
-            <div className="detail-meta-item">
-              <span className="detail-meta-label">Dimensions</span>
-              <span className="detail-meta-value">
-                {dims.length > 0 ? `${dims.join(' x ')} ${product.dimension_unit}` : '-'}
-              </span>
-            </div>
-            <div className="detail-meta-item"><span className="detail-meta-label">Tax %</span><span className="detail-meta-value">{Number(product.tax_percent)}%</span></div>
-          </div>
-          {product.description && (
-            <div style={{ marginTop: 16 }}>
-              <span className="detail-meta-label">Description</span>
-              <p>{product.description}</p>
-            </div>
-          )}
-          {product.specifications && (
-            <div style={{ marginTop: 16 }}>
-              <span className="detail-meta-label">Specifications</span>
-              <p>{product.specifications}</p>
-            </div>
-          )}
-          {product.notes && (
-            <div style={{ marginTop: 16 }}>
-              <span className="detail-meta-label">Notes</span>
-              <p>{product.notes}</p>
-            </div>
-          )}
+      <Card title="Product Information">
+        <div className="detail-meta">
+          <div className="detail-meta-item"><span className="detail-meta-label">Product ID</span><span className="detail-meta-value">{product.business_id || '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Product Code</span><span className="detail-meta-value">{product.product_code}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Type</span><span className="detail-meta-value">{product.product_type}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Category</span><span className="detail-meta-value">{product.category || '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Subcategory</span><span className="detail-meta-value">{product.subcategory || '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Unit</span><span className="detail-meta-value">{product.unit}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Default Rate</span><span className="detail-meta-value">{product.selling_price != null ? formatCurrency(product.selling_price) : '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">GST %</span><span className="detail-meta-value">{product.gst_percent != null ? `${product.gst_percent}%` : '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Primary Material</span><span className="detail-meta-value">{product.primary_material || '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Finish</span><span className="detail-meta-value">{product.finish || '-'}</span></div>
         </div>
+        {product.specifications && (
+          <div style={{ marginTop: 16 }}>
+            <div className="detail-meta-label">Description / Specifications</div>
+            <p>{product.specifications}</p>
+          </div>
+        )}
       </Card>
 
-      {product.bom_items?.length > 0 && (
-        <Card title="Bill of Materials">
-          <table className="data-table">
-            <thead><tr><th>Material</th><th>Quantity</th><th>Unit</th></tr></thead>
-            <tbody>
-              {product.bom_items.map((b) => (
-                <tr key={b.id}>
-                  <td><Link to={`/materials/${b.material_id}`} className="btn-link">{b.material_name}</Link></td>
-                  <td>{Number(b.quantity)}</td>
-                  <td>{b.unit || b.material_unit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {isMaster && (product.cost_price != null || product.margin != null) && (
+        <Card title="Costing">
+          <div className="detail-meta">
+            <div className="detail-meta-item"><span className="detail-meta-label">Cost Price</span><span className="detail-meta-value">{product.cost_price != null ? formatCurrency(product.cost_price) : '-'}</span></div>
+            <div className="detail-meta-item"><span className="detail-meta-label">Margin</span><span className="detail-meta-value">{product.margin != null ? formatCurrency(product.margin) : '-'}</span></div>
+          </div>
         </Card>
       )}
 
-      <DocumentsPanel title="Reference Images & Attachments" api={{
-        list: () => documentsAPI.list('product', productId),
-        upload: (file, description) => documentsAPI.upload('product', productId, file, description),
-        downloadUrl: (documentId) => documentsAPI.downloadUrl('product', productId, documentId),
-        remove: (documentId) => documentsAPI.remove('product', productId, documentId),
-      }} canUpload={isPrivileged} />
+      <Card title="System Information">
+        <div className="detail-meta">
+          <div className="detail-meta-item"><span className="detail-meta-label">Created</span><span className="detail-meta-value">{product.created_at ? new Date(product.created_at).toLocaleString() : '-'}</span></div>
+          <div className="detail-meta-item"><span className="detail-meta-label">Last Updated</span><span className="detail-meta-value">{product.updated_at ? new Date(product.updated_at).toLocaleString() : '-'}</span></div>
+        </div>
+      </Card>
+
+      <ConfirmDialog
+        isOpen={pendingDelete}
+        message={`Are you sure you want to permanently delete ${product.product_code} - ${product.name}? This cannot be undone.`}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(false)}
+      />
     </div>
   );
 }

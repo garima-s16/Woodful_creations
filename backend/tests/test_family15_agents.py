@@ -83,7 +83,7 @@ def test_agent_proposed_action_still_requires_confirmation(client, test_user):
     """Reuses the exact Family 14 guarantee through the new route -
     an agent must never auto-execute a mutation."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Agent Action Confirm Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Agent Action Confirm Test Client", "phone": "9000010092"}).json()["id"]
     orders_before = client.get("/api/orders/", params={"client_id": client_id}).json()
     client.post("/api/agents/sales/query", json={
         "message": "create order for agent action confirm test client worth 10000",

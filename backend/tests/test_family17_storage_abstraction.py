@@ -56,7 +56,7 @@ def test_document_upload_still_works_through_the_abstraction(client, test_user):
     """Confirms routing through the abstraction did not change the
     actual upload/download behavior for a real route."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Storage Abstraction Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Storage Abstraction Test Client", "phone": "9000010093"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -72,7 +72,7 @@ def test_document_delete_through_abstraction_removes_the_stored_file(client, tes
     """Confirms delete genuinely removes the file, not just the DB row -
     re-downloading after delete must fail."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Storage Delete Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Storage Delete Test Client", "phone": "9000010094"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "3000", "advance": "0",
     }).json()
@@ -89,7 +89,7 @@ def test_unauthorized_document_access_still_denied_after_abstraction(client, tes
     """The core "storage abstraction must not weaken authorization"
     proof - IDOR protection must still hold identically."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Storage IDOR Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Storage IDOR Test Client", "phone": "9000010095"}).json()["id"]
     order_a = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
     }).json()

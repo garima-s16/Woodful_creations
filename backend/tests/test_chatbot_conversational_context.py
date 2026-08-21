@@ -12,7 +12,7 @@ def _login(client, test_user):
 
 def test_response_includes_last_entity_when_context_resolved(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Context Memory Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Context Memory Client", "phone": "9000010034"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "40000", "advance": "0",
     }).json()
@@ -30,7 +30,7 @@ def test_deictic_followup_resolves_to_last_entity(client, test_user):
     a deictic word ("usme") should resolve using last_entity echoed
     back from the previous turn."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Deictic Followup Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Deictic Followup Client", "phone": "9000010035"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "55000", "advance": "0",
     }).json()
@@ -54,7 +54,7 @@ def test_unrelated_message_does_not_use_last_entity(client, test_user):
     """Without a deictic word, an unrelated question must not be
     misattributed to whatever was discussed previously."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "No Misattribution Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "No Misattribution Client", "phone": "9000010036"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-20T00:00:00", "order_value": "30000", "advance": "0",
     }).json()

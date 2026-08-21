@@ -30,8 +30,7 @@ def test_client_export_respects_search_filter(client, test_user):
 def test_client_city_and_status_persist(client, test_user):
     _login(client, test_user)
     resp = client.post("/api/clients/", json={
-        "name": "City Status Test Client", "city": "Mhow", "status": "Active",
-    })
+        "name": "City Status Test Client", "city": "Mhow", "status": "Active", "phone": "9000010042",})
     assert resp.status_code == 201
     body = resp.json()
     assert body["city"] == "Mhow"

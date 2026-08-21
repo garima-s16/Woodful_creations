@@ -54,7 +54,7 @@ def test_employee_sees_broadcast_out_of_stock_notification(client, test_user, db
 def test_employee_does_not_see_broadcast_payment_overdue_notification(client, test_user, db_session):
     """The genuinely financial broadcast must still stay hidden."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Notif RBAC Overdue Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Notif RBAC Overdue Client", "phone": "9000010130"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-01-01T00:00:00", "order_value": "50000.00", "advance": "0",
     })
@@ -66,7 +66,7 @@ def test_employee_does_not_see_broadcast_payment_overdue_notification(client, te
 
 def test_master_still_sees_payment_overdue_notification(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Notif RBAC Master Overdue Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Notif RBAC Master Overdue Client", "phone": "9000010131"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-01-01T00:00:00", "order_value": "60000.00", "advance": "0",
     })

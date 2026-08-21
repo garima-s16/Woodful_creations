@@ -9,7 +9,7 @@ from app.core.audit import log_action
 from app.models.milestone import Milestone
 from app.models.order import Order
 from app.schemas.milestone import MilestoneCreate, MilestoneUpdate, MilestoneResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/milestones", tags=["milestones"])
 
@@ -29,7 +29,7 @@ def create_milestone(data: MilestoneCreate, request: Request, db: Session = Depe
     order = db.query(Order).filter(Order.id == data.order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    milestone = Milestone(**data.dict(), business_id=generate_short_id(db))
+    milestone = Milestone(**data.dict(), business_id=generate_business_id(db))
     db.add(milestone)
     db.commit()
     db.refresh(milestone)

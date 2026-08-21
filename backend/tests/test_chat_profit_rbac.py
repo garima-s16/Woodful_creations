@@ -22,7 +22,7 @@ def _create_limited_user(client, db_session, employee_id, username, email):
 
 def test_master_asking_for_profit_gets_real_data(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Profit RBAC Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Profit RBAC Client", "phone": "9000010025"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "order_value": "50000.00", "advance": "0",
     })
@@ -95,7 +95,7 @@ def test_profitability_figures_match_the_real_order_service_calculation(client, 
     from the same OrderService.profitability() the dashboard uses, not
     an independently re-derived calculation that could drift."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Profit Consistency Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Profit Consistency Client", "phone": "9000010026"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "order_value": "100000.00", "advance": "0",
     }).json()

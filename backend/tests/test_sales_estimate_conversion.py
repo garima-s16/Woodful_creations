@@ -15,7 +15,7 @@ def _login(client, test_user):
 
 def test_rejected_estimate_cannot_be_converted_to_order(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Conversion Test Rejected Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Conversion Test Rejected Client", "phone": "9000010171"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "10000"}).json()
     client.put(f"/api/estimates/{estimate['id']}", json={"status": "rejected"})
 
@@ -28,7 +28,7 @@ def test_rejected_estimate_cannot_be_converted_to_order(client, test_user):
 
 def test_approved_estimate_converts_successfully(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Conversion Test Approved Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Conversion Test Approved Client", "phone": "9000010172"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "20000"}).json()
     client.put(f"/api/estimates/{estimate['id']}", json={"status": "approved"})
 
@@ -40,7 +40,7 @@ def test_approved_estimate_converts_successfully(client, test_user):
 
 def test_estimate_cannot_be_converted_twice(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Conversion Test Double Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Conversion Test Double Client", "phone": "9000010173"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "15000"}).json()
     client.put(f"/api/estimates/{estimate['id']}", json={"status": "approved"})
     first = client.post("/api/orders/", json={
@@ -75,7 +75,7 @@ def test_estimates_export_requires_master(client, test_user, db_session):
 
 def test_estimates_export_works_for_master(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimates Export Master Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimates Export Master Client", "phone": "9000010174"}).json()["id"]
     client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "5000"})
 
     resp = client.get("/api/reports/estimates.xlsx")
@@ -86,7 +86,7 @@ def test_estimates_export_works_for_master(client, test_user):
 
 def test_chatbot_pending_estimates(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Chatbot Pending Estimate Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Chatbot Pending Estimate Client", "phone": "9000010175"}).json()["id"]
     estimate = client.post("/api/estimates/", json={"client_id": client_id, "material_cost": "8000"}).json()
     client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
 

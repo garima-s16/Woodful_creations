@@ -171,7 +171,6 @@ function DashboardPage() {
   const [stock, setStock] = useState(null);
   const [orders, setOrders] = useState(null);
   const [staff, setStaff] = useState(null);
-  const [dashboardError, setDashboardError] = useState('');
   const [pendingTasks, setPendingTasks] = useState([]);
   const [activity, setActivity] = useState([]);
   const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
@@ -179,19 +178,6 @@ function DashboardPage() {
   const [delayedProduction, setDelayedProduction] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [followUps, setFollowUps] = useState([]);
-
-  const loadCriticalDashboardData = () => {
-    setDashboardError('');
-    Promise.all([dashboardAPI.stock(), dashboardAPI.orders(), dashboardAPI.staff()])
-      .then(([stockRes, ordersRes, staffRes]) => {
-        setStock(stockRes.data);
-        setOrders(ordersRes.data);
-        setStaff(staffRes.data);
-      })
-      .catch(() => {
-        setDashboardError('Unable to load dashboard data. Please check your connection and try again.');
-      });
-  };
 
   const loadFollowUps = () => {
     clientActivitiesAPI.pendingFollowUps().then((res) => setFollowUps(res.data)).catch(() => {});
@@ -207,7 +193,9 @@ function DashboardPage() {
 
   useEffect(() => {
     loadFollowUps();
-    loadCriticalDashboardData();
+    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
+    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
+    dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
     dailyTasksAPI.list({ status: 'TO DO' }).then((res) => setPendingTasks(res.data)).catch(() => {});
     if (!isPrivileged) {
       dailyTasksAPI.list({ mine: true }).then((res) => setMyTasks(res.data)).catch(() => {});
@@ -252,16 +240,6 @@ function DashboardPage() {
     });
   }, [isPrivileged]);
 
-  if (dashboardError) {
-    return (
-      <div className="page">
-        <div className="dashboard-error-state">
-          <p>{dashboardError}</p>
-          <button className="btn-primary" onClick={loadCriticalDashboardData}>Try Again</button>
-        </div>
-      </div>
-    );
-  }
   if (!stock || !orders || !staff) return <div className="page">Loading...</div>;
 
   const grossMargin = orders.total_order_value

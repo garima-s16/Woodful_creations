@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, ForeignKey
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
@@ -12,16 +12,6 @@ class OrderItem(BaseModel):
     __tablename__ = "order_items"
 
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
-    # Family 21 - Product <-> Order Item relationship: which catalog/
-    # custom Product this line actually is, so an order identifies
-    # exactly what was ordered rather than only a free-text description.
-    # Nullable - an order can still carry a genuinely one-off line with
-    # no Product Master entry (e.g. a miscellaneous service charge);
-    # when set, description/unit/rate are still stored on the item
-    # itself (never re-read from the Product at display time) so a
-    # later price change on the Product can't silently rewrite a
-    # historical order.
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     description = Column(String(255), nullable=False)
     category = Column(String(100), nullable=True)
     quantity = Column(Numeric(10, 2), nullable=False, default=1)
@@ -30,6 +20,14 @@ class OrderItem(BaseModel):
     amount = Column(Numeric(12, 2), nullable=False, default=0)  # quantity * rate, server-computed
     source_estimate_item_id = Column(Integer, ForeignKey("estimate_line_items.id"), nullable=True)
     sort_order = Column(Integer, nullable=False, default=0)
+    # Optional link to the Product Master - identifies exactly what was
+    # ordered, when it corresponds to a real catalog/custom product.
+    # Nullable: an order item is never required to reference a product
+    # (freeform lines like "Installation" stay freeform).
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    is_custom_item = Column(Boolean, nullable=False, default=False)
+    pricing_rule_applied = Column(String(40), nullable=True)
+    applied_margin_percent = Column(Numeric(5, 2), nullable=True)
 
     order = relationship("Order", back_populates="items")
     source_estimate_item = relationship("EstimateLineItem")
@@ -37,4 +35,13 @@ class OrderItem(BaseModel):
 
     @property
     def product_name(self):
+        """Lets the Order Detail screen show the actual Product Master
+        name for a linked item, not just whatever the free-text
+        description happens to say (Family 102 Test 2: 'the products
+        displayed on the Order Detail screen are the same actual
+        products selected during creation')."""
         return self.product.name if self.product else None
+
+    @property
+    def product_code(self):
+        return self.product.product_code if self.product else None

@@ -11,7 +11,7 @@ def _login(client, test_user):
 
 
 def _seed_minimal_order(client):
-    create_resp = client.post("/api/clients/", json={"name": "Export Test Client"})
+    create_resp = client.post("/api/clients/", json={"name": "Export Test Client", "phone": "9000010079"})
     client_id = create_resp.json()["id"]
 
     resp = client.post("/api/orders/", json={

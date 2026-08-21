@@ -19,8 +19,8 @@ function LeavesPage() {
 
   const load = (status) => {
     setPageLoading(true);
-    leavesAPI.list(status ? { status } : undefined).then((res) => setLeaves(res.data)).catch(() => {}).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
+    leavesAPI.list(status ? { status } : undefined).then((res) => setLeaves(res.data)).finally(() => setPageLoading(false));
+    employeesAPI.list().then((res) => setEmployees(res.data));
   };
   useEffect(() => load(), []);
 

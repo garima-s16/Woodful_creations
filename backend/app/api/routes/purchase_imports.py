@@ -14,7 +14,7 @@ from app.schemas.purchase_import import (
     ImportPreviewResponse, ImportRowPreview, ImportCommitRequest, ImportCommitResult,
 )
 from app.services.stock_service import StockService
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 from app.utils.purchase_import import (
     build_import_template, parse_uploaded_workbook, validate_and_match_row, normalize_match_key,
 )
@@ -117,7 +117,7 @@ def commit_import(data: ImportCommitRequest, db: Session = Depends(get_db),
                 for _ in range(5):
                     code = generate_unique_code(db, Material, "material_code", "MAT-")
                     material = Material(
-                        material_code=code, business_id=generate_short_id(db), name=row.material_name,
+                        material_code=code, business_id=generate_business_id(db), name=row.material_name,
                         brand_grade=row.specification, unit=row.unit, opening_stock=0,
                         current_stock=0, minimum_stock=0, average_rate=row.rate,
                     )

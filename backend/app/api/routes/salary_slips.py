@@ -15,7 +15,7 @@ from app.models.attendance import Attendance
 from app.models.employee import Employee
 from app.services.working_calendar_service import compute_working_days
 from app.schemas.salary_slip import SalarySlipCreate, SalarySlipUpdate, SalarySlipResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/salary-slips", tags=["salary-slips"])
 
@@ -100,7 +100,7 @@ def create_salary_slip(data: SalarySlipCreate, request: Request, db: Session = D
 
     for _ in range(5):
         net_salary = _compute_net(data)
-        slip = SalarySlip(**data.dict(), net_salary=net_salary, business_id=generate_short_id(db))
+        slip = SalarySlip(**data.dict(), net_salary=net_salary, business_id=generate_business_id(db))
         db.add(slip)
         try:
             db.commit()

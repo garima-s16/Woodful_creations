@@ -3,15 +3,21 @@ def _login(client, test_user):
     assert resp.status_code == 200
 
 
+def _product(client, name):
+    return client.post("/api/products/", json={"name": name, "unit": "Nos"}).json()["id"]
+
+
 def test_order_with_items_computes_order_value_from_items(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Items Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Items Test Client", "phone": "9000010137"}).json()["id"]
+    wardrobe_id = _product(client, "Wardrobe")
+    installation_id = _product(client, "Installation")
 
     resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "10000.00",
         "items": [
-            {"description": "Wardrobe", "category": "Furniture", "quantity": "1", "unit": "Nos", "rate": "85000.00"},
-            {"description": "Installation", "category": "Installation", "quantity": "1", "unit": "Lot", "rate": "10000.00"},
+            {"description": "Wardrobe", "category": "Furniture", "quantity": "1", "unit": "Nos", "rate": "85000.00", "product_id": wardrobe_id},
+            {"description": "Installation", "category": "Installation", "quantity": "1", "unit": "Lot", "rate": "10000.00", "product_id": installation_id},
         ],
     })
     assert resp.status_code == 201
@@ -25,11 +31,12 @@ def test_order_with_items_computes_order_value_from_items(client, test_user):
 
 def test_item_amount_is_server_computed(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Item Trust Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Item Trust Client", "phone": "9000010138"}).json()["id"]
+    product_id = _product(client, "Test Item")
 
     resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "0",
-        "items": [{"description": "Test Item", "quantity": "4", "rate": "500.00", "amount": "999999.00"}],
+        "items": [{"description": "Test Item", "quantity": "4", "rate": "500.00", "amount": "999999.00", "product_id": product_id}],
     })
     assert resp.status_code == 201
     assert resp.json()["items"][0]["amount"] == "2000.00"
@@ -39,14 +46,18 @@ def test_order_created_from_estimate_copies_items_and_links_back(client, test_us
     """Priority 1B's exact workflow: Estimate -> Estimate Items -> Order
     -> Order Items, with the estimate linked back to the order it produced."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate To Order Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate To Order Client", "phone": "9000010139"}).json()["id"]
+    kitchen_id = _product(client, "Modular Kitchen")
+    hardware_id = _product(client, "Hardware")
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id,
         "line_items": [
-            {"description": "Modular Kitchen", "category": "Furniture", "quantity": "1", "unit": "Lot", "rate": "250000.00"},
-            {"description": "Hardware", "category": "Hardware", "quantity": "1", "unit": "Lot", "rate": "30000.00"},
+            {"description": "Modular Kitchen", "category": "Furniture", "quantity": "1", "unit": "Lot", "rate": "250000.00", "product_id": kitchen_id},
+            {"description": "Hardware", "category": "Hardware", "quantity": "1", "unit": "Lot", "rate": "30000.00", "product_id": hardware_id},
         ],
     }).json()
+    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
+    client.put(f"/api/estimates/{estimate['id']}", json={"status": "approved"})
 
     order_resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "50000.00",
@@ -58,8 +69,11 @@ def test_order_created_from_estimate_copies_items_and_links_back(client, test_us
     assert order["order_value"] == "280000.00"
     descriptions = {item["description"] for item in order["items"]}
     assert descriptions == {"Modular Kitchen", "Hardware"}
-    # Each copied item traces back to the estimate line it came from.
+    # Each copied item traces back to the estimate line it came from,
+    # AND preserves the exact same Product ID (Product ID requirement).
     assert all(item["source_estimate_item_id"] is not None for item in order["items"])
+    product_ids = {item["product_id"] for item in order["items"]}
+    assert product_ids == {kitchen_id, hardware_id}
 
     # The estimate itself is now linked to the order it produced.
     estimate_after = client.get(f"/api/estimates/{estimate['id']}").json()
@@ -70,7 +84,7 @@ def test_order_without_items_still_works_with_flat_order_value(client, test_user
     """Backward compatibility - an order can still be created the old
     way, with just a flat order_value and no items."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Flat Order Value Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Flat Order Value Client", "phone": "9000010140"}).json()["id"]
 
     resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00",
@@ -85,14 +99,16 @@ def test_order_without_items_still_works_with_flat_order_value(client, test_user
 
 def test_updating_order_items_replaces_full_set_and_recomputes_value(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Update Order Items Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Update Order Items Client", "phone": "9000010141"}).json()["id"]
+    original_id = _product(client, "Original Item")
+    new_id = _product(client, "New Item")
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "0",
-        "items": [{"description": "Original Item", "quantity": "1", "rate": "10000.00"}],
+        "items": [{"description": "Original Item", "quantity": "1", "rate": "10000.00", "product_id": original_id}],
     }).json()
 
     resp = client.put(f"/api/orders/{order['id']}", json={
-        "items": [{"description": "New Item", "quantity": "2", "rate": "7000.00"}],
+        "items": [{"description": "New Item", "quantity": "2", "rate": "7000.00", "product_id": new_id}],
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -104,10 +120,11 @@ def test_updating_order_items_replaces_full_set_and_recomputes_value(client, tes
 
 def test_order_still_gets_business_id_with_items(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order Business ID Items Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order Business ID Items Client", "phone": "9000010142"}).json()["id"]
+    product_id = _product(client, "Item")
     resp = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "0",
-        "items": [{"description": "Item", "quantity": "1", "rate": "1000.00"}],
+        "items": [{"description": "Item", "quantity": "1", "rate": "1000.00", "product_id": product_id}],
     })
     assert resp.status_code == 201
     assert len(resp.json()["business_id"]) == 10
@@ -118,7 +135,7 @@ def test_payment_status_reflects_actual_payment_state(client, test_user):
     the same authoritative balance/total_received fields, not a
     separately-maintained column that could drift out of sync."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Payment Status Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Payment Status Client", "phone": "9000010143"}).json()["id"]
 
     unpaid = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "order_value": "50000.00", "advance": "0",

@@ -28,7 +28,7 @@ def _create_employee(client, db_session, name, username, email):
 
 def test_master_sees_order_financials(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order RBAC Master Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order RBAC Master Client", "phone": "9000010132"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "90000.00", "advance": "0",
     }).json()
@@ -41,7 +41,7 @@ def test_master_sees_order_financials(client, test_user):
 
 def test_employee_get_order_financials_are_genuinely_null(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order RBAC Employee Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order RBAC Employee Client", "phone": "9000010133"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "90000.00", "advance": "0",
     }).json()
@@ -63,7 +63,7 @@ def test_employee_get_order_financials_are_genuinely_null(client, test_user, db_
 
 def test_employee_list_orders_financials_are_null(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order RBAC List Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order RBAC List Client", "phone": "9000010134"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "45000.00", "advance": "0",
     })
@@ -79,10 +79,11 @@ def test_employee_cannot_derive_order_total_from_line_items(client, test_user, d
     order_value while leaving item.rate/item.amount visible would let
     anyone just sum the line items back to the real total."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order RBAC Items Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order RBAC Items Client", "phone": "9000010135"}).json()["id"]
+    product_id = client.post("/api/products/", json={"name": "Wardrobe", "unit": "Nos"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "0", "advance": "0",
-        "items": [{"description": "Wardrobe", "quantity": "1", "unit": "Nos", "rate": "50000.00"}],
+        "items": [{"description": "Wardrobe", "quantity": "1", "unit": "Nos", "rate": "50000.00", "product_id": product_id}],
     }).json()
 
     _create_employee(client, db_session, "Order RBAC Items Employee", "orderitemsrbacuser", "orderitemsrbacuser@example.com")
@@ -97,10 +98,11 @@ def test_employee_cannot_derive_order_total_from_line_items(client, test_user, d
 
 def test_master_sees_order_line_item_pricing(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Order RBAC Items Master Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Order RBAC Items Master Client", "phone": "9000010136"}).json()["id"]
+    product_id = client.post("/api/products/", json={"name": "Kitchen", "unit": "Nos"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "0", "advance": "0",
-        "items": [{"description": "Kitchen", "quantity": "1", "unit": "Nos", "rate": "30000.00"}],
+        "items": [{"description": "Kitchen", "quantity": "1", "unit": "Nos", "rate": "30000.00", "product_id": product_id}],
     }).json()
 
     resp = client.get(f"/api/orders/{order['id']}").json()

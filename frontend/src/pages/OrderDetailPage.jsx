@@ -124,12 +124,12 @@ function OrderDetailPage() {
       clientsAPI.get(res.data.client_id).then((r) => setClient(r.data)).catch(() => {});
     }).catch(() => setError('Unable to load this order.'));
 
-    materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => {});
-    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
-    issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data)).catch(() => {});
-    dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data)).catch(() => {});
+    materialsAPI.list().then((res) => setMaterials(res.data));
+    employeesAPI.list().then((res) => setEmployees(res.data));
+    issuesAPI.list({ order_id: orderId }).then((res) => setIssues(res.data));
+    dailyTasksAPI.list({ order_id: orderId }).then((res) => setTasks(res.data));
     ordersAPI.aiReports(orderId).then((res) => setAiReports(res.data)).catch(() => setAiReports([]));
-    productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data)).catch(() => {});
+    productionJobsAPI.list({ order_id: orderId }).then((res) => setProductionJobs(res.data));
 
     paymentsAPI.list({ order_id: orderId }).then((res) => setPayments(res.data)).catch(() => setPayments('forbidden'));
     projectExpensesAPI.list({ order_id: orderId }).then((res) => setExpenses(res.data)).catch(() => setExpenses('forbidden'));
@@ -191,6 +191,12 @@ function OrderDetailPage() {
             {client?.name || 'Client'} &middot; {order.project_type || 'Project'}
             {order.business_id && <span className="business-id-badge">{order.business_id}</span>}
           </div>
+          {order.source_estimate_id && (
+            <div className="detail-subtitle" style={{ marginTop: 4 }}>
+              Converted from{' '}
+              <Link to={`/estimates/${order.source_estimate_id}`}>{order.source_estimate_code}</Link>
+            </div>
+          )}
           <div className="detail-meta">
             <div className="detail-meta-item">
               <span className="detail-meta-label">Stage</span>
@@ -290,17 +296,15 @@ function OrderDetailPage() {
         <Card title="Order Scope">
           <table className="data-table">
             <thead>
-              <tr><th>Description</th><th>Product</th><th>Category</th><th>Qty</th><th>Unit</th>{canViewFinancials && <><th>Rate</th><th>Amount</th></>}</tr>
+              <tr><th>Description</th><th>Category</th><th>Qty</th><th>Unit</th>{canViewFinancials && <><th>Rate</th><th>Amount</th></>}</tr>
             </thead>
             <tbody>
               {order.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td>
                   <td>
-                    {item.product_id ? (
-                      <Link to={`/products/${item.product_id}`} className="btn-link">{item.product_name}</Link>
-                    ) : (
-                      <span className="text-muted">Custom / no product</span>
+                    {item.description}
+                    {item.product_name && (
+                      <div className="order-item-product-link">{item.product_code} &middot; {item.product_name}</div>
                     )}
                   </td>
                   <td>{item.category || '-'}</td>

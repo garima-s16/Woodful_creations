@@ -66,7 +66,7 @@ def test_client_endpoint_requires_auth(client):
 
 def test_payments_filtered_by_client_across_multiple_orders(client, test_user):
     _login(client, test_user)
-    client_resp = client.post("/api/clients/", json={"name": "Multi-Order Client"})
+    client_resp = client.post("/api/clients/", json={"name": "Multi-Order Client", "phone": "9000010155"})
     client_id = client_resp.json()["id"]
 
     order1 = client.post("/api/orders/", json={
@@ -97,8 +97,8 @@ def test_payments_filtered_by_client_across_multiple_orders(client, test_user):
 
 def test_payments_client_filter_excludes_other_clients(client, test_user):
     _login(client, test_user)
-    client_a = client.post("/api/clients/", json={"name": "Client A"}).json()["id"]
-    client_b = client.post("/api/clients/", json={"name": "Client B"}).json()["id"]
+    client_a = client.post("/api/clients/", json={"name": "Client A", "phone": "9000010156"}).json()["id"]
+    client_b = client.post("/api/clients/", json={"name": "Client B", "phone": "9000010157"}).json()["id"]
 
     order_a = client.post("/api/orders/", json={
         "client_id": client_a, "order_date": "2026-08-01T00:00:00", "order_value": "10000.00", "advance": "0",
@@ -132,7 +132,7 @@ def test_advance_is_not_lost_when_a_payment_is_recorded_afterward(client, test_u
     resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
     assert resp.status_code == 200
 
-    client_id = client.post("/api/clients/", json={"name": "Advance Regression Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Advance Regression Client", "phone": "9000010158"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-01T00:00:00",
         "order_value": "100000.00", "advance": "30000.00",

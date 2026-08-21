@@ -25,7 +25,7 @@ function PaymentsPage() {
   const load = () => {
     setPageLoading(true);
     paymentsAPI.list().then((res) => setPayments(res.data)).catch(() => setError('You do not have permission to view payments.')).finally(() => setPageLoading(false));
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    ordersAPI.list().then((res) => setOrders(res.data));
   };
   useEffect(load, []);
 

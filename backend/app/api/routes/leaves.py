@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.leave import Leave
 from app.schemas.leave import LeaveCreate, LeaveUpdate, LeaveResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/leaves", tags=["leaves"])
 
@@ -55,14 +55,14 @@ def request_leave(data: LeaveCreate, db: Session = Depends(get_db), auth=Depends
         # explicit and future-proof rather than implicit in the date math.
         raise HTTPException(status_code=400, detail="Number of days must be at least 1")
 
-    leave = Leave(**data.dict(), days=days, business_id=generate_short_id(db))
+    leave = Leave(**data.dict(), days=days, business_id=generate_business_id(db))
     db.add(leave)
     for _ in range(5):
         try:
             db.commit()
         except IntegrityError:
             db.rollback()
-            leave.business_id = generate_short_id(db)
+            leave.business_id = generate_business_id(db)
             db.add(leave)
             continue
         db.refresh(leave)

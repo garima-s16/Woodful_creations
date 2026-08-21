@@ -45,11 +45,11 @@ def test_generic_form_takes_priority_when_both_are_sent(client, test_user):
     """If a caller somehow sends both forms with conflicting values, the
     generic form wins - it's the current, preferred representation."""
     _login(client, test_user)
-    order_client_id = client.post("/api/clients/", json={"name": "Priority Test Client"}).json()["id"]
+    order_client_id = client.post("/api/clients/", json={"name": "Priority Test Client", "phone": "9000010023"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": order_client_id, "order_date": "2026-08-13T00:00:00", "order_value": "10000.00", "advance": "0",
     }).json()
-    decoy_client = client.post("/api/clients/", json={"name": "Decoy Client"}).json()
+    decoy_client = client.post("/api/clients/", json={"name": "Decoy Client", "phone": "9000010024"}).json()
 
     resp = client.post("/api/chat/", json={
         "message": "Summarize this order",

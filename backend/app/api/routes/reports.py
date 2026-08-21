@@ -34,7 +34,10 @@ from app.models.task_comment import TaskComment
 from app.models.project_expense import ProjectExpense
 from app.services.order_service import OrderService
 from app.utils.exporters import build_workbook
-from app.utils.pdf_generator import generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf, generate_invoice_pdf
+from app.utils.pdf_generator import (
+    generate_order_estimate_pdf, generate_estimate_pdf, generate_salary_slip_pdf, generate_invoice_pdf,
+    generate_client_pdf, generate_product_pdf,
+)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[
     Depends(rate_limit("export", settings.RATE_LIMIT_EXPORT_PER_MINUTE))
@@ -189,8 +192,9 @@ def export_clients(
         orders = c.orders or []
         latest_order = max(orders, key=lambda o: o.order_date) if orders else None
         row = {
-            "client_id": c.business_id or "", "name": c.name, "phone": c.phone or "",
-            "email": c.email or "", "address": c.address or "", "city": c.city or "",
+            "client_id": c.business_id or "", "name": c.name, "contact_person": c.contact_person or "",
+            "phone": c.phone or "", "email": c.email or "", "address": c.address or "",
+            "site_address": c.site_address or "", "city": c.city or "", "gstin": c.gstin or "",
             "project_count": len(orders), "order_count": len(orders),
             "latest_order": latest_order.order_date.strftime("%d-%m-%Y") if latest_order else "",
             "status": c.status, "created_date": c.created_at.strftime("%d-%m-%Y") if c.created_at else "",
@@ -204,14 +208,15 @@ def export_clients(
             row["outstanding"] = float(outstanding)
         rows.append(row)
 
-    columns = ["client_id", "name", "phone", "email", "address", "city", "project_count", "order_count",
-               "latest_order", "status", "created_date"]
-    headers = ["Client ID", "Client Name", "Phone", "Email", "Address", "City", "Project Count", "Order Count",
-               "Latest Order", "Status", "Created Date"]
+    columns = ["client_id", "name", "contact_person", "phone", "email", "address", "site_address", "city",
+               "gstin", "project_count", "order_count", "latest_order", "status", "created_date"]
+    headers = ["Client ID", "Client Name", "Contact Person", "Phone", "Email", "Address", "Site Address", "City",
+               "GSTIN", "Project Count", "Order Count", "Latest Order", "Status", "Created Date"]
     total_columns = []
     if is_privileged:
-        columns[8:8] = ["total_order_value", "total_paid", "outstanding"]
-        headers[8:8] = ["Total Order Value", "Total Paid", "Outstanding"]
+        idx = columns.index("project_count")
+        columns[idx:idx] = ["total_order_value", "total_paid", "outstanding"]
+        headers[idx:idx] = ["Total Order Value", "Total Paid", "Outstanding"]
         total_columns = ["total_order_value", "total_paid", "outstanding"]
 
     subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
@@ -229,6 +234,68 @@ def export_clients(
         "subtitle": subtitle, "summary": summary,
     }])
     filename = f"client_register_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return _xlsx_response(buffer, filename)
+
+
+@router.get("/products.xlsx")
+def export_products(
+    search: Optional[str] = Query(None), category: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Product Master export (Family 104 section 40). search/category/
+    is_active mirror GET /api/products/ exactly, so the export matches
+    whatever the person is currently looking at on the Products list."""
+    from app.models.product import Product
+
+    is_privileged = auth.get("role", "user") in ("master",)
+    query = db.query(Product)
+    filters_applied = []
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(Product.name.ilike(like), Product.product_code.ilike(like),
+                                  Product.business_id.ilike(like)))
+        filters_applied.append(f'Search: "{search}"')
+    if category:
+        query = query.filter(Product.category == category)
+        filters_applied.append(f"Category: {category}")
+    if is_active is not None:
+        query = query.filter(Product.is_active == is_active)
+        filters_applied.append(f"Status: {'Active' if is_active else 'Inactive'}")
+
+    products = query.order_by(Product.name).all()
+    rows = []
+    for p in products:
+        row = {
+            "product_id": p.business_id or "", "product_code": p.product_code, "name": p.name,
+            "type": p.product_type, "category": p.category or "", "subcategory": p.subcategory or "",
+            "unit": p.unit, "selling_price": float(p.selling_price) if p.selling_price is not None else None,
+            "gst_percent": float(p.gst_percent) if p.gst_percent is not None else None,
+            "status": "Active" if p.is_active else "Inactive",
+        }
+        if is_privileged:
+            row["cost_price"] = float(p.cost_price) if p.cost_price is not None else None
+            row["margin"] = p.margin
+        rows.append(row)
+
+    columns = ["product_id", "product_code", "name", "type", "category", "subcategory", "unit",
+               "selling_price", "gst_percent", "status"]
+    headers = ["Product ID", "Product Code", "Product Name", "Type", "Category", "Subcategory", "Unit",
+               "Default Rate", "GST %", "Status"]
+    if is_privileged:
+        columns += ["cost_price", "margin"]
+        headers += ["Cost Price", "Margin"]
+
+    subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
+    if filters_applied:
+        subtitle += "  |  Filters: " + ", ".join(filters_applied)
+
+    buffer = build_workbook([{
+        "sheet_name": "Products", "title": "PRODUCT MASTER",
+        "columns": columns, "headers": headers, "rows": rows,
+        "subtitle": subtitle, "summary": [("Total Products", str(len(products)))],
+    }])
+    filename = f"product_master_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return _xlsx_response(buffer, filename)
 
 
@@ -260,12 +327,12 @@ def export_employees(
         "employee_id": e.business_id or "", "name": e.name, "designation": e.designation or "",
         "department": e.department or "", "phone": e.phone or "", "email": e.email or "",
         "joining_date": e.joining_date.strftime("%d-%m-%Y") if e.joining_date else "",
-        "status": e.status, "manager": e.manager or "",
+        "status": e.status, "manager": e.manager or "", "address": e.address or "",
     } for e in employees]
     columns = ["employee_id", "name", "designation", "department", "phone", "email",
-               "joining_date", "status", "manager"]
+               "joining_date", "status", "manager", "address"]
     headers = ["Employee ID", "Employee Name", "Designation", "Department", "Phone", "Email",
-               "Joining Date", "Employment Status", "Manager/Supervisor"]
+               "Joining Date", "Employment Status", "Manager/Supervisor", "Address"]
 
     subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
     if filters_applied:
@@ -869,6 +936,37 @@ def export_order_estimate_pdf(order_id: int, db: Session = Depends(get_db),
     return StreamingResponse(
         buffer, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="estimate-{order.order_code}.pdf"', "Cache-Control": "no-store, private"},
+    )
+
+
+@router.get("/clients/{client_id}/profile.pdf")
+def export_client_pdf(client_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Client profile PDF (Family 103 section 6) - available to any
+    authenticated role (client contact info isn't the financial data
+    that's restricted elsewhere); the sales-summary figures inside
+    still only render for whoever the client relationship allows -
+    same underlying Client/Order records the rest of the app uses."""
+    from app.models.client import Client
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    buffer = generate_client_pdf(client)
+    return StreamingResponse(
+        buffer, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="client-{client.client_code}.pdf"', "Cache-Control": "no-store, private"},
+    )
+
+
+@router.get("/products/{product_id}/product.pdf")
+def export_product_pdf(product_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    from app.models.product import Product
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    buffer = generate_product_pdf(product)
+    return StreamingResponse(
+        buffer, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="product-{product.product_code}.pdf"', "Cache-Control": "no-store, private"},
     )
 
 

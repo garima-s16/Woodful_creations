@@ -30,7 +30,7 @@ def _serialize_materials(materials, role: str):
             r.average_rate = None
             r.stock_value = None
     return responses
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
 
@@ -168,7 +168,7 @@ def create_material(data: MaterialCreate, db: Session = Depends(get_db),
 
     for _ in range(5):
         code = generate_unique_code(db, Material, "material_code", "MAT-")
-        material = Material(**payload, material_code=code, business_id=generate_short_id(db))
+        material = Material(**payload, material_code=code, business_id=generate_business_id(db))
         db.add(material)
         try:
             db.flush()

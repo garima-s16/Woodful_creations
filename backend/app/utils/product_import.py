@@ -1,130 +1,254 @@
-"""Product Master bulk import (Family 21), built entirely on the
-reusable utils/bulk_import.py infrastructure. Same discipline as
-Purchase Import (Family 6): the template download and the parser share
-one fixed column list, nothing is ever written to the database until
-an explicit, user-reviewed /commit call, and a Product's IDs
-(product_code, business_id) are always server-generated - a row's
-"Product Name"/"SKU" are the only identifying input a person ever
-types."""
-from decimal import Decimal
-from typing import Optional
+"""Excel import for the Product Master - same discipline as
+app/utils/purchase_import.py (one fixed template shared by the download
+and the parser, never writes a parsed row directly to the database,
+preview/commit are two separate steps). Kept as a distinct module
+rather than folded into purchase_import.py since products and purchases
+are unrelated entities with an unrelated column set.
+"""
+import re
+from io import BytesIO
+from decimal import Decimal, InvalidOperation
+from typing import List, Optional
 
-from app.models.product import PRODUCT_TYPES
-from app.models.product_category import ProductCategory, ProductSubcategory
-from app.utils.bulk_import import (
-    build_header_aliases, build_import_template as _build_template,
-    normalize_number, normalize_match_key, clean_cell,
-)
+import openpyxl
+from openpyxl import Workbook
+
+from app.utils.exporters import write_sheet
 
 PRODUCT_IMPORT_COLUMNS = [
-    "Product Name", "SKU", "Type", "Category", "Subcategory", "Description",
-    "Length", "Width", "Height", "Dimension Unit", "Finish", "Unit",
-    "Cost Price", "Selling Price", "Tax %", "Lead Time Days", "Notes",
+    "Product Name", "Type", "Category", "Subcategory", "Unit",
+    "Length", "Width", "Height", "Dimension Unit",
+    "Primary Material", "Finish",
+    "Material Cost", "Hardware Cost", "Labour Cost", "Machine Cost",
+    "Finish Cost", "Packing Cost", "Transport Cost", "Other Cost",
+    "Overhead %", "Margin %", "Cost Price", "Selling Price", "Notes",
 ]
 
-HEADER_ALIASES = build_header_aliases(PRODUCT_IMPORT_COLUMNS, extra_aliases={
-    "name": "Product Name", "product": "Product Name",
-    "sku code": "SKU", "product type": "Type", "product_type": "Type",
-    "sub category": "Subcategory", "sub-category": "Subcategory",
-    "dim unit": "Dimension Unit", "uom": "Unit",
-    "cost": "Cost Price", "price": "Selling Price", "sale price": "Selling Price",
-    "gst": "Tax %", "gst%": "Tax %", "tax": "Tax %",
-    "lead time": "Lead Time Days", "lead time (days)": "Lead Time Days",
-})
+HEADER_ALIASES = {
+    "product": "Product Name",
+    "product name": "Product Name",
+    "name": "Product Name",
+    "type": "Type",
+    "product type": "Type",
+    "category": "Category",
+    "subcategory": "Subcategory",
+    "sub category": "Subcategory",
+    "unit": "Unit",
+    "length": "Length",
+    "width": "Width",
+    "height": "Height",
+    "dimension unit": "Dimension Unit",
+    "dim unit": "Dimension Unit",
+    "primary material": "Primary Material",
+    "material": "Primary Material",
+    "finish": "Finish",
+    "material cost": "Material Cost",
+    "hardware cost": "Hardware Cost",
+    "labour cost": "Labour Cost",
+    "labor cost": "Labour Cost",
+    "machine cost": "Machine Cost",
+    "finish cost": "Finish Cost",
+    "packing cost": "Packing Cost",
+    "transport cost": "Transport Cost",
+    "other cost": "Other Cost",
+    "overhead %": "Overhead %",
+    "overhead percent": "Overhead %",
+    "margin %": "Margin %",
+    "margin percent": "Margin %",
+    "cost price": "Cost Price",
+    "cost": "Cost Price",
+    "selling price": "Selling Price",
+    "price": "Selling Price",
+    "notes": "Notes",
+    "remarks": "Notes",
+}
+for _col in PRODUCT_IMPORT_COLUMNS:
+    HEADER_ALIASES.setdefault(_col.lower(), _col)
+
+
+def _normalize_header_cell(raw) -> Optional[str]:
+    if raw is None:
+        return None
+    key = re.sub(r"\s+", " ", str(raw).strip().lower())
+    return HEADER_ALIASES.get(key)
+
+
+# Only Product Name and Unit are hard requirements - everything else on
+# a product is genuinely optional, unlike the purchase import's tighter
+# required set.
+REQUIRED_COLUMNS = ["Product Name", "Unit"]
+
+
+def _resolve_header_row(values) -> Optional[dict]:
+    resolved = {}
+    for idx, raw in enumerate(values):
+        canonical = _normalize_header_cell(raw)
+        if canonical is None:
+            continue
+        if canonical in resolved:
+            return None
+        resolved[canonical] = idx
+    if all(col in resolved for col in REQUIRED_COLUMNS):
+        return resolved
+    return None
+
+
+_NUMERIC_NOISE_RE = re.compile(r"[₹$€£%,\s]")
+
+
+def normalize_number(raw) -> Optional[Decimal]:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float, Decimal)):
+        return Decimal(str(raw))
+    text = _NUMERIC_NOISE_RE.sub("", str(raw))
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def normalize_match_key(name: Optional[str]) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
+
 
 EXAMPLE_ROWS = [
     {
-        "Product Name": "Sliding Wardrobe - 3 Door", "SKU": "WD-SLD-3D", "Type": "standard",
-        "Category": "Bedroom Furniture", "Subcategory": "Wardrobes",
-        "Description": "3-door sliding wardrobe with laminate finish",
-        "Length": 96, "Width": 24, "Height": 84, "Dimension Unit": "in",
-        "Finish": "White Laminate", "Unit": "Piece",
-        "Cost Price": 42000, "Selling Price": 58000, "Tax %": 18, "Lead Time Days": 21, "Notes": "",
+        "Product Name": "Harbor 3-Seater Sofa", "Type": "standard", "Category": "Seating", "Subcategory": "Sofas",
+        "Unit": "Nos", "Length": 84, "Width": 36, "Height": 32, "Dimension Unit": "in",
+        "Primary Material": "Teak frame + linen upholstery", "Finish": "Natural teak",
+        "Material Cost": 18000, "Hardware Cost": 2500, "Labour Cost": 6000, "Machine Cost": 1200,
+        "Finish Cost": 2000, "Packing Cost": 800, "Transport Cost": 1000, "Other Cost": 500,
+        "Overhead %": 8, "Margin %": 30, "Cost Price": 32000, "Selling Price": 48000,
+        "Notes": "Best seller, kept in standard catalog",
     },
     {
-        "Product Name": "Custom Pooja Mandir - HDHMR", "SKU": "", "Type": "custom",
-        "Category": "Mandir", "Subcategory": "Wall Mounted",
-        "Description": "Client-specific temple unit, carved front panel",
-        "Length": 36, "Width": 15, "Height": 48, "Dimension Unit": "in",
-        "Finish": "Natural Wood", "Unit": "Piece",
-        "Cost Price": 18000, "Selling Price": 27000, "Tax %": 18, "Lead Time Days": 14,
-        "Notes": "Made to order for a specific client",
+        "Product Name": "Custom Walk-in Wardrobe - Reference Build", "Type": "custom", "Category": "Storage",
+        "Subcategory": "Wardrobes", "Unit": "Nos", "Length": 120, "Width": 24, "Height": 96,
+        "Dimension Unit": "in", "Primary Material": "BWP Plywood + laminate", "Finish": "Matte laminate",
+        "Material Cost": 55000, "Hardware Cost": 8000, "Labour Cost": 15000, "Machine Cost": 3000,
+        "Finish Cost": 2500, "Packing Cost": 1000, "Transport Cost": 1500, "Other Cost": 500,
+        "Overhead %": 8, "Margin %": 25, "Cost Price": 85000, "Selling Price": 125000,
+        "Notes": "Client-specific, created from an approved estimate",
     },
 ]
 
 
-def build_product_import_template():
-    return _build_template(
-        sheet_name="Product Import", title="Woodful Creations - Product Master Import Template",
-        subtitle="Fill in one row per product. Category/Subcategory must already exist "
-                  "(create them on the Product Master page first). Do not change the column headers.",
-        columns=PRODUCT_IMPORT_COLUMNS, example_rows=EXAMPLE_ROWS,
+def build_import_template() -> BytesIO:
+    wb = Workbook()
+    wb.remove(wb.active)
+    write_sheet(
+        wb, sheet_name="Product Import", title="Woodful Creations - Product Import Template",
+        subtitle="Fill in one row per product. Type must be 'standard' or 'custom'. Do not change the column headers.",
+        columns=PRODUCT_IMPORT_COLUMNS, rows=EXAMPLE_ROWS,
     )
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
-def validate_and_match_row(row: dict, db, categories_by_name=None, subcategories_by_name=None):
-    """Validates one parsed row and matches Category/Subcategory against
-    real records (case-insensitive exact match, never fuzzy). Returns
-    (result_dict, errors_list). Never writes anything."""
+def _clean(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        return value if value else None
+    return value
+
+
+def parse_uploaded_workbook(file_bytes: bytes) -> List[dict]:
+    wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
+    ws = wb.worksheets[0]
+
+    header_row_idx = None
+    col_index = None
+    for row in ws.iter_rows(min_row=1, max_row=10):
+        values = [c.value for c in row]
+        resolved = _resolve_header_row(values)
+        if resolved:
+            header_row_idx = row[0].row
+            col_index = resolved
+            break
+    if header_row_idx is None:
+        raise ValueError(
+            "Couldn't find the expected column headers in this file. "
+            "Please use the downloaded template, or make sure Product Name and Unit "
+            "have a recognizable header and aren't duplicated."
+        )
+
+    rows = []
+    for row in ws.iter_rows(min_row=header_row_idx + 1):
+        values = [c.value for c in row]
+        if all(_clean(v) is None for v in values):
+            continue
+        rows.append({name: _clean(values[idx]) if idx < len(values) else None for name, idx in col_index.items()})
+    return rows
+
+
+VALID_PRODUCT_TYPES = {"standard", "custom"}
+
+
+def validate_and_match_row(row: dict, existing_by_name: dict):
+    """Validates one parsed row and checks whether a product with this
+    name already exists (case-insensitive exact match, never fuzzy -
+    same standing principle as the purchase import). Returns
+    (result_dict, errors_list); never writes anything."""
     errors = []
     name = row.get("Product Name")
     if not name:
         errors.append("Product Name is required")
 
     product_type = (row.get("Type") or "standard").strip().lower() if row.get("Type") else "standard"
-    if product_type not in PRODUCT_TYPES:
-        errors.append(f'Type must be one of: {", ".join(PRODUCT_TYPES)} (got {row.get("Type")!r})')
+    if product_type not in VALID_PRODUCT_TYPES:
+        errors.append(f"Type must be 'standard' or 'custom' (got {row.get('Type')!r})")
 
-    subcategory_id = None
-    category_name = row.get("Category")
-    subcategory_name = row.get("Subcategory")
-    if subcategory_name:
-        sub = (subcategories_by_name or {}).get(normalize_match_key(subcategory_name))
-        if not sub:
-            errors.append(
-                f'No existing subcategory matches "{subcategory_name}"'
-                + (f' under "{category_name}"' if category_name else "")
-                + " - create it on the Product Master page first, then re-upload."
-            )
-        else:
-            subcategory_id = sub.id
+    unit = row.get("Unit") or "Nos"
 
-    def _num(field):
-        if row.get(field) is None:
-            return None
-        val = normalize_number(row[field])
+    def _num(col):
+        raw = row.get(col)
+        if raw is None:
+            return None, None
+        val = normalize_number(raw)
         if val is None:
-            errors.append(f"Invalid {field}: {row[field]!r}")
-        return val
+            return None, f"Invalid {col}: {raw!r}"
+        return val, None
 
-    length = _num("Length")
-    width = _num("Width")
-    height = _num("Height")
-    cost_price = _num("Cost Price") or Decimal("0")
-    selling_price = _num("Selling Price") or Decimal("0")
-    tax_percent = _num("Tax %")
-    if tax_percent is None:
-        tax_percent = Decimal("18")
+    length, e1 = _num("Length")
+    width, e2 = _num("Width")
+    height, e3 = _num("Height")
+    material_cost, e4 = _num("Material Cost")
+    hardware_cost, e5 = _num("Hardware Cost")
+    labour_cost, e6 = _num("Labour Cost")
+    machine_cost, e7 = _num("Machine Cost")
+    finish_cost, e8 = _num("Finish Cost")
+    packing_cost, e9 = _num("Packing Cost")
+    transport_cost, e10 = _num("Transport Cost")
+    other_cost, e11 = _num("Other Cost")
+    overhead_percent, e12 = _num("Overhead %")
+    margin_percent, e13 = _num("Margin %")
+    cost_price, e14 = _num("Cost Price")
+    selling_price, e15 = _num("Selling Price")
+    for e in (e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15):
+        if e:
+            errors.append(e)
 
-    lead_time_days = None
-    if row.get("Lead Time Days") is not None:
-        lt = normalize_number(row["Lead Time Days"])
-        if lt is None:
-            errors.append(f'Invalid Lead Time Days: {row["Lead Time Days"]!r}')
-        else:
-            lead_time_days = int(lt)
-
-    dimension_unit = (clean_cell(row.get("Dimension Unit")) or "in").lower()
-    if dimension_unit not in ("in", "cm", "ft", "mm"):
-        errors.append(f'Dimension Unit must be one of: in, cm, ft, mm (got {row.get("Dimension Unit")!r})')
+    matched = existing_by_name.get(normalize_match_key(name)) if name else None
 
     result = {
-        "name": name, "sku": clean_cell(row.get("SKU")), "product_type": product_type,
-        "category_name": category_name, "subcategory_name": subcategory_name, "subcategory_id": subcategory_id,
-        "description": clean_cell(row.get("Description")),
-        "length": length, "width": width, "height": height, "dimension_unit": dimension_unit,
-        "finish": clean_cell(row.get("Finish")), "unit": clean_cell(row.get("Unit")) or "Piece",
-        "cost_price": cost_price, "selling_price": selling_price, "tax_percent": tax_percent,
-        "lead_time_days": lead_time_days, "notes": clean_cell(row.get("Notes")),
+        "name": name, "product_type": product_type, "category": row.get("Category"),
+        "subcategory": row.get("Subcategory"), "unit": unit,
+        "length": length, "width": width, "height": height,
+        "dimension_unit": row.get("Dimension Unit") or "in",
+        "primary_material": row.get("Primary Material"), "finish": row.get("Finish"),
+        "material_cost": material_cost, "hardware_cost": hardware_cost, "labour_cost": labour_cost,
+        "machine_cost": machine_cost, "finish_cost": finish_cost, "packing_cost": packing_cost,
+        "transport_cost": transport_cost, "other_cost": other_cost,
+        "overhead_percent": overhead_percent, "margin_percent": margin_percent,
+        "cost_price": cost_price, "selling_price": selling_price, "notes": row.get("Notes"),
+        "matched_product_id": matched.id if matched else None,
+        "is_duplicate": matched is not None,
     }
     return result, errors

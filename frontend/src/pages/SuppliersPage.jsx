@@ -23,7 +23,7 @@ function SuppliersPage() {
 
   const load = () => {
     setPageLoading(true);
-    suppliersAPI.list().then((res) => setSuppliers(res.data)).catch(() => {}).finally(() => setPageLoading(false));
+    suppliersAPI.list().then((res) => setSuppliers(res.data)).finally(() => setPageLoading(false));
   };
   useEffect(() => {
     load();
@@ -90,7 +90,8 @@ function SuppliersPage() {
   const fields = [
     { name: 'name', label: 'Name', required: true },
     { name: 'category', label: 'Category' },
-    { name: 'phone', label: 'Phone' },
+    { name: 'phone', label: 'Phone', hint: 'Exactly 10 digits.',
+      validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number') },
     { name: 'contact_person', label: 'Contact Person', advanced: true },
     {
       name: 'gstin', label: 'GSTIN', advanced: true,
@@ -98,6 +99,7 @@ function SuppliersPage() {
       validate: (value) => (value.length !== 15 ? 'GSTIN must contain 15 characters.' : null),
     },
     { name: 'payment_terms', label: 'Payment Terms', advanced: true },
+    { name: 'address', label: 'Address', type: 'textarea', advanced: true },
     { name: 'remarks', label: 'Remarks', type: 'textarea', advanced: true },
   ];
 

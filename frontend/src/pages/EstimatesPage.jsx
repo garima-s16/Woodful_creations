@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI, productsAPI } from '../utils/api';
+import { estimatesAPI, clientsAPI, ordersAPI, reportsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -16,7 +16,6 @@ function EstimatesPage() {
   const [estimates, setEstimates] = useState([]);
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [products, setProducts] = useState([]);
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingEstimate, setEditingEstimate] = useState(null);
@@ -24,17 +23,21 @@ function EstimatesPage() {
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [lineItems, setLineItems] = useState([emptyRow()]);
+  const [selectedClientId, setSelectedClientId] = useState('');
 
   const load = () => {
     setPageLoading(true);
-    estimatesAPI.list().then((res) => setEstimates(res.data)).catch(() => {}).finally(() => setPageLoading(false));
-    clientsAPI.list().then((res) => setClients(res.data)).catch(() => {});
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
-    productsAPI.list({ active_only: true }).then((res) => setProducts(res.data)).catch(() => setProducts([]));
+    estimatesAPI.list().then((res) => setEstimates(res.data)).finally(() => setPageLoading(false));
+    clientsAPI.list().then((res) => setClients(res.data));
+    ordersAPI.list().then((res) => setOrders(res.data));
   };
   useEffect(load, []);
 
   const handleCreate = async (formData) => {
+    if (!selectedClientId) {
+      setError('Please select a client first.');
+      return;
+    }
     setLoading(true);
     setError('');
     const validItems = lineItems
@@ -42,12 +45,12 @@ function EstimatesPage() {
       .map((row) => ({
         description: row.description, category: row.category || null,
         quantity: row.quantity || '1', unit: row.unit || null, rate: row.rate || '0',
-        product_id: row.product_id || null,
+        product_id: row.product_id ? Number(row.product_id) : null,
       }));
     try {
       await estimatesAPI.create({
         ...formData,
-        client_id: Number(formData.client_id),
+        client_id: Number(selectedClientId),
         order_id: formData.order_id ? Number(formData.order_id) : null,
         material_cost: formData.material_cost || '0',
         labor_cost: formData.labor_cost || '0',
@@ -58,6 +61,7 @@ function EstimatesPage() {
       });
       setShowAdd(false);
       setLineItems([emptyRow()]);
+      setSelectedClientId('');
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create estimate');
@@ -104,7 +108,6 @@ function EstimatesPage() {
   ];
 
   const createFields = [
-    { name: 'client_id', label: 'Client', type: 'select', required: true, section: 'Client & Project', options: clients.map((c) => ({ value: c.id, label: c.name })) },
     { name: 'order_id', label: 'Related Order (optional)', type: 'select', section: 'Client & Project', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
     { name: 'description', label: 'Scope / Description', type: 'textarea', section: 'Client & Project' },
     { name: 'discount', label: 'Discount', type: 'number', placeholder: '0', section: 'Cost Breakdown' },
@@ -120,6 +123,7 @@ function EstimatesPage() {
     { name: 'status', label: 'Status', type: 'select', options: [
       { value: 'draft', label: 'Draft' }, { value: 'sent', label: 'Sent' },
       { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' },
+      { value: 'expired', label: 'Expired' }, { value: 'cancelled', label: 'Cancelled' },
     ] },
     { name: 'valid_until', label: 'Valid Until', type: 'date' },
     { name: 'remarks', label: 'Remarks', type: 'textarea' },
@@ -136,9 +140,16 @@ function EstimatesPage() {
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
-      <Modal isOpen={showAdd} title="New Estimate" onClose={() => setShowAdd(false)}>
+      <Modal isOpen={showAdd} title="New Estimate" onClose={() => { setShowAdd(false); setSelectedClientId(''); }}>
+        <div className="form-group">
+          <label className="form-label">Client *</label>
+          <select className="form-input" value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>
+            <option value="">Select a client...</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
         <h4 style={{ marginBottom: 8 }}>Line Items</h4>
-        <LineItemEditor items={lineItems} onChange={setLineItems} products={products} />
+        <LineItemEditor items={lineItems} onChange={setLineItems} clientId={selectedClientId} />
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create Estimate" />
       </Modal>
       <Modal isOpen={!!editingEstimate} title={`Edit ${editingEstimate?.estimate_code || ''}`} onClose={() => setEditingEstimate(null)}>

@@ -23,7 +23,6 @@ function Sidebar({ isOpen, user, onClose }) {
     {
       name: 'Inventory',
       items: [
-        { path: '/products', label: 'Product Master', icon: ProductIcon },
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
@@ -38,6 +37,8 @@ function Sidebar({ isOpen, user, onClose }) {
       name: 'Sales',
       items: [
         { path: '/clients', label: 'Clients', icon: ClientIcon },
+        { path: '/products', label: 'Products', icon: ProductIcon },
+        ...(isTrueMaster ? [{ path: '/rate-master', label: 'Rate Master', icon: ProductIcon }] : []),
         { path: '/estimates', label: 'Estimates', icon: EstimateIcon },
         { path: '/orders', label: 'Orders', icon: OrderIcon },
         ...(isTrueMaster ? [{ path: '/payments', label: 'Payments', icon: PaymentIcon }] : []),

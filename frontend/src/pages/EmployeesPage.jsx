@@ -25,7 +25,7 @@ function EmployeesPage() {
     setPageLoading(true);
     const params = {};
     if (searchTerm) params.search = searchTerm;
-    employeesAPI.list(params).then((res) => setEmployees(res.data)).catch(() => {}).finally(() => setPageLoading(false));
+    employeesAPI.list(params).then((res) => setEmployees(res.data)).finally(() => setPageLoading(false));
   };
   useEffect(() => {
     load();
@@ -62,7 +62,7 @@ function EmployeesPage() {
         name: formData.name, designation: formData.designation, department: formData.department,
         phone: formData.phone, email: formData.email, manager: formData.manager,
         monthly_salary: formData.monthly_salary, status: formData.status,
-        emergency_contact: formData.emergency_contact, remarks: formData.remarks,
+        emergency_contact: formData.emergency_contact, address: formData.address, remarks: formData.remarks,
       });
       setEditingEmployee(null);
       load(search);
@@ -92,13 +92,15 @@ function EmployeesPage() {
 
   const createFields = [
     { name: 'name', label: 'Name', required: true, section: 'Personal' },
-    { name: 'phone', label: 'Phone', section: 'Personal' },
+    { name: 'phone', label: 'Phone', section: 'Personal', hint: 'Exactly 10 digits.',
+      validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number') },
     { name: 'email', label: 'Email', type: 'email', section: 'Personal' },
     { name: 'designation', label: 'Designation', section: 'Employment' },
     { name: 'department', label: 'Department', section: 'Employment' },
     { name: 'manager', label: 'Manager/Supervisor', section: 'Employment' },
     { name: 'joining_date', label: 'Joining Date', type: 'date', section: 'Employment' },
     { name: 'monthly_salary', label: 'Monthly Salary', type: 'number', required: true, section: 'Compensation' },
+    { name: 'address', label: 'Address', type: 'textarea', section: 'Personal' },
     { name: 'emergency_contact', label: 'Emergency Contact', section: 'Emergency Contact' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Emergency Contact' },
   ];
@@ -107,13 +109,15 @@ function EmployeesPage() {
     { name: 'name', label: 'Name', required: true },
     { name: 'designation', label: 'Designation' },
     { name: 'department', label: 'Department' },
-    { name: 'phone', label: 'Phone' },
+    { name: 'phone', label: 'Phone', hint: 'Exactly 10 digits.',
+      validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number') },
     { name: 'email', label: 'Email', type: 'email' },
     { name: 'manager', label: 'Manager/Supervisor' },
     { name: 'monthly_salary', label: 'Monthly Salary', type: 'number', required: true },
     { name: 'status', label: 'Status', type: 'select', options: [
       { value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' },
     ] },
+    { name: 'address', label: 'Address', type: 'textarea' },
     { name: 'emergency_contact', label: 'Emergency Contact' },
     { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];

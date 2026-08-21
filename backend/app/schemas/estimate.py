@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
@@ -14,12 +14,8 @@ class EstimateLineItemBase(BaseModel):
     quantity: Decimal = Decimal("1")
     unit: Optional[str] = None
     rate: Decimal = Decimal("0")
-    # Family 21 - Product <-> Estimate Line Item relationship. Optional:
-    # a genuinely custom, one-off quoted line can still have no Product
-    # Master entry. When set on create, description/unit/rate are
-    # server-defaulted from the Product's own catalog values if the
-    # caller left them blank - see _build_line_items() in
-    # api/routes/estimates.py.
+    # Optional link to the Product Master - what was actually quoted,
+    # when it corresponds to a real catalog/custom product.
     product_id: Optional[int] = None
 
     @field_validator("category")
@@ -33,7 +29,39 @@ class EstimateLineItemBase(BaseModel):
 
 
 class EstimateLineItemCreate(EstimateLineItemBase):
-    pass
+    # Product ID is mandatory for every NORMAL estimate line item
+    # (Family 102 Product ID requirement) - kept Optional[int] at the
+    # type level so a custom validator can raise the exact required
+    # message below, rather than Pydantic's generic "field required"
+    # text. Existence/active-status validation happens in the route
+    # (needs a DB session) - see _build_line_items in estimates.py.
+    #
+    # is_custom_item (spec section 15) is the deliberate escape hatch:
+    # a genuine one-off customer request ("add brass inlay to the
+    # table") that doesn't exist in Product Master and shouldn't be
+    # forced into it - when True, product_id is not required.
+    product_id: Optional[int] = None
+    is_custom_item: bool = False
+
+    @model_validator(mode="after")
+    def product_id_required_unless_custom(self):
+        if not self.is_custom_item and self.product_id is None:
+            raise ValueError("Product ID is required")
+        return self
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError("Quantity must be greater than zero.")
+        return v
+
+    @field_validator("rate")
+    @classmethod
+    def rate_must_not_be_negative(cls, v):
+        if v < 0:
+            raise ValueError("Rate cannot be negative.")
+        return v
 
 
 class EstimateLineItemResponse(EstimateLineItemBase):
@@ -43,6 +71,7 @@ class EstimateLineItemResponse(EstimateLineItemBase):
     rate: Optional[Decimal] = None
     sort_order: int
     product_name: Optional[str] = None
+    product_code: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -68,6 +97,20 @@ class EstimateBase(BaseModel):
 class EstimateCreate(EstimateBase):
     line_items: List[EstimateLineItemCreate] = []
 
+    @field_validator("material_cost", "labor_cost", "discount")
+    @classmethod
+    def amount_must_not_be_negative(cls, v):
+        if v < 0:
+            raise ValueError("Amount cannot be negative.")
+        return v
+
+    @field_validator("tax_percent")
+    @classmethod
+    def tax_percent_must_be_valid(cls, v):
+        if v < 0 or v > 100:
+            raise ValueError("Tax percent must be between 0 and 100.")
+        return v
+
 
 class EstimateUpdate(BaseModel):
     material_cost: Optional[Decimal] = None
@@ -78,6 +121,20 @@ class EstimateUpdate(BaseModel):
     valid_until: Optional[datetime] = None
     remarks: Optional[str] = None
     line_items: Optional[List[EstimateLineItemCreate]] = None
+
+    @field_validator("material_cost", "labor_cost", "discount")
+    @classmethod
+    def amount_must_not_be_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Amount cannot be negative.")
+        return v
+
+    @field_validator("tax_percent")
+    @classmethod
+    def tax_percent_must_be_valid(cls, v):
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("Tax percent must be between 0 and 100.")
+        return v
 
 
 class EstimateResponse(EstimateBase):

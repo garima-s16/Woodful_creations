@@ -4,7 +4,7 @@ def _login(client, test_user):
 
 
 def _create_client(client):
-    resp = client.post("/api/clients/", json={"client_code": "CL-ACT", "name": "Activity Test Client"})
+    resp = client.post("/api/clients/", json={"client_code": "CL-ACT", "name": "Activity Test Client", "phone": "9000010040"})
     return resp.json()["id"]
 
 
@@ -27,7 +27,7 @@ def test_log_and_list_client_activity(client, test_user):
 def test_activities_filtered_by_client(client, test_user):
     _login(client, test_user)
     client_a = _create_client(client)
-    client_b_resp = client.post("/api/clients/", json={"client_code": "CL-ACT-B", "name": "Other Client"})
+    client_b_resp = client.post("/api/clients/", json={"client_code": "CL-ACT-B", "name": "Other Client", "phone": "9000010041"})
     client_b = client_b_resp.json()["id"]
 
     client.post("/api/client-activities/", json={

@@ -25,9 +25,9 @@ function DailyTasksPage() {
 
   const load = () => {
     setPageLoading(true);
-    dailyTasksAPI.list().then((res) => setTasks(res.data)).catch(() => {}).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data)).catch(() => {});
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    dailyTasksAPI.list().then((res) => setTasks(res.data)).finally(() => setPageLoading(false));
+    employeesAPI.list().then((res) => setEmployees(res.data));
+    ordersAPI.list().then((res) => setOrders(res.data));
   };
   useEffect(load, []);
 

@@ -27,7 +27,7 @@ def _create_limited_user(db_session, employee_id, username, email):
 
 
 def _make_order(client, order_value, advance="0"):
-    client_id = client.post("/api/clients/", json={"name": f"Budget Wording Client {order_value}"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": f"Budget Wording Client {order_value}", "phone": "9000010022"}).json()["id"]
     return client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00",
         "order_value": order_value, "advance": advance,

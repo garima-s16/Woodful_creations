@@ -44,7 +44,7 @@ def test_material_context_reorder_suggestion_resolves(client, test_user):
 
 def test_order_context_suggestions_resolve(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Action Integrity Order Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Action Integrity Order Client", "phone": "9000010020"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "order_value": "50000.00", "advance": "0",
     }).json()
@@ -86,7 +86,7 @@ def test_employee_context_suggestion_actually_finds_their_tasks(client, test_use
 
 def test_payments_summary_suggestions_all_resolve(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Action Integrity Payment Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Action Integrity Payment Client", "phone": "9000010021"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-13T00:00:00", "order_value": "20000.00", "advance": "5000.00",
     })

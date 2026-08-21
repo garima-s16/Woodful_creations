@@ -13,7 +13,7 @@ def _login(client, test_user):
 
 def test_create_milestone(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Milestone Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Milestone Test Client", "phone": "9000010114"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "10000", "advance": "0",
     }).json()
@@ -28,7 +28,7 @@ def test_milestone_creation_requires_master(client, test_user, db_session):
     from app.core.security import hash_password
     from app.models.user import User
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Milestone Permission Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Milestone Permission Client", "phone": "9000010115"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -48,7 +48,7 @@ def test_milestone_creation_requires_master(client, test_user, db_session):
 
 def test_milestone_can_be_marked_complete(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Milestone Complete Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Milestone Complete Client", "phone": "9000010116"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "8000", "advance": "0",
     }).json()
@@ -61,7 +61,7 @@ def test_milestone_can_be_marked_complete(client, test_user):
 
 def test_milestones_list_filters_by_order(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Milestone Filter Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Milestone Filter Client", "phone": "9000010117"}).json()["id"]
     order_a = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
     }).json()
@@ -79,7 +79,7 @@ def test_milestones_list_filters_by_order(client, test_user):
 
 def test_chatbot_next_action_via_client_name(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Mahek"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Mahek", "phone": "9000010118"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -97,7 +97,7 @@ def test_chatbot_next_action_via_client_name(client, test_user):
 
 def test_chatbot_next_action_flags_blocked_task(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Shruti"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Shruti", "phone": "9000010119"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -113,7 +113,7 @@ def test_chatbot_next_action_flags_blocked_task(client, test_user):
 
 def test_chatbot_next_action_no_open_tasks(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Behlool"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Behlool", "phone": "9000010120"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "3000", "advance": "0",
     })

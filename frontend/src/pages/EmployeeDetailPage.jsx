@@ -35,11 +35,11 @@ function EmployeeDetailPage() {
     employeesAPI.get(employeeId).then((res) => setEmployee(res.data)).catch(() => setEmployee(null));
     attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data)).catch(() => setAttendance([]));
     leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data)).catch(() => setLeaves([]));
-    dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data)).catch(() => {});
+    dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data));
     // production_jobs doesn't support an employee_id filter server-side yet;
     // filter client-side here rather than fetch nothing.
-    productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId)))).catch(() => {});
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => {});
+    productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId))));
+    ordersAPI.list().then((res) => setOrders(res.data));
   }, [employeeId]);
 
   useEffect(load, [load]);
@@ -139,6 +139,8 @@ function EmployeeDetailPage() {
               <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{employee.monthly_salary != null ? formatCurrency(employee.monthly_salary) : 'Restricted'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{employee.daily_wage != null ? formatCurrency(employee.daily_wage) : 'Restricted'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Emergency Contact</span><span className="detail-meta-value">{employee.emergency_contact || '-'}</span></div>
+              <div className="detail-meta-item"><span className="detail-meta-label">Address</span><span className="detail-meta-value">{employee.address || '-'}</span></div>
+              {employee.remarks && <div className="detail-meta-item"><span className="detail-meta-label">Remarks</span><span className="detail-meta-value">{employee.remarks}</span></div>}
             </div>
           </div>
         </Card>

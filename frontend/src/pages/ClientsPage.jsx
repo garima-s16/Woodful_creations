@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientsAPI, reportsAPI } from '../utils/api';
+import { clientsAPI, reportsAPI, clientImportAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -42,7 +42,7 @@ function ClientsPage() {
     clientsAPI.list(params).then((res) => {
       setClients(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    }).catch(() => {}).finally(() => setPageLoading(false));
+    }).finally(() => setPageLoading(false));
   };
 
   useEffect(() => {
@@ -121,7 +121,15 @@ function ClientsPage() {
   };
 
   const columns = [
-    { key: 'client_code', label: 'Client ID' }, { key: 'name', label: 'Name' },
+    {
+      key: 'business_id', label: 'Client ID', render: (v, row) => (
+        <div className="client-id-cell">
+          <span className="business-id-badge">{row.business_id || '—'}</span>
+          <span className="client-id-ref">{row.client_code}</span>
+        </div>
+      ),
+    },
+    { key: 'name', label: 'Name' },
     { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'city', label: 'City' },
     { key: 'status', label: 'Status' },
     { key: 'lead_source', label: 'Lead Source' }, { key: 'address', label: 'Address' },
@@ -138,16 +146,28 @@ function ClientsPage() {
   ];
 
   const fields = [
-    { name: 'name', label: 'Name', required: true },
+    { name: 'name', label: 'Client Name', required: true },
+    {
+      name: 'phone', label: 'Phone', required: true,
+      hint: 'Exactly 10 digits.',
+      validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number'),
+    },
+    { name: 'contact_person', label: 'Contact Person', placeholder: 'Who to actually call, if different from the client name' },
+    { name: 'email', label: 'Email', type: 'email' },
     { name: 'status', label: 'Status', type: 'select', options: [
       { value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' },
     ] },
-    { name: 'phone', label: 'Phone' },
-    { name: 'email', label: 'Email', type: 'email' },
+    { name: 'alternate_phone', label: 'Alternate Phone', advanced: true,
+      hint: 'Exactly 10 digits.',
+      validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number') },
     { name: 'address', label: 'Address', type: 'textarea', advanced: true },
+    { name: 'site_address', label: 'Site Address', type: 'textarea', advanced: true,
+      hint: 'Where the work actually happens, if different from the address above.' },
     { name: 'city', label: 'City', advanced: true },
+    { name: 'gstin', label: 'GSTIN', advanced: true,
+      validate: (value) => (value.length === 15 ? '' : 'GSTIN must contain 15 characters') },
     { name: 'lead_source', label: 'Lead Source', advanced: true },
-    { name: 'remarks', label: 'Remarks', type: 'textarea', advanced: true },
+    { name: 'remarks', label: 'Notes', type: 'textarea', advanced: true },
   ];
 
   const editFields = fields.filter((f) => f.name !== 'client_code');
@@ -167,10 +187,16 @@ function ClientsPage() {
           <p className="page-summary">Manage client profiles, projects, and business history in one place.</p>
         </div>
         <div className="page-actions">
+          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
+          {isStrictlyMaster && (
+            <>
+              <a className="btn-secondary" href={clientImportAPI.templateUrl}>Download Template</a>
+              <button className="btn-secondary" onClick={() => navigate('/clients/import')}>Import Excel</button>
+            </>
+          )}
           <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
             {search ? 'Export Filtered' : 'Export All'}
           </a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

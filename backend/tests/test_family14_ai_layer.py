@@ -72,7 +72,7 @@ def test_injected_text_in_document_description_is_not_executed_as_instruction(cl
     response. It must be displayed as inert data, never change the
     chatbot's behavior."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Sanket"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Sanket", "phone": "9000010088"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
@@ -93,8 +93,8 @@ def test_chat_cannot_be_used_for_unmatched_ambiguous_client_lookup(client, test_
     """When a name matches more than one client, the chatbot must not
     guess which one - the honest fallback for ambiguity."""
     _login(client, test_user)
-    client.post("/api/clients/", json={"name": "Mahek Furnishings"})
-    client.post("/api/clients/", json={"name": "Mahek Interiors"})
+    client.post("/api/clients/", json={"name": "Mahek Furnishings", "phone": "9000010089"})
+    client.post("/api/clients/", json={"name": "Mahek Interiors", "phone": "9000010090"})
     resp = client.post("/api/chat/", json={"message": "mahek ka payment?"})
     assert resp.status_code == 200
     # Must not silently pick one and confidently report its records -
@@ -180,7 +180,7 @@ def test_proposed_action_is_never_auto_executed(client, test_user):
     """The core architectural guarantee: a proposed action must not
     have already changed the database by the time it's returned."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Action Confirm Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Action Confirm Test Client", "phone": "9000010091"}).json()["id"]
     orders_before = client.get("/api/orders/", params={"client_id": client_id}).json()
     client.post("/api/chat/", json={"message": "create order for action confirm test client worth 10000"})
     orders_after = client.get("/api/orders/", params={"client_id": client_id}).json()

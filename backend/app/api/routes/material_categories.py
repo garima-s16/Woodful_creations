@@ -13,7 +13,7 @@ from app.schemas.material_category import (
     MaterialSubcategoryCreate, MaterialSubcategoryResponse,
     MaterialAttributeDefinitionCreate, MaterialAttributeDefinitionResponse,
 )
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/material-categories", tags=["material-categories"])
 
@@ -28,7 +28,7 @@ def create_category(data: MaterialCategoryCreate, db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     if db.query(MaterialCategory).filter(MaterialCategory.name == data.name).first():
         raise HTTPException(status_code=400, detail=f'A category named "{data.name}" already exists.')
-    category = MaterialCategory(**data.dict(), business_id=generate_short_id(db))
+    category = MaterialCategory(**data.dict(), business_id=generate_business_id(db))
     db.add(category)
     try:
         db.commit()
@@ -50,7 +50,7 @@ def create_subcategory(data: MaterialSubcategoryCreate, db: Session = Depends(ge
     ).first():
         raise HTTPException(status_code=400, detail=f'"{data.name}" already exists under {category.name}.')
 
-    subcategory = MaterialSubcategory(**data.dict(), business_id=generate_short_id(db))
+    subcategory = MaterialSubcategory(**data.dict(), business_id=generate_business_id(db))
     db.add(subcategory)
     try:
         db.commit()

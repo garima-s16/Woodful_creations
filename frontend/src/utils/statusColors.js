@@ -14,7 +14,7 @@
 export function statusClass(status) {
   const s = (status || '').toLowerCase().trim();
 
-  if (['completed', 'paid', 'stock ok', 'in stock', 'approved', 'active', 'done', 'received'].includes(s)) return 'status-ok';
+  if (['completed', 'paid', 'stock ok', 'in stock', 'approved', 'active', 'done', 'received', 'closed'].includes(s)) return 'status-ok';
   if (s === 'in progress' || s === 'doing') return 'status-gold';
   if (['pending', 'not started', 'low stock', 'partially paid', 'to do', 'ordered', 'partially received'].includes(s)) return 'status-warning';
   if (s === 'on hold' || s === 'blocked') return 'status-neutral';

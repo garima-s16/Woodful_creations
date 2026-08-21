@@ -37,7 +37,7 @@ No admin account ships with the repo. Two ways to get one:
 
    Follow the prompts to set a username and password.
 
-2. **Seeded, with realistic demo data:** `scripts/seed_sample_data.py` populates suppliers, materials, clients, orders, employees, and two named master accounts (`garima@woodful.local`, `nikhil@woodful.local`) in one pass. The master accounts need `SEED_MASTER_PASSWORD` set first, or they're skipped (never created with an insecure default):
+2. **Seeded, with realistic demo data:** `scripts/seed_sample_data.py` populates suppliers, materials, clients, orders, employees, and two named master accounts (`nikhil@woodful.local` / Nikhil Soni, `garima@woodful.local` / Garima Sharma) in one pass. It also seeds Woodful's permanent business roster — the real Clients (`CLW-xxx`), Suppliers (`SUPW-xxx`), and Employees (`EMP-xxx`, matched by name) — alongside the illustrative test/demo Estimate/Order data (`CL-xxx`, `WC-2026-xxx`), including the Shrangi (CL-008) multi-month Estimate → Order scenario. The master accounts need `SEED_MASTER_PASSWORD` set first, or they're skipped (never created with an insecure default):
 
    ```bash
    cd backend
@@ -45,7 +45,7 @@ No admin account ships with the repo. Two ways to get one:
    python scripts/seed_sample_data.py
    ```
 
-   Safe to re-run — every seed function checks for existing rows first, so running it twice never creates duplicates.
+   Safe to re-run — every seed function checks for existing rows first (or reconciles them to the exact roster values), so running it twice never creates duplicates or changes fixed phone numbers/addresses.
 
 ## Option B — Docker Compose
 

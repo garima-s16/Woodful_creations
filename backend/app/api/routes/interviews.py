@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.security import require_role
 from app.models.interview import Interview
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -26,7 +26,7 @@ def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Dep
 def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db),
                         auth=Depends(require_role("master"))):
     for _ in range(5):
-        interview = Interview(**data.dict(), business_id=generate_short_id(db))
+        interview = Interview(**data.dict(), business_id=generate_business_id(db))
         db.add(interview)
         try:
             db.commit()

@@ -27,7 +27,7 @@ def _create_employee(client, db_session, name, username, email):
 
 def test_master_sees_estimate_financials(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Master Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Master Client", "phone": "9000010059"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "50000", "labor_cost": "20000",
     }).json()
@@ -39,7 +39,7 @@ def test_master_sees_estimate_financials(client, test_user):
 
 def test_employee_estimate_financials_are_genuinely_null(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Employee Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Employee Client", "phone": "9000010060"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "50000", "labor_cost": "20000",
     }).json()
@@ -59,10 +59,11 @@ def test_employee_estimate_financials_are_genuinely_null(client, test_user, db_s
 
 def test_employee_estimate_line_item_pricing_is_null(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Items Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Items Client", "phone": "9000010061"}).json()["id"]
+    product_id = client.post("/api/products/", json={"name": "Cabinet", "unit": "Nos"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id,
-        "line_items": [{"description": "Cabinet", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "15000.00"}],
+        "line_items": [{"description": "Cabinet", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "15000.00", "product_id": product_id}],
     }).json()
 
     _create_employee(client, db_session, "Estimate RBAC Items Employee", "estimateitemsrbacuser", "estimateitemsrbacuser@example.com")
@@ -74,7 +75,7 @@ def test_employee_estimate_line_item_pricing_is_null(client, test_user, db_sessi
 
 def test_employee_cannot_create_estimate(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Create Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Create Client", "phone": "9000010062"}).json()["id"]
     _create_employee(client, db_session, "Estimate RBAC Create Employee", "estimatecreaterbacuser", "estimatecreaterbacuser@example.com")
 
     resp = client.post("/api/estimates/", json={
@@ -85,7 +86,7 @@ def test_employee_cannot_create_estimate(client, test_user, db_session):
 
 def test_employee_cannot_update_estimate(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Update Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Update Client", "phone": "9000010063"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()
@@ -97,7 +98,7 @@ def test_employee_cannot_update_estimate(client, test_user, db_session):
 
 def test_employee_cannot_revise_estimate(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Revise Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Revise Client", "phone": "9000010064"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()
@@ -110,7 +111,7 @@ def test_employee_cannot_revise_estimate(client, test_user, db_session):
 def test_master_can_still_create_update_and_revise_estimates(client, test_user):
     """Backward compatibility - master retains full functionality."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Master Full Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Estimate RBAC Master Full Client", "phone": "9000010065"}).json()["id"]
     estimate = client.post("/api/estimates/", json={
         "client_id": client_id, "material_cost": "10000", "labor_cost": "5000",
     }).json()

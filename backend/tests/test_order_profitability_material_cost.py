@@ -12,7 +12,7 @@ def _login(client, test_user):
 
 def test_profitability_includes_real_material_issue_cost(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Material Cost Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Material Cost Client", "phone": "9000010149"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
     }).json()
@@ -39,7 +39,7 @@ def test_profitability_combines_material_cost_and_project_expenses(client, test_
     only subtracted the 15000 expense, silently ignoring the 20000 of
     real material cost."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Combined Cost Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Combined Cost Client", "phone": "9000010150"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
     }).json()
@@ -67,7 +67,7 @@ def test_order_with_no_material_issued_has_zero_material_cost(client, test_user)
     """An order with only expenses and no material issued must not
     show a fabricated material cost - genuinely zero, honestly."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "No Material Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "No Material Client", "phone": "9000010151"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "50000.00", "advance": "0",
     }).json()
@@ -85,7 +85,7 @@ def test_material_issued_to_a_different_order_does_not_affect_this_order(client,
     """Material cost must be correctly scoped per order, not leak
     across orders that happen to use the same material."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Isolation Cost Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Isolation Cost Client", "phone": "9000010152"}).json()["id"]
     order_a = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "10000.00", "advance": "0",
     }).json()
@@ -112,7 +112,7 @@ def test_material_cost_supports_decimal_quantities(client, test_user):
     """Consistent with the decimal-quantity fix - material cost must
     correctly reflect a fractional quantity issued (e.g. 2.5 kg)."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Decimal Cost Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Decimal Cost Client", "phone": "9000010153"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "10000.00", "advance": "0",
     }).json()
@@ -133,7 +133,7 @@ def test_dashboard_excel_and_chatbot_all_reflect_the_same_material_cost(client, 
     """Single source of truth check across all three consumers named in
     the brief - dashboard, Excel export, and chatbot must not disagree."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Consistency Check Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Consistency Check Client", "phone": "9000010154"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "20000.00", "advance": "0",
     }).json()

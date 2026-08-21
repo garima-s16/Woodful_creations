@@ -37,7 +37,7 @@ def test_supplier_deletion_is_audit_logged(client, test_user):
 
 def test_client_deletion_is_audit_logged(client, test_user):
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Audit Log Test Client"}).json()
+    created = client.post("/api/clients/", json={"name": "Audit Log Test Client", "phone": "9000010055"}).json()
 
     client.delete(f"/api/clients/{created['id']}")
 

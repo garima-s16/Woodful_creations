@@ -34,7 +34,7 @@ def test_integration_status_reports_not_configured_honestly(client, test_user):
 
 def test_sync_without_credentials_fails_honestly_not_fake_success(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Integration Sync Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Integration Sync Test Client", "phone": "9000010096"}).json()["id"]
     resp = client.post(f"/api/integrations/zoho/client/{client_id}/sync", json={})
     assert resp.status_code == 200
     data = resp.json()
@@ -44,7 +44,7 @@ def test_sync_without_credentials_fails_honestly_not_fake_success(client, test_u
 
 def test_sync_attempt_is_genuinely_logged(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Integration Log Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Integration Log Test Client", "phone": "9000010097"}).json()["id"]
     client.post(f"/api/integrations/zoho/client/{client_id}/sync", json={})
 
     logs = client.get("/api/integrations/logs", params={"entity_type": "client", "entity_id": client_id}).json()
@@ -57,7 +57,7 @@ def test_repeated_failed_sync_increments_attempt_number(client, test_user):
     """Proves the append-only retry history genuinely works - a second
     attempt is a NEW row, not an overwrite of the first."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Integration Retry Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Integration Retry Test Client", "phone": "9000010098"}).json()["id"]
     client.post(f"/api/integrations/zoho/client/{client_id}/sync", json={"force": True})
     client.post(f"/api/integrations/zoho/client/{client_id}/sync", json={"force": True})
 
@@ -75,7 +75,7 @@ def test_syncing_nonexistent_entity_fails_cleanly(client, test_user):
 
 def test_unknown_external_system_is_rejected(client, test_user):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Unknown System Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Unknown System Test Client", "phone": "9000010099"}).json()["id"]
     resp = client.post(f"/api/integrations/not_a_real_system/client/{client_id}/sync", json={})
     assert resp.status_code == 400
 
@@ -111,7 +111,7 @@ def test_no_credential_value_ever_appears_in_any_response(client, test_user):
     is not configured", is fine and intended - only the VALUE is secret.)"""
     from app.core.config import settings
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Credential Leak Test Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Credential Leak Test Client", "phone": "9000010100"}).json()["id"]
     status_resp = client.get("/api/integrations/status")
     sync_resp = client.post(f"/api/integrations/zoho/client/{client_id}/sync", json={})
     logs_resp = client.get("/api/integrations/logs")

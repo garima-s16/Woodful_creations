@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.models.attendance import Attendance
 from app.schemas.attendance import AttendanceCreate, AttendanceUpdate, AttendanceResponse
-from app.utils.id_generator import generate_short_id
+from app.utils.id_generator import generate_business_id
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
@@ -35,7 +35,7 @@ def mark_attendance(data: AttendanceCreate, db: Session = Depends(get_db), auth=
     if auth.get("role", "user") not in ("master",) and data.employee_id != auth.get("employee_id"):
         raise HTTPException(status_code=403, detail="You can only mark attendance for yourself.")
     for _ in range(5):
-        record = Attendance(**data.dict(), business_id=generate_short_id(db))
+        record = Attendance(**data.dict(), business_id=generate_business_id(db))
         db.add(record)
         try:
             db.commit()

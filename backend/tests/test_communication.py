@@ -48,7 +48,7 @@ def _create_employee_user(client, db_session, username, email):
 
 def _make_order(client, client_name="Comm Test Client"):
     """Must be called while the current session is master."""
-    client_id = client.post("/api/clients/", json={"name": client_name}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": client_name, "phone": "9000010052"}).json()["id"]
     order = client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-01-01T00:00:00", "order_value": "50000.00", "advance": "0",
     }).json()

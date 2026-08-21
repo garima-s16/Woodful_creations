@@ -36,7 +36,7 @@ def test_master_sees_orders_dashboard_financials(client, test_user):
 def test_employee_orders_dashboard_financials_are_null(client, test_user, db_session):
     """The real, previously-untouched gap found this turn."""
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Orders Dash RBAC Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Orders Dash RBAC Client", "phone": "9000010053"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "50000.00", "advance": "0",
     })
@@ -53,7 +53,7 @@ def test_employee_orders_dashboard_financials_are_null(client, test_user, db_ses
 
 def test_employee_top_orders_money_fields_are_null_but_status_visible(client, test_user, db_session):
     _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Top Orders RBAC Client"}).json()["id"]
+    client_id = client.post("/api/clients/", json={"name": "Top Orders RBAC Client", "phone": "9000010054"}).json()["id"]
     client.post("/api/orders/", json={
         "client_id": client_id, "order_date": "2026-08-16T00:00:00", "order_value": "70000.00", "advance": "0",
     })

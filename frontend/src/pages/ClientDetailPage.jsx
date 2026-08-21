@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI, clientActivitiesAPI, communicationAPI } from '../utils/api';
+import { clientsAPI, ordersAPI, estimatesAPI, paymentsAPI, clientActivitiesAPI, communicationAPI, reportsAPI, clientProductRateAPI, productsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Card from '../components/common/Card';
 import Modal from '../components/common/Modal';
@@ -18,7 +18,7 @@ function ClientDetailPage() {
   const { user } = useSelector((state) => state.auth);
   const isStrictlyMaster = user?.role === 'master';
   const canViewFinancials = user?.role === 'master';
-  const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments', 'Activity'] : ['Overview', 'Orders', 'Estimates', 'Activity'];
+  const TABS = canViewFinancials ? ['Overview', 'Orders', 'Estimates', 'Payments', 'Pricing', 'Activity'] : ['Overview', 'Orders', 'Estimates', 'Activity'];
   const [client, setClient] = useState(null);
   const [orders, setOrders] = useState([]);
   const [estimates, setEstimates] = useState([]);
@@ -36,15 +36,24 @@ function ClientDetailPage() {
   const [editingActivity, setEditingActivity] = useState(null);
   const [pendingDeleteActivity, setPendingDeleteActivity] = useState(null);
   const [pendingDeletePayment, setPendingDeletePayment] = useState(null);
+  const [productRates, setProductRates] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [showAddRate, setShowAddRate] = useState(false);
+  const [pendingDeleteRate, setPendingDeleteRate] = useState(null);
+  const [rateError, setRateError] = useState('');
 
   const load = useCallback(() => {
     clientsAPI.get(clientId).then((res) => setClient(res.data)).catch(() => setClient(null));
-    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data)).catch(() => {});
+    ordersAPI.list({ client_id: clientId }).then((res) => setOrders(res.data));
     if (canViewFinancials) {
       paymentsAPI.list({ client_id: clientId }).then((res) => setPayments(res.data)).catch(() => setPayments([]));
     }
-    estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data)).catch(() => {});
-    clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data)).catch(() => {});
+    estimatesAPI.list({ client_id: clientId }).then((res) => setEstimates(res.data));
+    clientActivitiesAPI.list({ client_id: clientId }).then((res) => setActivities(res.data));
+    if (canViewFinancials) {
+      clientProductRateAPI.list({ client_id: clientId }).then((res) => setProductRates(res.data)).catch(() => setProductRates([]));
+      productsAPI.list({ is_active: true }).then((res) => setProducts(res.data)).catch(() => setProducts([]));
+    }
   }, [clientId, canViewFinancials]);
 
   useEffect(load, [load]);
@@ -152,6 +161,8 @@ function ClientDetailPage() {
             <button className="btn-secondary" onClick={() => setActiveAction('payment')}>Record Payment</button>
           )}
           <button className="btn-secondary" onClick={() => setActiveAction('activity')}>Log Activity</button>
+          <a className="btn-secondary" href={reportsAPI.downloadUrl(`clients/${client.id}/profile.pdf`)} target="_blank" rel="noreferrer">Export PDF</a>
+          <a className="btn-secondary" href={reportsAPI.downloadUrl(`clients.xlsx?search=${encodeURIComponent(client.client_code)}`)} target="_blank" rel="noreferrer">Export Excel</a>
         </div>
       </div>
 
@@ -177,7 +188,19 @@ function ClientDetailPage() {
         <Card title="Client Details">
           <div className="card-body">
             <div className="detail-meta">
+              {client.contact_person && (
+                <div className="detail-meta-item"><span className="detail-meta-label">Contact Person</span><span className="detail-meta-value">{client.contact_person}</span></div>
+              )}
+              {client.alternate_phone && (
+                <div className="detail-meta-item"><span className="detail-meta-label">Alternate Phone</span><span className="detail-meta-value">{client.alternate_phone}</span></div>
+              )}
               <div className="detail-meta-item"><span className="detail-meta-label">Address</span><span className="detail-meta-value">{client.address || '-'}</span></div>
+              {client.site_address && (
+                <div className="detail-meta-item"><span className="detail-meta-label">Site Address</span><span className="detail-meta-value">{client.site_address}</span></div>
+              )}
+              {client.gstin && (
+                <div className="detail-meta-item"><span className="detail-meta-label">GSTIN</span><span className="detail-meta-value">{client.gstin}</span></div>
+              )}
               <div className="detail-meta-item"><span className="detail-meta-label">First Contact</span><span className="detail-meta-value">{client.first_contact_date ? new Date(client.first_contact_date).toLocaleDateString() : '-'}</span></div>
             </div>
             {client.remarks && (
@@ -234,6 +257,79 @@ function ClientDetailPage() {
           emptyMessage="No payments recorded for this client yet."
         />
       )}
+
+      {tab === 'Pricing' && (
+        <>
+          {rateError && <Alert type="error" message={rateError} onClose={() => setRateError('')} />}
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Customer-specific pricing for {client.name} - a negotiated margin or a directly agreed price for a
+            specific product. This never changes the global Product Master price; other clients are unaffected.
+          </p>
+          <div className="page-actions" style={{ marginBottom: 12 }}>
+            <button className="btn-primary" onClick={() => setShowAddRate(true)}>+ Add Customer Rate</button>
+          </div>
+          <Table
+            columns={[
+              { key: 'product_id', label: 'Product', render: (v) => products.find((p) => p.id === v)?.name || v },
+              { key: 'margin_percent', label: 'Margin Override', render: (v) => v != null ? `${v}%` : '\u2014' },
+              { key: 'fixed_selling_price', label: 'Fixed Price', render: (v) => v != null ? formatCurrency(v) : '\u2014' },
+              { key: 'notes', label: 'Notes' },
+              {
+                key: 'delete_action', label: '', render: (v, row) => (
+                  <button className="btn-link" onClick={(e) => { e.stopPropagation(); setPendingDeleteRate(row); }}>Remove</button>
+                ),
+              },
+            ]}
+            data={productRates}
+            emptyMessage="No customer-specific pricing for this client yet - the default Product/Rate Master pricing applies."
+          />
+        </>
+      )}
+
+      <Modal isOpen={showAddRate} title={`Add Customer Rate - ${client.name}`} onClose={() => setShowAddRate(false)}>
+        <Form
+          fields={[
+            { name: 'product_id', label: 'Product', type: 'select', required: true,
+              options: products.map((p) => ({ value: p.id, label: `${p.product_code} - ${p.name}` })) },
+            { name: 'margin_percent', label: 'Margin % Override', type: 'number',
+              hint: 'Set either this OR a fixed price below, not both.' },
+            { name: 'fixed_selling_price', label: 'Fixed Selling Price', type: 'number' },
+            { name: 'notes', label: 'Notes', type: 'textarea', advanced: true },
+          ]}
+          onSubmit={async (formData) => {
+            setRateError('');
+            try {
+              await clientProductRateAPI.create({
+                client_id: Number(clientId), product_id: Number(formData.product_id),
+                margin_percent: formData.margin_percent || null,
+                fixed_selling_price: formData.fixed_selling_price || null,
+                notes: formData.notes || null,
+              });
+              setShowAddRate(false);
+              load();
+            } catch (err) {
+              setRateError(err.response?.data?.detail || 'Failed to add customer rate');
+            }
+          }}
+          submitText="Add Customer Rate"
+        />
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!pendingDeleteRate}
+        message={pendingDeleteRate ? `Remove this customer-specific rate? ${client.name} will go back to the default pricing for this product.` : ''}
+        onConfirm={async () => {
+          try {
+            await clientProductRateAPI.remove(pendingDeleteRate.id);
+            setPendingDeleteRate(null);
+            load();
+          } catch (err) {
+            setRateError(err.response?.data?.detail || 'Failed to remove customer rate');
+            setPendingDeleteRate(null);
+          }
+        }}
+        onCancel={() => setPendingDeleteRate(null)}
+      />
 
       {tab === 'Activity' && (
         <Table

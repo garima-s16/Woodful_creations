@@ -10,7 +10,7 @@ def test_search_requires_auth(client):
 
 def test_search_finds_client_by_name(client, test_user):
     _login(client, test_user)
-    client.post("/api/clients/", json={"name": "Zephyr Interiors"})
+    client.post("/api/clients/", json={"name": "Zephyr Interiors", "phone": "9000010180"})
 
     resp = client.get("/api/search/", params={"q": "Zephyr"})
     assert resp.status_code == 200
@@ -41,7 +41,7 @@ def test_search_finds_material_by_code_not_just_name(client, test_user):
 
 def test_search_returns_correct_navigable_path(client, test_user):
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Path Check Client"}).json()
+    created = client.post("/api/clients/", json={"name": "Path Check Client", "phone": "9000010181"}).json()
 
     resp = client.get("/api/search/", params={"q": "Path Check Client"})
     result = next(r for r in resp.json() if r["type"] == "Client")
@@ -50,7 +50,7 @@ def test_search_returns_correct_navigable_path(client, test_user):
 
 def test_search_across_multiple_types_returns_both(client, test_user):
     _login(client, test_user)
-    client.post("/api/clients/", json={"name": "CrossType Alpha"})
+    client.post("/api/clients/", json={"name": "CrossType Alpha", "phone": "9000010182"})
     client.post("/api/suppliers/", json={"name": "CrossType Alpha Supplier"})
 
     resp = client.get("/api/search/", params={"q": "CrossType Alpha"})
@@ -74,7 +74,7 @@ def test_search_no_match_returns_empty_list(client, test_user):
 
 def test_search_by_business_id_finds_the_record(client, test_user):
     _login(client, test_user)
-    created = client.post("/api/clients/", json={"name": "Business ID Search Client"}).json()
+    created = client.post("/api/clients/", json={"name": "Business ID Search Client", "phone": "9000010183"}).json()
     business_id = created["business_id"]
     assert business_id is not None
 

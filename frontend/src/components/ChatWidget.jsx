@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { chatAPI, paymentsAPI, materialsAPI, employeesAPI, reportsAPI, ordersAPI } from '../utils/api';
+import { chatAPI, paymentsAPI, materialsAPI, employeesAPI, reportsAPI, ordersAPI, productsAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
 import { clearPendingMessage } from '../redux/slices/chatUiSlice';
 import { addToCart } from '../redux/slices/cartSlice';
@@ -195,6 +195,8 @@ function ChatWidget() {
     record_payment: { execute: (payload) => paymentsAPI.create(payload), successText: 'recorded.' },
     create_material: { execute: (payload) => materialsAPI.create(payload), successText: 'added to Material Master.' },
     create_employee: { execute: (payload) => employeesAPI.create(payload), successText: 'added as an employee.' },
+    create_product: { execute: (payload) => productsAPI.create(payload), successText: 'added to Product Master.' },
+    delete_product: { execute: (payload) => productsAPI.remove(payload.productId), successText: 'deleted.' },
     add_to_cart: {
       execute: (payload) => dispatch(addToCart(payload)).unwrap(),
       successText: 'added to your cart.',

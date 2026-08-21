@@ -34,6 +34,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
 
 from app.models.material import Material
+from app.models.product import Product
+from app.models.order_item import OrderItem
+from app.models.estimate_line_item import EstimateLineItem
 from app.models.client import Client
 from app.models.estimate import Estimate
 from app.models.order import Order
@@ -48,7 +51,7 @@ from app.models.purchase import Purchase
 from app.models.employee import Employee
 from app.models.user import User
 from app.services.notification_service import NotificationService
-from app.utils.id_generator import generate_unique_code, generate_short_id
+from app.utils.id_generator import generate_unique_code, generate_business_id
 from app.models.daily_task import DailyTask
 from app.models.leave import Leave
 from app.models.attendance import Attendance
@@ -323,7 +326,7 @@ class ChatService:
         for _ in range(5):
             code = generate_unique_code(db, DailyTask, "task_code", "TSK-")
             task = DailyTask(
-                task_code=code, business_id=generate_short_id(db), date=datetime.utcnow(),
+                task_code=code, business_id=generate_business_id(db), date=datetime.utcnow(),
                 employee_id=employee.id, order_id=order_id, task_description=task_text.capitalize(),
                 status="TO DO",
             )
@@ -384,6 +387,14 @@ class ChatService:
         add_employee_action = ChatService._route_add_employee_action(m, db, user_role)
         if add_employee_action:
             return add_employee_action
+
+        delete_product_action = ChatService._route_delete_product_action(m, db, user_role)
+        if delete_product_action:
+            return delete_product_action
+
+        add_product_action = ChatService._route_add_product_action(m, db, user_role)
+        if add_product_action:
+            return add_product_action
 
         ambiguous_hindi_add = ChatService._route_ambiguous_hindi_add(m, db)
         if ambiguous_hindi_add:
@@ -517,6 +528,164 @@ class ChatService:
             payload={"name": display_name},
         )
         return f"Create a new employee named {display_name}?", [], proposal, None, []
+
+    @staticmethod
+    def _route_product_search(m: str, db: Session, user_role: str):
+        """"find dining tables", "show products containing dining",
+        "find PROD-001", "what is PROD-001", "show active dining
+        products" (Family 104 section 43) - read-only, results always
+        come from the actual Product Master, never invented."""
+        code_match = re.search(r"\bprd-\d+\b", m, re.IGNORECASE)
+        if code_match:
+            product = db.query(Product).filter(Product.product_code.ilike(code_match.group(0))).first()
+            if not product:
+                return f"I couldn't find a product with code {code_match.group(0).upper()}.", [], None, None, []
+            price = f"Rs {float(product.selling_price):,.2f}" if product.selling_price is not None else "no default rate set"
+            lines = [f"{product.product_code} - {product.name}. {product.category or 'Uncategorized'}, "
+                     f"unit: {product.unit}, {price}, {'Active' if product.is_active else 'Inactive'}."]
+            return " ".join(lines), [], None, None, [{
+                "type": "Product", "label": product.name, "sublabel": product.product_code,
+                "path": f"/products/{product.id}",
+            }]
+
+        triggered = (
+            any(w in m for w in ["find", "search product", "products containing"])
+            or re.search(r"\bshow\b.*\bproducts?\b", m)
+        )
+        if not triggered:
+            return None
+
+        want_active_only = "active" in m
+        # Strip the trigger phrasing to isolate the search term - a
+        # short, deliberately simple extraction (not a full NLU parse)
+        # matching the style of the other chat parsers in this file.
+        # Word-boundary regex, not naive substring replace - "product"
+        # is a substring of "products", so a plain .replace() would
+        # mangle "products" into a stray "s" once "product" was
+        # stripped out of the middle of it.
+        term = m
+        for phrase in ["find product", "find", "search product", "products containing", "show", "products", "product", "active"]:
+            term = re.sub(rf"\b{re.escape(phrase)}\b", " ", term)
+        term = re.sub(r"\s+", " ", term).strip()
+        if not term or len(term) < 3:
+            return "What product would you like to search for? Try at least 3 characters of the name.", [], None, None, []
+
+        query = db.query(Product).filter(or_(
+            Product.name.ilike(f"%{term}%"), Product.product_code.ilike(f"%{term}%"),
+        ))
+        if want_active_only:
+            query = query.filter(Product.is_active == True)  # noqa: E712
+        matches = query.order_by(Product.name).limit(8).all()
+        if not matches:
+            return f"No products found matching \"{term}\".", [], None, None, []
+
+        records = [{
+            "type": "Product", "label": p.name, "sublabel": p.product_code, "path": f"/products/{p.id}",
+        } for p in matches]
+        summary = "; ".join(f"{p.product_code} - {p.name}" for p in matches)
+        return f"Found {len(matches)} product(s): {summary}.", [], None, None, records
+
+    @staticmethod
+    def _route_add_product_action(m: str, db: Session, user_role: str):
+        """"Add a new product called 6 Seater Dining Table, category
+        Dining, unit Piece, rate 25000 and GST 18%" (Family 104 section
+        8) - same proposal-then-confirm architecture as
+        _route_add_employee_action/_route_material_action: the chatbot
+        never writes to the database directly, it builds a
+        ProposedAction the frontend executes via the SAME authorized
+        POST /api/products/ endpoint the UI form uses, after the user
+        confirms - so validation, RBAC, and audit logging all happen
+        exactly once, in one place."""
+        match = re.match(r"^add\s+(?:a\s+|an\s+|new\s+)*product\s+(?:called\s+|named\s+)?(.+)", m, re.IGNORECASE)
+        if not match:
+            return None
+        if user_role not in ("master",):
+            return "Creating products requires a master account.", [], None, None, []
+
+        rest = match.group(1)
+        # "6 seater dining table, category dining, unit piece, rate 25000 and gst 18%"
+        name_part = re.split(r",|\bcategory\b|\bunit\b|\brate\b|\bgst\b", rest, maxsplit=1)[0].strip().rstrip(".")
+        if not name_part:
+            return "What should the new product be called?", [], None, None, []
+
+        category_match = re.search(r"category\s+([a-zA-Z ]+?)(?:,|\bunit\b|\brate\b|\bgst\b|$)", rest, re.IGNORECASE)
+        unit_match = re.search(r"unit\s+([a-zA-Z ]+?)(?:,|\bcategory\b|\brate\b|\bgst\b|$)", rest, re.IGNORECASE)
+        rate_match = re.search(r"rate\s+(?:rs\.?\s*)?([\d,]+)", rest, re.IGNORECASE)
+        gst_match = re.search(r"gst\s+([\d.]+)\s*%?", rest, re.IGNORECASE)
+
+        display_name = " ".join(w.capitalize() for w in name_part.split())
+
+        # Duplicate check (Family 104 section 9) - blocked, not just
+        # warned, for the chat path specifically: a short natural-
+        # language message is a poor place to review a "possible
+        # duplicate" match list, unlike the UI form's confirm dialog.
+        existing = db.query(Product).filter(Product.name.ilike(f"%{name_part}%")).first()
+        if existing:
+            return (
+                f"A product called \"{existing.name}\" ({existing.product_code}) already exists. Nothing created.",
+                [], None, None, [{
+                    "type": "Product", "label": existing.name, "sublabel": existing.product_code,
+                    "path": f"/products/{existing.id}",
+                }],
+            )
+
+        payload = {"name": display_name}
+        summary_parts = [display_name]
+        if category_match:
+            payload["category"] = category_match.group(1).strip().title()
+            summary_parts.append(f"category: {payload['category']}")
+        if unit_match:
+            payload["unit"] = unit_match.group(1).strip().title()
+            summary_parts.append(f"unit: {payload['unit']}")
+        if rate_match:
+            payload["selling_price"] = float(rate_match.group(1).replace(",", ""))
+            summary_parts.append(f"rate: Rs {payload['selling_price']:,.2f}")
+        if gst_match:
+            payload["gst_percent"] = float(gst_match.group(1))
+            summary_parts.append(f"GST: {payload['gst_percent']}%")
+
+        proposal = ProposedAction(
+            action_type="create_product",
+            summary="Create product " + ", ".join(summary_parts),
+            payload=payload,
+        )
+        return f"Create a new product \"{display_name}\"" + (f" ({', '.join(summary_parts[1:])})" if len(summary_parts) > 1 else "") + "?", [], proposal, None, []
+
+    @staticmethod
+    def _route_delete_product_action(m: str, db: Session, user_role: str):
+        """"Delete PROD-001" (Family 104 section 28/45) - Master only,
+        checked here first (before the DB lookup even runs, so a non-
+        master gets a clear refusal rather than a confusing "not
+        found"); historically-referenced products are refused with a
+        deactivation suggestion, matching the UI's own delete-route
+        behavior exactly (same historical-reference queries)."""
+        match = re.match(r"^delete\s+(prd-\d+)\b", m, re.IGNORECASE)
+        if not match:
+            return None
+        if user_role not in ("master",):
+            return "You do not have permission to delete products.", [], None, None, []
+
+        code = match.group(1).upper()
+        product = db.query(Product).filter(Product.product_code == code).first()
+        if not product:
+            return f"I couldn't find a product with code {code}.", [], None, None, []
+
+        has_orders = db.query(OrderItem).filter(OrderItem.product_id == product.id).first() is not None
+        has_estimates = db.query(EstimateLineItem).filter(EstimateLineItem.product_id == product.id).first() is not None
+        if has_orders or has_estimates:
+            return (
+                f"{product.product_code} ({product.name}) is used in historical "
+                f"{'orders' if has_orders else 'estimates'} and cannot be deleted. Deactivate it instead.",
+                [], None, None, [{"type": "Product", "label": product.name, "sublabel": product.product_code,
+                                   "path": f"/products/{product.id}"}],
+            )
+
+        proposal = ProposedAction(
+            action_type="delete_product",
+            summary=f"Permanently delete {product.product_code} - {product.name}",
+            payload={"productId": product.id, "productCode": product.product_code},
+        )
+        return f"Permanently delete {product.product_code} - {product.name}? This cannot be undone.", [], proposal, None, []
 
     @staticmethod
     def _route_excel_via_chat(m: str, db: Session, user_role: str):
@@ -659,6 +828,50 @@ class ChatService:
             "type": "Order", "label": o.order_code, "sublabel": o.project_status, "path": f"/orders/{o.id}",
         } for o in sorted(orders, key=lambda o: o.order_date or datetime.min, reverse=True)[:5]]
         return " ".join(lines), [], history_records
+
+    @staticmethod
+    def _route_order_products(m: str, db: Session, user_role: str, context: Optional[ChatContext]):
+        """"what products are in order WC-2026-001", "show order
+        WC-2026-001", "products in this order" - lists the order's
+        ACTUAL Order Items (each one's real linked Product where it has
+        one), never invented or guessed. Resolves by explicit order
+        code first, falling back to deictic context (viewing the
+        order's own page)."""
+        if not any(w in m for w in ["product", "what's in order", "whats in order", "show order", "order details"]):
+            return None
+
+        order = None
+        code_match = re.search(r"\bwc-\d{4}-\d+\b", m, re.IGNORECASE)
+        if code_match:
+            order = db.query(Order).filter(Order.order_code.ilike(code_match.group(0))).first()
+        elif "order" in m and context:
+            record_type, record_id = context.resolved_with_reference(m)
+            if record_type == "order" and record_id:
+                order = db.query(Order).filter(Order.id == record_id).first()
+
+        if not order:
+            return None
+
+        client_name = order.client.name if order.client else "Unknown client"
+        if not order.items:
+            lines = [f"{order.order_code} ({client_name}) has no itemized products on record."]
+        else:
+            item_descriptions = []
+            for item in order.items:
+                label = item.product.name if item.product else item.description
+                item_descriptions.append(f"{label} (qty {item.quantity})")
+            lines = [f"{order.order_code} ({client_name}) - status: {order.project_status}.",
+                     "Items: " + "; ".join(item_descriptions) + "."]
+        if user_role in ("master",) and order.order_value is not None:
+            lines.append(f"Total Rs {float(order.order_value or 0):,.2f}.")
+        if order.source_estimate_id:
+            lines.append(f"Converted from estimate {order.source_estimate_code}.")
+
+        records = [{
+            "type": "Order", "label": order.order_code, "sublabel": order.project_status,
+            "path": f"/orders/{order.id}",
+        }]
+        return " ".join(lines), [], records
 
     @staticmethod
     def _route_estimate_summary(m: str, db: Session, user_role: str, context: Optional[ChatContext]):
@@ -1183,6 +1396,12 @@ class ChatService:
         estimate_summary = ChatService._route_estimate_summary(m, db, user_role, context)
         if estimate_summary:
             return estimate_summary
+        order_products = ChatService._route_order_products(m, db, user_role, context)
+        if order_products:
+            return order_products
+        product_search = ChatService._route_product_search(m, db, user_role)
+        if product_search:
+            return product_search
         next_action = ChatService._route_next_action(m, db, context)
         if next_action:
             return next_action
