@@ -1,0 +1,126 @@
+/* ---- Grid card ---- */
+.material-card {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.material-card:hover {
+  border-color: var(--color-gold-soft);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.material-card-media {
+  height: 92px;
+  background: linear-gradient(135deg, var(--color-charcoal-elevated), var(--color-charcoal));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-bottom: 1px solid var(--border-color);
+}
+.material-card-initial {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 600;
+  color: var(--color-tan);
+  opacity: 0.8;
+}
+.material-card-status {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.material-card-body { padding: var(--space-4); flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.material-card-category {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-secondary); font-weight: 600;
+}
+.material-card-name {
+  font-family: var(--font-display); font-size: 1.05rem; font-weight: 600;
+  color: var(--text-primary); line-height: 1.25;
+}
+.material-card-spec { font-size: 0.8rem; color: var(--text-secondary); }
+.material-card-price-row { display: flex; align-items: baseline; gap: 4px; margin-top: 6px; }
+.material-card-price { font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; color: var(--text-primary); }
+.material-card-unit { font-size: 0.75rem; color: var(--text-secondary); }
+.material-card-meta {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 6px; margin-top: 8px; font-size: 0.78rem; color: var(--text-secondary);
+}
+.material-card-location {
+  background: var(--color-charcoal-elevated); border-radius: 100px; padding: 2px 9px; font-size: 0.72rem;
+}
+
+.material-card-footer {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-color);
+}
+.material-card-qty {
+  display: flex; align-items: center; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0;
+}
+.material-card-qty button {
+  background: var(--color-charcoal-elevated); border: none; width: 26px; height: 30px;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--text-primary);
+}
+.material-card-qty button:hover { background: var(--border-color); }
+.material-card-qty span { width: 26px; text-align: center; font-size: 0.85rem; font-weight: 600; }
+.material-card-add-btn {
+  flex: 1; justify-content: center; padding: 8px 10px; font-size: 0.78rem;
+}
+.material-card-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- List row ---- */
+.material-row-card {
+  display: grid;
+  grid-template-columns: 40px 1.6fr 0.9fr 1fr 0.8fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.material-row-card:hover { border-color: var(--color-gold-soft); box-shadow: var(--shadow-sm); }
+.material-row-card + .material-row-card { margin-top: 8px; }
+
+.material-row-swatch {
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  background: var(--color-charcoal-elevated); color: var(--color-tan);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.1rem;
+}
+.material-row-name { font-weight: 600; color: var(--text-primary); }
+.material-row-spec { font-size: 0.78rem; color: var(--text-secondary); }
+.material-row-price {
+  font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; color: var(--text-primary);
+}
+.material-row-price span { font-size: 0.72rem; color: var(--text-secondary); font-family: var(--font-body); font-weight: 400; margin-left: 2px; }
+.material-row-stock { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.material-row-stock-count { font-size: 0.75rem; color: var(--text-secondary); }
+.material-row-location { font-size: 0.8rem; color: var(--text-secondary); }
+.material-row-cart-btn { padding: 7px 12px; font-size: 0.76rem; white-space: nowrap; }
+.material-row-cart-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 900px) {
+  .material-row-card {
+    grid-template-columns: 40px 1fr auto;
+    grid-template-areas: "swatch main cart" "swatch stock stock" "swatch location location";
+    row-gap: 4px;
+  }
+  .material-row-swatch { grid-area: swatch; }
+  .material-row-main { grid-area: main; }
+  .material-row-cart-btn { grid-area: cart; }
+  .material-row-stock { grid-area: stock; flex-direction: row; gap: 8px; align-items: center; }
+  .material-row-location { grid-area: location; }
+  .material-row-price { display: none; }
+}

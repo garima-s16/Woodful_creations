@@ -1,0 +1,80 @@
+.form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.form-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.required { color: var(--danger); }
+
+.form-input {
+  padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: 0.9rem; font-family: var(--font-body); color: var(--text-primary);
+  background: var(--surface); transition: border-color var(--transition);
+}
+.form-input:focus { outline: none; border-color: var(--color-gold); box-shadow: var(--focus-ring); }
+.form-input.error { border-color: var(--danger); }
+/* Was falling back to light-theme colors (#f5f5f5 bg / #666 text) that
+   the dark palette migration never reached, since --light-bg and
+   --text-secondary are always defined and the fallback never fires -
+   using the dark-surface tokens directly instead. */
+.form-input-readonly { background: var(--color-charcoal-elevated); color: var(--text-secondary); cursor: not-allowed; }
+
+.form-hint { font-size: 0.75rem; color: var(--text-secondary); }
+.error-message { font-size: 0.78rem; color: var(--danger); }
+
+/* Same visual role as .btn-primary (the one submit action per form) -
+   kept as its own class since many pages already reference btn-submit,
+   but restyled to match so a form's submit button and a page's primary
+   button no longer look like two different products. */
+.btn-submit {
+  padding: 11px 24px; border: 1px solid var(--color-gold); border-radius: var(--radius-sm);
+  background: var(--color-gold); color: var(--color-ink); font-weight: 600;
+  font-size: 0.88rem; cursor: pointer; transition: all var(--transition);
+}
+.btn-submit:hover:not(:disabled) { background: var(--color-gold-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-submit:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-submit:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+.form-advanced-toggle {
+  background: none; border: none; padding: 4px 0; margin: -8px 0 4px;
+  color: var(--color-gold-soft); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; text-align: left; align-self: flex-start;
+  transition: color var(--transition);
+}
+.form-advanced-toggle:hover { color: var(--color-gold); }
+.form-advanced-toggle:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+.form-advanced-section { display: flex; flex-direction: column; gap: var(--space-5); }
+
+/* Multi-step wizard */
+.form-wizard { gap: var(--space-5); }
+
+.wizard-steps {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-3);
+}
+.wizard-step {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 100px; background: var(--color-charcoal-elevated);
+}
+.wizard-step.active { background: var(--color-ink); color: var(--color-ivory); }
+.wizard-step.done { color: var(--success); }
+
+.wizard-panel { display: flex; flex-direction: column; gap: var(--space-4); min-height: 120px; }
+
+.wizard-review { gap: var(--space-5); }
+.review-section h4 { font-size: 0.85rem; margin-bottom: var(--space-2); color: var(--color-wood); }
+.review-row {
+  display: flex; justify-content: space-between; padding: 6px 0;
+  border-bottom: 1px solid var(--border-color); font-size: 0.85rem;
+}
+.review-label { color: var(--text-secondary); }
+.review-value { font-weight: 600; }
+
+.wizard-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+
+@media (max-width: 768px) {
+  /* iOS Safari auto-zooms the page on focusing any input/textarea/select
+     with a font-size under 16px - genuinely disruptive on every form in
+     the app until fixed here, not merely cosmetic. */
+  .form-input { font-size: 16px; }
+}

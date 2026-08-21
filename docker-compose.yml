@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15-alpine
+    container_name: woodful_postgres
+    environment:
+      POSTGRES_USER: woodful_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
+      POSTGRES_DB: woodful_creations
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U woodful_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: woodful_redis
+    command: >
+      redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: woodful_backend
+    environment:
+      DATABASE_URL: postgresql://woodful_user:${POSTGRES_PASSWORD}@database:5432/woodful_creations
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ENVIRONMENT: production
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
+      COOKIE_SECURE: "True"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+    container_name: woodful_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
