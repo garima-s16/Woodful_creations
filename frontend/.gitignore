@@ -1,9 +1,0 @@
-# Frontend environment files / secrets
-.env
-.env.*
-!.env.example
-
-# Dependencies / build output
-node_modules/
-build/
-dist/
