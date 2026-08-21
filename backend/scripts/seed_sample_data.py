@@ -12,7 +12,7 @@ from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.database import Base, SessionLocal, engine
+from app.core.database import SessionLocal
 from app import models  # noqa: F401
 from app.models.setting import (
     Unit, StockStatus, StockPaymentStatus, SupplierTerm,
@@ -155,9 +155,9 @@ WOODFUL_EMPLOYEES = [
 # Master Users - real names, MASTER permissions only. Never seeded as
 # Client/Supplier/Employee rows.
 WOODFUL_MASTER_USERS = [
-    # (username, email, full_name)
-    ("nikhil", "nikhil@woodful.local", "Nikhil Soni"),
-    ("garima", "garima@woodful.local", "Garima Sharma"),
+    # (username, email, full_name, password_env_var)
+    ("nikhils", "nikhil@woodful.local", "Nikhil Soni", "SEED_NIKHIL_PASSWORD"),
+    ("garimas", "garima@woodful.local", "Garima Sharma", "SEED_GARIMA_PASSWORD"),
 ]
 
 # Reserved future test-user pool (Section "FUTURE TEST-USER POOL"). Kept
@@ -268,40 +268,65 @@ def seed_material_hierarchy(db):
 
 
 def seed_master_users(db):
-    """Two named master admin accounts (Nikhil Soni, Garima Sharma),
-    per repeated explicit request. Password comes from
-    SEED_MASTER_PASSWORD - never hard-coded. If the env var isn't set,
-    account creation is skipped with a clear warning rather than
-    creating an insecure default password; existing accounts' full
-    names are still reconciled either way, since that doesn't touch
-    authentication.
+    """Two named master admin accounts (Nikhil Soni, Garima Sharma) with
+    independent passwords and usernames, per repeated explicit request.
 
-    Idempotent and non-destructive: an existing account (matched by
-    username or email) only ever has its full_name corrected to the
-    exact roster name - password_hash, role, is_active and
-    cannot_be_deleted are never touched here."""
+    Each account's password comes from its own env var
+    (SEED_NIKHIL_PASSWORD / SEED_GARIMA_PASSWORD) - never hard-coded,
+    and never shared between the two accounts, so one can be rotated
+    without touching the other. If an account's env var isn't set:
+      - a NEW account for that person is skipped entirely (with a
+        loud warning - see below), same as before.
+      - an EXISTING account for that person keeps its current
+        password untouched - the var is only used to (re)create or
+        explicitly reset a password, never required just to keep an
+        already-working account working.
+
+    Idempotent and non-destructive: for an existing account (matched
+    by email - the roster's own stable identifier for each person),
+    full_name and username are corrected to the exact roster values in
+    place (so a roster username change like this one actually reaches
+    an already-seeded account, not just brand-new ones), but role,
+    is_active and cannot_be_deleted are never touched here, and the
+    password is only touched if that person's env var is explicitly
+    set."""
     from app.core.security import hash_password
     from app.models.user import User
 
-    password = os.environ.get("SEED_MASTER_PASSWORD")
-    if not password:
-        logger.warning(
-            "SEED_MASTER_PASSWORD is not set - skipping master user creation. "
-            "Set this environment variable (e.g. export SEED_MASTER_PASSWORD='...') "
-            "and re-run the seed script to create the garima@woodful.local and "
-            "nikhil@woodful.local master accounts."
-        )
-
     created = 0
     updated = 0
-    for username, email, full_name in WOODFUL_MASTER_USERS:
-        existing = db.query(User).filter((User.email == email) | (User.username == username)).first()
+    password_reset = 0
+    for username, email, full_name, password_env_var in WOODFUL_MASTER_USERS:
+        password = os.environ.get(password_env_var)
+        existing = db.query(User).filter(User.email == email).first()
         if existing:
             if existing.full_name != full_name:
                 existing.full_name = full_name
                 updated += 1
+            if existing.username != username:
+                existing.username = username
+                updated += 1
+            if password:
+                existing.password_hash = hash_password(password)
+                password_reset += 1
             continue
         if not password:
+            banner = (
+                "\n" + "!" * 78 + "\n"
+                f"!!  {password_env_var} is not set - the {full_name} master account\n"
+                "!!  ({email}) will NOT be created. If this is your only master\n"
+                "!!  account, you will be LOCKED OUT after this seed run finishes.\n"
+                "!!  Stop now and run instead:\n"
+                "!!\n"
+                f"!!      export {password_env_var}='choose-a-real-password'\n"
+                "!!      python scripts/seed_sample_data.py\n"
+                "!!\n"
+                f"!!  (Windows PowerShell: $env:{password_env_var} = 'choose-a-real-password')\n"
+                + "!" * 78 + "\n"
+            ).format(email=email)
+            print(banner)
+            logger.warning("%s is not set - skipping creation of the %s master account (%s).",
+                            password_env_var, full_name, email)
             continue
         db.add(User(
             username=username, email=email, full_name=full_name, role="master",
@@ -312,7 +337,9 @@ def seed_master_users(db):
     if created:
         logger.info("Seeded %d master user(s)", created)
     if updated:
-        logger.info("Updated %d master user full name(s)", updated)
+        logger.info("Corrected %d master user field(s) (username/full name) to match the roster", updated)
+    if password_reset:
+        logger.info("Reset password for %d existing master user(s) (their env var was set)", password_reset)
 
 
 def seed_named_suppliers(db):
@@ -1447,7 +1474,18 @@ def seed_notifications(db, materials, orders, employees, tasks):
 
 
 if __name__ == "__main__":
-    Base.metadata.create_all(bind=engine)
+    # NOTE: this used to call Base.metadata.create_all(bind=engine) here.
+    # That is what caused "table X already exists" failures inside Alembic
+    # migrations (e.g. migration 0030): create_all() would silently create
+    # every table the current models define, with no record of that in
+    # alembic_version, so the NEXT time the backend started up and Alembic
+    # tried to run migrations from scratch it collided with tables that
+    # already existed. Alembic (via run_startup_migrations() at backend
+    # startup) is now the ONLY thing responsible for creating/upgrading
+    # schema. This script only seeds data and assumes the schema already
+    # exists - run the backend at least once (or `alembic upgrade head`)
+    # before running this script.
+    pass
     db = SessionLocal()
     try:
         seed_master_users(db)
@@ -1488,6 +1526,20 @@ if __name__ == "__main__":
         seed_production_jobs(db, employees, orders, materials)
         seed_company_holidays(db)
         seed_notifications(db, materials, orders, employees, tasks)
+
+        from app.models.user import User
+        master_count = db.query(User).filter(User.role == "master", User.is_active == True).count()  # noqa: E712
+        if master_count == 0:
+            print(
+                "\n" + "!" * 78 + "\n"
+                "!!  SEED FINISHED, BUT THERE IS NO ACTIVE MASTER ACCOUNT IN THIS DATABASE.\n"
+                "!!  You will NOT be able to sign in. Re-run with SEED_MASTER_PASSWORD set\n"
+                "!!  (see the warning above) to create nikhil@woodful.local / garima@woodful.local.\n"
+                + "!" * 78 + "\n"
+            )
+            logger.warning("Seed run completed with zero active master users - sign-in is impossible until this is fixed.")
+        else:
+            logger.info("Confirmed %d active master account(s) exist.", master_count)
         logger.info("Seed complete.")
     finally:
         db.close()
