@@ -39,6 +39,21 @@ Either way, once the database is caught up to a known revision, the
 remaining migrations run normally. This makes the fix in code permanent:
 every future migration is applied automatically the next time the
 backend starts, with no manual alembic command ever required.
+
+A third case, handled the same tolerant way as case 2: alembic_version
+already exists (some earlier startup got at least partway through
+history) but the physical schema has since drifted ahead of whatever
+revision is stamped - e.g. a table created outside Alembic, a restored
+backup, or an upgrade interrupted after creating a table but before its
+transaction recorded the new alembic_version row. Previously this was
+NOT tolerated at all - a plain `alembic upgrade head` was run with zero
+error handling - so a single such collision anywhere in the remaining
+chain was fatal on every subsequent startup, and fixing it by hand (e.g.
+dropping the one colliding table) only exposed the next colliding table
+on the following restart. That whole class of one-at-a-time failures is
+what this module now prevents: every startup, not just the very first
+one, walks forward one migration at a time and tolerates "already
+applied" collisions.
 """
 import logging
 from pathlib import Path
@@ -46,7 +61,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.database import engine
@@ -72,6 +87,19 @@ def _alembic_config() -> Config:
 
 def _has_alembic_version_table() -> bool:
     return inspect(engine).has_table("alembic_version")
+
+
+def _get_current_revision():
+    """The revision stamped in the database's own alembic_version table,
+    or None if there isn't one yet. Read directly rather than via
+    alembic's `command.current` (which only prints to stdout/logging and
+    doesn't hand the value back to the caller)."""
+    if not _has_alembic_version_table():
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+        return row[0] if row else None
+
 
 
 def _get_head_revision(cfg: Config) -> str:
@@ -113,25 +141,49 @@ def _is_already_applied_error(exc: Exception) -> bool:
     return any(marker in message for marker in _ALREADY_APPLIED_MARKERS)
 
 
-def _upgrade_tolerating_legacy_schema(cfg: Config) -> None:
-    """For a database with SOME tables but not the full current set, and
-    no alembic_version tracking: walk every migration from the very
-    beginning, one at a time. For each one, try to actually apply it; if
-    it fails with the narrow "already exists" signature, that migration's
-    change is already reflected in the schema (left over from however this
-    database was originally created) - stamp it as done without
-    re-running its body, log it, and move on to the next. Any other error
-    is a genuine migration bug and propagates, failing startup loudly
-    rather than leaving a half-migrated database silently marked as fine.
+def _upgrade_tolerating_legacy_schema(cfg: Config, from_revision: str = "base") -> None:
+    """Walk every migration between from_revision and head, one at a
+    time, applying it - and if a given step fails with the narrow
+    "already exists" signature (see _is_already_applied_error), stamp it
+    as done without re-running its body instead of raising.
 
-    Applying one target revision at a time (rather than jumping straight
-    to head) means each step only ever needs to apply the single delta
-    since the last successful step, so a conflict on migration N doesn't
-    block migrations N+1..head from being evaluated and applied on their
-    own merits afterward.
+    This used to only ever be called with from_revision="base", for a
+    database with NO alembic_version tracking at all. That made the
+    self-healing one-time-only: the very first startup against a fresh
+    or legacy database was forgiving of a schema that didn't line up
+    with the migration history, but every startup after that (once
+    alembic_version existed) went through a plain command.upgrade(cfg,
+    "head") with zero tolerance - so if the physical schema and the
+    tracked revision ever drifted apart again for any reason (a table
+    created by something other than Alembic, an interrupted upgrade, a
+    restored backup, etc.), the very next migration whose create_table
+    collided with an already-existing table would kill startup, and
+    would keep doing so until that one table was manually dealt with -
+    at which point the *next* colliding migration would do the same
+    thing. That is the exact one-at-a-time pattern this function now
+    prevents, by making every startup - not just the first - forgiving
+    of a schema that's already ahead of what's stamped.
+
+    from_revision is whatever the caller determined the database is
+    actually at ("base" for no tracking at all, or a specific revision
+    id read from alembic_version). If that id isn't one this codebase's
+    migration chain recognizes (e.g. it was stamped by a different
+    branch/version of the code), fall back to walking the entire chain
+    from the very start - every step remains idempotent via the same
+    try/except below, so replaying earlier migrations against a
+    database that's actually already past them just hits more
+    tolerated "already exists" collisions, never a real failure.
     """
     script = ScriptDirectory.from_config(cfg)
-    ordered_revisions = list(script.walk_revisions(base="base", head="head"))
+    try:
+        ordered_revisions = list(script.walk_revisions(base=from_revision, head="head"))
+    except Exception:
+        logger.warning(
+            "Stamped revision %r isn't part of this codebase's migration "
+            "chain - walking the full chain from the beginning instead.",
+            from_revision,
+        )
+        ordered_revisions = list(script.walk_revisions(base="base", head="head"))
     ordered_revisions.reverse()  # oldest first
 
     for rev in ordered_revisions:
@@ -180,9 +232,23 @@ def run_startup_migrations() -> None:
             "database). Walking every migration from the beginning and "
             "adopting whatever the schema already reflects."
         )
-        _upgrade_tolerating_legacy_schema(cfg)
+        _upgrade_tolerating_legacy_schema(cfg, from_revision="base")
         logger.info("Database schema is up to date.")
         return
 
-    command.upgrade(cfg, "head")
+    # alembic_version already exists - but that only means SOME earlier
+    # startup got this far, not that the physical schema still lines up
+    # with whatever revision is stamped. It can drift out of sync again
+    # after that point (a table created outside Alembic, a restored
+    # backup, an upgrade that was interrupted after creating a table but
+    # before its transaction committed the new alembic_version row,
+    # etc.) - and previously, any such drift was fatal on every startup
+    # from then on: a plain command.upgrade(cfg, "head") has no
+    # tolerance for a single collision anywhere in the remaining chain,
+    # so fixing one colliding table just exposed the next one on the
+    # following restart. Walking forward from the stamped revision with
+    # the same tolerance used for a brand-new legacy database closes that
+    # gap - every startup self-heals, not just the first.
+    current = _get_current_revision()
+    _upgrade_tolerating_legacy_schema(cfg, from_revision=current or "base")
     logger.info("Database schema is up to date.")
