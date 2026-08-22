@@ -11,6 +11,7 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import column_exists
 
 revision = "0050"
 down_revision = "0049"
@@ -19,6 +20,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if column_exists(bind, "orders", "discount"):
+        return
     with op.batch_alter_table("orders") as batch_op:
         batch_op.add_column(sa.Column("discount", sa.Numeric(12, 2), nullable=False, server_default="0"))
         batch_op.add_column(sa.Column("tax_percent", sa.Numeric(5, 2), nullable=False, server_default="18"))

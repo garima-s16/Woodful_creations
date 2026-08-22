@@ -25,6 +25,7 @@ from alembic import op
 import sqlalchemy as sa
 
 from app.utils.id_generator import generate_short_id
+from app.core.migration_guards import column_exists
 
 revision = "0007"
 down_revision = "0006"
@@ -42,6 +43,14 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     for table in TABLES:
+        # Do not assume business_id already exists on every table here -
+        # it's added by migrations 0005/0006, not this one. If it's
+        # genuinely missing for some reason, skip that table rather
+        # than crash with "no such column" - this migration's job is
+        # backfilling values and enforcing NOT NULL, not creating the
+        # column itself.
+        if not column_exists(bind, table, "business_id"):
+            continue
         rows = bind.execute(sa.text(f"SELECT id FROM {table} WHERE business_id IS NULL")).fetchall()
         for (row_id,) in rows:
             # Retry-on-collision, matching generate_unique_code's documented
@@ -66,11 +75,16 @@ def upgrade() -> None:
                     continue
 
     for table in TABLES:
+        if not column_exists(bind, table, "business_id"):
+            continue
         with op.batch_alter_table(table) as batch_op:
             batch_op.alter_column("business_id", existing_type=sa.String(10), nullable=False)
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
     for table in TABLES:
+        if not column_exists(bind, table, "business_id"):
+            continue
         with op.batch_alter_table(table) as batch_op:
             batch_op.alter_column("business_id", existing_type=sa.String(10), nullable=True)

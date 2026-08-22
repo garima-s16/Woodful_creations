@@ -9,6 +9,7 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0051"
 down_revision = "0050"
@@ -17,8 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("products") as batch_op:
-        batch_op.add_column(sa.Column("gst_percent", sa.Numeric(5, 2), nullable=True, server_default="18"))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "products", sa.Column("gst_percent", sa.Numeric(5, 2), nullable=True, server_default="18"))
 
 
 def downgrade() -> None:

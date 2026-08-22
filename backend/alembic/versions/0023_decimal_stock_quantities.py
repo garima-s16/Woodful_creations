@@ -19,6 +19,7 @@ Create Date: 2026-08-15
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import column_is_integer_type
 
 revision = "0023"
 down_revision = "0022"
@@ -33,22 +34,29 @@ NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
 }
 
+# (table, [column names]) - each table's columns are altered together
+# in one batch op, same grouping as the original migration.
+_TARGETS = [
+    ("materials", ["opening_stock", "total_purchased", "total_issued", "current_stock", "minimum_stock"]),
+    ("stock_transfers", ["quantity"]),
+    ("stock_adjustments", ["quantity_delta", "stock_before", "stock_after"]),
+]
+
 
 def upgrade() -> None:
-    with op.batch_alter_table("materials", naming_convention=NAMING_CONVENTION) as batch_op:
-        batch_op.alter_column("opening_stock", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("total_purchased", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("total_issued", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("current_stock", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("minimum_stock", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-
-    with op.batch_alter_table("stock_transfers", naming_convention=NAMING_CONVENTION) as batch_op:
-        batch_op.alter_column("quantity", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-
-    with op.batch_alter_table("stock_adjustments", naming_convention=NAMING_CONVENTION) as batch_op:
-        batch_op.alter_column("quantity_delta", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("stock_before", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
-        batch_op.alter_column("stock_after", type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
+    bind = op.get_bind()
+    for table, columns in _TARGETS:
+        # Only alter columns that are genuinely still Integer - skips
+        # a column already converted (e.g. a database built via
+        # create_all() against current models, which already declares
+        # these as Numeric) rather than blindly re-asserting
+        # existing_type=Integer for a column that isn't Integer anymore.
+        still_integer = [c for c in columns if column_is_integer_type(bind, table, c)]
+        if not still_integer:
+            continue
+        with op.batch_alter_table(table, naming_convention=NAMING_CONVENTION) as batch_op:
+            for column in still_integer:
+                batch_op.alter_column(column, type_=sa.Numeric(12, 2), existing_type=sa.Integer(), existing_nullable=False)
 
 
 def downgrade() -> None:
