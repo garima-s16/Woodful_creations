@@ -590,8 +590,6 @@ def seed_product_materials(db, products, materials):
     """Bill-of-materials links - which real seeded Materials a Product
     actually consumes, tying the Product Master into the existing
     Material Stock Master (not just a flat cost estimate)."""
-    if db.query(ProductMaterial).count() > 0:
-        return
     rows = [
         # product_code, material_code, quantity_required, unit
         ("PRD-003", "MAT-002", 3, "Sheets"),   # Wardrobe - BWP Plywood
@@ -605,17 +603,22 @@ def seed_product_materials(db, products, materials):
         ("PRD-007", "MAT-007", 6, "Sets"),     # Custom Modular Kitchen - Telescopic Channels
         ("PRD-008", "MAT-003", 2, "Sheets"),   # Custom CNC Wall Panel - MDF
     ]
+    existing_pairs = {
+        (pm.product_id, pm.material_id) for pm in db.query(ProductMaterial.product_id, ProductMaterial.material_id).all()
+    }
     count = 0
     for prod_code, mat_code, qty, unit in rows:
         product = products.get(prod_code)
         material = materials.get(mat_code)
         if not product or not material:
             continue
+        if (product.id, material.id) in existing_pairs:
+            continue
         db.add(ProductMaterial(product_id=product.id, material_id=material.id,
                                 quantity_required=Decimal(str(qty)), unit=unit))
         count += 1
     db.commit()
-    logger.info("Seeded %d product-material BOM links", count)
+    logger.info("Product-material BOM links: created %d", count)
 
 
 def seed_estimate_line_items(db, estimates, products):
@@ -1079,8 +1082,6 @@ def seed_salary_slips(db, employees):
     same way the real create_salary_slip endpoint does (sum of
     earnings minus sum of deductions), verified by hand before being
     written here, not just eyeballed."""
-    if db.query(SalarySlip).count() > 0:
-        return
     rows = [
         # code, month, year, working_days, paid_days, basic, da, hra, overtime,
         # pf, tds, other_deductions, status
@@ -1091,10 +1092,15 @@ def seed_salary_slips(db, employees):
         ("EMP-004", "June", "2026", 26, 26, 11000, 0, 6500, 1000, 1320, 500, 200, "finalized"),
         ("EMP-006", "June", "2026", 26, 26, 7000, 0, 3000, 0, 0, 0, 200, "draft"),
     ]
+    existing_keys = {
+        (s.employee_id, s.month, s.year) for s in db.query(SalarySlip.employee_id, SalarySlip.month, SalarySlip.year).all()
+    }
     count = 0
     for code, month, year, wd, pd, basic, da, hra, ot, pf, tds, other, status in rows:
         employee = employees.get(code)
         if not employee:
+            continue
+        if (employee.id, month, year) in existing_keys:
             continue
         net_salary = Decimal(str(basic + da + hra + ot - pf - tds - other))
         slip = SalarySlip(
@@ -1109,7 +1115,7 @@ def seed_salary_slips(db, employees):
         db.add(slip)
         count += 1
     db.commit()
-    logger.info("Seeded %d salary slips", count)
+    logger.info("Salary slips: created %d", count)
 
 
 def seed_leaves(db, employees):
@@ -1117,18 +1123,21 @@ def seed_leaves(db, employees):
     by seed_salary_slips, so the salary slip PDF's Leave Balance field
     has real, non-empty data to demonstrate rather than always showing
     "no leave taken"."""
-    if db.query(Leave).count() > 0:
-        return
     rows = [
         # code, leave_type, start_date, end_date, days, reason
         ("EMP-001", "SL", "2026-05-12", "2026-05-13", 2, "Fever"),
         ("EMP-001", "CL", "2026-06-20", "2026-06-20", 1, "Personal work"),
         ("EMP-004", "PL", "2026-05-08", "2026-05-08", 1, "Family function"),
     ]
+    existing_keys = {
+        (l.employee_id, l.leave_type, l.start_date) for l in db.query(Leave.employee_id, Leave.leave_type, Leave.start_date).all()
+    }
     count = 0
     for code, leave_type, start, end, days, reason in rows:
         employee = employees.get(code)
         if not employee:
+            continue
+        if (employee.id, leave_type, _d(start)) in existing_keys:
             continue
         db.add(Leave(
             employee_id=employee.id, leave_type=leave_type, start_date=_d(start), end_date=_d(end),
@@ -1137,12 +1146,10 @@ def seed_leaves(db, employees):
         ))
         count += 1
     db.commit()
-    logger.info("Seeded %d leave records", count)
+    logger.info("Leave records: created %d", count)
 
 
 def seed_attendance(db, employees):
-    if db.query(Attendance).count() > 0:
-        return
     rows = [
         ("2026-07-28", "EMP-001", "2026-07-28 09:00", "2026-07-28 18:30", "Present", None),
         ("2026-07-28", "EMP-002", "2026-07-28 09:10", "2026-07-28 18:15", "Present", None),
@@ -1152,18 +1159,25 @@ def seed_attendance(db, employees):
         ("2026-07-27", "EMP-004", None, None, "Absent", None),
         ("2026-07-28", "EMP-006", "2026-07-28 09:00", "2026-07-28 13:00", "Half Day", "Half day - personal work"),
     ]
+    existing_keys = {
+        (a.employee_id, a.date) for a in db.query(Attendance.employee_id, Attendance.date).all()
+    }
+    count = 0
     for adate, emp_code, in_t, out_t, status, remarks in rows:
-        db.add(Attendance(date=_d(adate), employee_id=employees[emp_code].id,
+        employee = employees[emp_code]
+        if (employee.id, _d(adate)) in existing_keys:
+            continue
+        db.add(Attendance(date=_d(adate), employee_id=employee.id,
                            in_time=_dt(in_t) if in_t else None, out_time=_dt(out_t) if out_t else None,
                            standard_hours=Decimal("8"), attendance_status=status, remarks=remarks,
                            business_id=generate_business_id(db)))
+        count += 1
     db.commit()
-    logger.info("Seeded %d attendance records", len(rows))
+    logger.info("Attendance records: created %d", count)
 
 
 def seed_daily_tasks(db, employees, orders):
-    if db.query(DailyTask).count() > 0:
-        return {t.task_code: t for t in db.query(DailyTask).all()}
+    out = {t.task_code: t for t in db.query(DailyTask).all()}
     rows = [
         ("TSK-001", "2026-07-28", "EMP-001", "WC-2026-002", "Cut base cabinet panels", "Urgent", "09:00", "12:00", "DONE", 100, None),
         ("TSK-002", "2026-07-28", "EMP-003", "WC-2026-001", "Edge band wardrobe shutters", "High", "09:30", "13:30", "DOING", 65, None),
@@ -1184,8 +1198,9 @@ def seed_daily_tasks(db, employees, orders):
         ("TSK-019", "2026-08-03", "EMP-001", "WC-2026-006", "Cut dining table + coffee table panels", "Medium", "09:00", "15:00", "DOING", 35, None),
         ("TSK-020", "2026-07-18", "EMP-001", "WC-2026-008", "Cut wardrobe panels", "Medium", "09:00", "16:00", "DOING", 20, None),
     ]
-    out = {}
     for code, tdate, emp_code, order_code, desc, priority, start, end, status, completion, delay in rows:
+        if code in out:
+            continue
         t = DailyTask(task_code=code, date=_d(tdate), employee_id=employees[emp_code].id,
                        order_id=orders[order_code].id, task_description=desc, priority=priority,
                        planned_start=_t(start), planned_end=_t(end), status=status,
@@ -1196,87 +1211,107 @@ def seed_daily_tasks(db, employees, orders):
     db.commit()
 
     # Handoff chain - Measure -> Drawing -> Cutting, same order, each
-    # linked to the one before it via previous_task_id.
-    measure = DailyTask(
-        task_code="TSK-013", date=_d("2026-07-20"), employee_id=employees["EMP-005"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Measure wardrobe opening",
-        priority="High", status="DONE", completion_percent=100, created_by="nikhil@woodfulcreations.com",
-        business_id=generate_business_id(db),
-    )
-    db.add(measure)
-    db.commit()
-    drawing = DailyTask(
-        task_code="TSK-014", date=_d("2026-07-21"), employee_id=employees["EMP-004"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Prepare cutting drawing",
-        priority="High", status="DONE", completion_percent=100, created_by="nikhil@woodfulcreations.com",
-        previous_task_id=measure.id, business_id=generate_business_id(db),
-    )
-    db.add(drawing)
-    db.commit()
-    cutting = DailyTask(
-        task_code="TSK-015", date=_d("2026-07-22"), employee_id=employees["EMP-001"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Cut plywood for wardrobe",
-        priority="High", status="DOING", completion_percent=40, created_by="nikhil@woodfulcreations.com",
-        previous_task_id=drawing.id, business_id=generate_business_id(db),
-    )
-    db.add(cutting)
-    out["TSK-013"] = measure
-    out["TSK-014"] = drawing
-    out["TSK-015"] = cutting
+    # linked to the one before it via previous_task_id. Each step
+    # checks task_code individually so a partial prior run (e.g. only
+    # TSK-013 got created before an interruption) resumes correctly -
+    # TSK-014 still needs measure.id, whether measure was just created
+    # above or already existed from before.
+    measure = out.get("TSK-013")
+    if not measure:
+        measure = DailyTask(
+            task_code="TSK-013", date=_d("2026-07-20"), employee_id=employees["EMP-005"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Measure wardrobe opening",
+            priority="High", status="DONE", completion_percent=100, created_by="nikhil@woodfulcreations.com",
+            business_id=generate_business_id(db),
+        )
+        db.add(measure)
+        db.commit()
+        out["TSK-013"] = measure
 
-    # Subtasks under a parent "Wardrobe" task.
-    parent = DailyTask(
-        task_code="TSK-016", date=_d("2026-07-25"), employee_id=employees["EMP-001"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Wardrobe - full build",
-        priority="High", status="DOING", completion_percent=30, created_by="nikhil@woodfulcreations.com",
-        business_id=generate_business_id(db),
-    )
-    db.add(parent)
-    db.commit()
-    sub1 = DailyTask(
-        task_code="TSK-017", date=_d("2026-07-26"), employee_id=employees["EMP-002"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Assembly", priority="Medium",
-        status="TO DO", completion_percent=0, created_by="nikhil@woodfulcreations.com",
-        parent_task_id=parent.id, business_id=generate_business_id(db),
-    )
-    sub2 = DailyTask(
-        task_code="TSK-018", date=_d("2026-07-27"), employee_id=employees["EMP-005"].id,
-        order_id=orders["WC-2026-001"].id, task_description="Installation", priority="Medium",
-        status="TO DO", completion_percent=0, created_by="nikhil@woodfulcreations.com",
-        parent_task_id=parent.id, business_id=generate_business_id(db),
-    )
-    db.add_all([sub1, sub2])
-    out["TSK-016"] = parent
-    out["TSK-017"] = sub1
-    out["TSK-018"] = sub2
+    drawing = out.get("TSK-014")
+    if not drawing:
+        drawing = DailyTask(
+            task_code="TSK-014", date=_d("2026-07-21"), employee_id=employees["EMP-004"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Prepare cutting drawing",
+            priority="High", status="DONE", completion_percent=100, created_by="nikhil@woodfulcreations.com",
+            previous_task_id=measure.id, business_id=generate_business_id(db),
+        )
+        db.add(drawing)
+        db.commit()
+        out["TSK-014"] = drawing
+
+    cutting = out.get("TSK-015")
+    if not cutting:
+        cutting = DailyTask(
+            task_code="TSK-015", date=_d("2026-07-22"), employee_id=employees["EMP-001"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Cut plywood for wardrobe",
+            priority="High", status="DOING", completion_percent=40, created_by="nikhil@woodfulcreations.com",
+            previous_task_id=drawing.id, business_id=generate_business_id(db),
+        )
+        db.add(cutting)
+        db.commit()
+        out["TSK-015"] = cutting
+
+    # Subtasks under a parent "Wardrobe" task - same per-code check.
+    parent = out.get("TSK-016")
+    if not parent:
+        parent = DailyTask(
+            task_code="TSK-016", date=_d("2026-07-25"), employee_id=employees["EMP-001"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Wardrobe - full build",
+            priority="High", status="DOING", completion_percent=30, created_by="nikhil@woodfulcreations.com",
+            business_id=generate_business_id(db),
+        )
+        db.add(parent)
+        db.commit()
+        out["TSK-016"] = parent
+
+    if "TSK-017" not in out:
+        sub1 = DailyTask(
+            task_code="TSK-017", date=_d("2026-07-26"), employee_id=employees["EMP-002"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Assembly", priority="Medium",
+            status="TO DO", completion_percent=0, created_by="nikhil@woodfulcreations.com",
+            parent_task_id=parent.id, business_id=generate_business_id(db),
+        )
+        db.add(sub1)
+        out["TSK-017"] = sub1
+    if "TSK-018" not in out:
+        sub2 = DailyTask(
+            task_code="TSK-018", date=_d("2026-07-27"), employee_id=employees["EMP-005"].id,
+            order_id=orders["WC-2026-001"].id, task_description="Installation", priority="Medium",
+            status="TO DO", completion_percent=0, created_by="nikhil@woodfulcreations.com",
+            parent_task_id=parent.id, business_id=generate_business_id(db),
+        )
+        db.add(sub2)
+        out["TSK-018"] = sub2
     db.commit()
 
-    logger.info("Seeded %d daily tasks", len(out))
+    logger.info("Daily tasks: total %d in dict (created + pre-existing)", len(out))
     return out
 
 
 def seed_task_comments(db, tasks):
-    if db.query(TaskComment).count() > 0:
-        return
     rows = [
         ("TSK-002", "Pankaj", "Started edge banding, laminate quality is good."),
         ("TSK-011", "Madan", "Laminate received. Ready for cutting."),
         ("TSK-015", "Pankaj", "Cutting in progress, on schedule for tomorrow."),
     ]
+    existing_keys = {
+        (c.task_id, c.author, c.text) for c in db.query(TaskComment.task_id, TaskComment.author, TaskComment.text).all()
+    }
     count = 0
     for code, author, text in rows:
         task = tasks.get(code)
         if not task:
             continue
+        if (task.id, author, text) in existing_keys:
+            continue
         db.add(TaskComment(task_id=task.id, author=author, text=text, date=task.date))
         count += 1
     db.commit()
-    logger.info("Seeded %d task comments", count)
+    logger.info("Task comments: created %d", count)
 
 
 def seed_production_jobs(db, employees, orders, materials):
-    if db.query(ProductionJob).count() > 0:
-        return
     rows = [
         ("JOB-001", "2026-07-28", "CNC Router", "EMP-001", "WC-2026-002", "Panel cutting", "Cutting", "MAT-002", 18, 18, "09:00", "12:00", "Completed"),
         ("JOB-002", "2026-07-28", "Edge Bander", "EMP-003", "WC-2026-001", "Edge banding", "Edge Banding", "MAT-009", 32, 20, "09:30", "13:30", "In Progress"),
@@ -1285,15 +1320,20 @@ def seed_production_jobs(db, employees, orders, materials):
         ("JOB-005", "2026-07-29", "CNC Router", "EMP-001", "WC-2026-003", "3D roughing", "CNC / Drilling", "MAT-003", 4, 0, "09:00", "14:00", "Not Started"),
         ("JOB-006", "2026-07-29", "Panel Saw", "EMP-002", "WC-2026-002", "Strip cutting", "Cutting", "MAT-002", 15, 0, "09:00", "11:00", "Not Started"),
     ]
+    existing_codes = {j.job_code for j in db.query(ProductionJob.job_code).all()}
+    created = 0
     for code, jdate, machine, emp_code, order_code, op, stage, mat_code, planned, completed, start, end, status in rows:
+        if code in existing_codes:
+            continue
         db.add(ProductionJob(job_code=code, date=_d(jdate), machine=machine,
                               employee_id=employees[emp_code].id, order_id=orders[order_code].id,
                               operation=op, stage=stage, material_id=materials[mat_code].id,
                               planned_qty=planned, completed_qty=completed,
                               start_time=_t(start), end_time=_t(end), status=status,
                               business_id=generate_business_id(db)))
+        created += 1
     db.commit()
-    logger.info("Seeded %d production jobs", len(rows))
+    logger.info("Production jobs: created %d, existing %d", created, len(rows) - created)
 
 
 def seed_company_holidays(db):
@@ -1303,28 +1343,43 @@ def seed_company_holidays(db):
     so declaring them holidays genuinely reduces that month's working-day
     count. One special working day (a Sunday) is included too, to
     demonstrate the other side of the same model."""
-    if db.query(CompanyHoliday).count() > 0:
-        return
     rows = [
         ("2026-08-15", "Independence Day", False, None),
         ("2026-10-02", "Gandhi Jayanti", False, None),
         ("2026-08-09", "Special working Sunday - order backlog", True, "Declared working to catch up on pending orders"),
     ]
+    existing_dates = {h.date for h in db.query(CompanyHoliday.date).all()}
+    created = 0
     for hdate, name, is_working, remarks in rows:
+        if _d(hdate).date() in existing_dates:
+            continue
         db.add(CompanyHoliday(date=_d(hdate).date(), name=name, is_working=is_working, remarks=remarks))
+        created += 1
     db.commit()
-    logger.info("Seeded %d company holiday/calendar records", len(rows))
+    logger.info("Company holidays: created %d, existing %d", created, len(rows) - created)
 
 
 def seed_notifications(db, materials, orders, employees, tasks):
     """Grounded entirely in already-seeded real entities - a material
     genuinely at/below its minimum stock, an order with a genuinely
     unpaid balance, a real employee's real task - rather than invented
-    numbers that could drift out of sync with the actual seeded data."""
-    if db.query(Notification).count() > 0:
-        return
+    numbers that could drift out of sync with the actual seeded data.
+
+    Idempotent per notification: NotificationService.notify() itself
+    has no dedup logic, so each one is checked here first by its own
+    natural key (notification_type + the entity it's about) before
+    calling it - a re-run never produces duplicate notifications for
+    the same underlying event."""
+    def _exists(notification_type, related_entity_type, related_entity_id):
+        return db.query(Notification).filter(
+            Notification.notification_type == notification_type,
+            Notification.related_entity_type == related_entity_type,
+            Notification.related_entity_id == related_entity_id,
+        ).first() is not None
+
+    created = 0
     low_stock_material = materials.get("MAT-003")  # MDF 12mm, seeded at 0 stock against a minimum of 10
-    if low_stock_material:
+    if low_stock_material and not _exists("OUT_OF_STOCK", "material", low_stock_material.id):
         NotificationService.notify(
             db, notification_type="OUT_OF_STOCK", severity="CRITICAL",
             title=f"{low_stock_material.name} is out of stock",
@@ -1332,9 +1387,10 @@ def seed_notifications(db, materials, orders, employees, tasks):
             related_entity_type="material", related_entity_id=low_stock_material.id,
             action_path=f"/materials/{low_stock_material.id}",
         )
+        created += 1
 
     pending_order = orders.get("WC-2026-005")  # Showroom Display - zero payments received
-    if pending_order:
+    if pending_order and not _exists("PAYMENT_PENDING", "order", pending_order.id):
         NotificationService.notify(
             db, notification_type="PAYMENT_PENDING", severity="WARNING",
             title=f"No payment received yet for {pending_order.order_code}",
@@ -1342,9 +1398,10 @@ def seed_notifications(db, materials, orders, employees, tasks):
             related_entity_type="order", related_entity_id=pending_order.id,
             action_path=f"/orders/{pending_order.id}",
         )
+        created += 1
 
     urgent_order = orders.get("WC-2026-002")  # Modular Kitchen - marked Urgent priority in seed_orders
-    if urgent_order:
+    if urgent_order and not _exists("DELIVERY_UPCOMING", "order", urgent_order.id):
         NotificationService.notify(
             db, notification_type="DELIVERY_UPCOMING", severity="WARNING",
             title=f"{urgent_order.order_code} delivery approaching",
@@ -1352,10 +1409,11 @@ def seed_notifications(db, materials, orders, employees, tasks):
             related_entity_type="order", related_entity_id=urgent_order.id,
             action_path=f"/orders/{urgent_order.id}",
         )
+        created += 1
 
     emp_001 = employees.get("EMP-001")
     emp_001_task = next((t for t in tasks.values() if t.employee_id == emp_001.id), None) if emp_001 else None
-    if emp_001_task:
+    if emp_001_task and not _exists("TASK_ASSIGNED", "task", emp_001_task.id):
         NotificationService.notify(
             db, notification_type="TASK_ASSIGNED", severity="INFO",
             title=f"Task assigned: {emp_001_task.task_description}",
@@ -1363,7 +1421,8 @@ def seed_notifications(db, materials, orders, employees, tasks):
             related_entity_type="task", related_entity_id=emp_001_task.id,
             action_path=f"/daily-tasks/{emp_001_task.id}",
         )
-    logger.info("Seeded notifications")
+        created += 1
+    logger.info("Notifications: created %d", created)
 
 
 def _verify_schema_is_current():
