@@ -54,8 +54,9 @@ def _read_and_parse_upload(file: UploadFile):
 def _validate_rows(raw_rows, db: Session):
     """Runs the same validation + in-file duplicate detection /preview
     uses, returning (preview_rows, new_count, duplicate_count, error_count)."""
+    all_clients = db.query(Client).all()
     existing_by_key = {}
-    for c in db.query(Client).all():
+    for c in all_clients:
         existing_by_key[normalize_match_key(c.name, c.phone)] = c
 
     preview_rows = []
@@ -64,7 +65,7 @@ def _validate_rows(raw_rows, db: Session):
     error_count = 0
     seen_in_file = {}
     for idx, row in enumerate(raw_rows, start=1):
-        result, errors = validate_and_match_row(row, existing_by_key)
+        result, errors = validate_and_match_row(row, existing_by_key, fuzzy_candidates=all_clients)
         if not errors and not result["is_duplicate"]:
             match_key = normalize_match_key(result.get("name"), result.get("phone"))
             if match_key in seen_in_file:
@@ -174,10 +175,10 @@ def commit_import(data: ClientImportCommitRequest, request: Request, db: Session
                 code = generate_unique_code(db, Client, "client_code", "CL-")
                 client = Client(
                     client_code=code, business_id=generate_business_id(db),
-                    name=row.name, contact_person=row.contact_person, phone=row.phone,
+                    name=row.name, client_type=row.client_type, contact_person=row.contact_person, phone=row.phone,
                     alternate_phone=row.alternate_phone, email=row.email, address=row.address,
-                    site_address=row.site_address, city=row.city, gstin=row.gstin,
-                    lead_source=row.lead_source, remarks=row.remarks,
+                    site_address=row.site_address, city=row.city, state=row.state, pincode=row.pincode,
+                    gstin=row.gstin, lead_source=row.lead_source, remarks=row.remarks,
                 )
                 db.add(client)
                 try:

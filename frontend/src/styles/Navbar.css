@@ -40,7 +40,7 @@
   flex-shrink: 0;
 }
 
-.brand-logo-img { height: 100%; width: auto; display: block; filter: brightness(0) invert(1); }
+.brand-logo-img { height: 100%; width: auto; display: block; }
 
 .navbar-center {
   display: flex;

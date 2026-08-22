@@ -105,6 +105,32 @@ def parse_add_material_command(m: str) -> Optional[dict]:
         return None
     rest = m[4:]
 
+    # Critical guard: "add" is a generic verb this parser used to claim
+    # for ANY object, including ones that are a completely different
+    # entity type - "add client Ramesh 9812345670" was silently parsed
+    # as a material named "client Ramesh 9812345670" and proposed for
+    # creation, because nothing here ever checked what was actually
+    # being added. Bail out immediately for a message that's clearly
+    # about client/customer, supplier/vendor, or another entity this
+    # parser has no business touching - it falls through to that
+    # entity's own handler (or, for client - which has no chat-write
+    # path at all by design - to a normal conversational response)
+    # instead of being silently reinterpreted as a material.
+    other_entity_words = (
+        "client", "customer", "supplier", "vendor", "employee", "staff",
+        "estimate", "quotation", "order", "payment", "invoice",
+    )
+    filler_words = {"a", "an", "the", "new", "another"}
+    words = [w.lower().rstrip(".,!?") for w in rest.strip().split()]
+    # Skip leading filler ("add A NEW client..." must still be caught,
+    # not just "add client...") - checked within the first few real
+    # words, not the whole message, so a material description that
+    # merely mentions "order" or "supplier" somewhere later isn't
+    # wrongly blocked.
+    significant_leading_words = [w for w in words if w not in filler_words][:2]
+    if any(w in other_entity_words for w in significant_leading_words):
+        return None
+
     qty_match = re.match(r"(\d+(?:\.\d+)?)\s+(.*)", rest)
     if qty_match:
         quantity = float(qty_match.group(1))

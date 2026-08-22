@@ -75,20 +75,38 @@ CLIENT_CREATION_PHRASINGS = [
 
 
 def test_chatbot_cannot_create_client_master(client, test_user, db_session):
+    """Also verifies no OTHER entity gets silently created instead - a
+    real, shipped bug: "add client Ramesh 9812345670" was matched by
+    the material-add parser (which claimed any message starting with
+    "add ", with no check on what was actually being added) and
+    proposed creating a Material named "client Ramesh 9812345670".
+    Asserting only Client.count() stayed the same would NOT have
+    caught that regression, since the bug never touched the Client
+    table at all - it silently created a different kind of record."""
+    from app.models.material import Material
+
     _login(client, test_user)
-    before = db_session.query(Client).count()
+    before_clients = db_session.query(Client).count()
+    before_materials = db_session.query(Material).count()
     for message in CLIENT_CREATION_PHRASINGS:
         resp = client.post("/api/chat/", json={"message": message})
         assert resp.status_code == 200
         body = resp.json()
         # Whatever the chatbot said, it must never have proposed a
-        # client-creation action.
+        # client-creation action, NOR any other entity's create action -
+        # a client-creation request must resolve to CLIENT or nothing,
+        # never silently reinterpreted as a different entity type.
         if body.get("proposed_action"):
             assert body["proposed_action"]["action_type"] not in (
                 "create_client", "update_client", "delete_client", "merge_client",
-            )
-    after = db_session.query(Client).count()
-    assert after == before, "No chat message should ever result in a new Client row"
+                "create_material", "create_product", "create_supplier", "create_employee",
+            ), f"{message!r} wrongly proposed {body['proposed_action']['action_type']!r}"
+    after_clients = db_session.query(Client).count()
+    after_materials = db_session.query(Material).count()
+    assert after_clients == before_clients, "No chat message should ever result in a new Client row"
+    assert after_materials == before_materials, (
+        "A client-creation request must never result in a new Material row either"
+    )
 
 
 def test_chatbot_cannot_create_client_master_as_user_role(client, db_session):
@@ -117,3 +135,37 @@ def test_chatbot_can_still_read_client_order_history(client, test_user):
     resp = client.post("/api/chat/", json={"message": "chat read client order history"})
     assert resp.status_code == 200
     assert isinstance(resp.json().get("response"), str)
+
+
+def test_add_client_phrasing_never_parses_as_a_material_command():
+    """Dedicated regression test for the exact shipped bug: 'add client
+    Ramesh 9812345670' was matched by parse_add_material_command (which
+    claimed any message starting with "add ", with no check on the
+    object) and proposed creating a Material literally named
+    "client Ramesh 9812345670". Calls the parser function directly,
+    independent of the full chat pipeline, so this stays a precise,
+    fast unit test of the actual root cause rather than only an
+    end-to-end behavioral check."""
+    from app.services.chat_service import parse_add_material_command
+
+    should_be_none = [
+        "add client Ramesh 9812345670",
+        "add a new client Ramesh Kumar 9812345670 ramesh@example.com",
+        "add customer Priya 9812345671",
+        "add supplier ABC Traders",
+        "add an employee named Ravi",
+    ]
+    for message in should_be_none:
+        result = parse_add_material_command(message)
+        assert result is None, f"{message!r} should not parse as a material command, got {result!r}"
+
+    # Genuine material commands must still work - the fix must not be
+    # so broad it breaks the feature it's protecting.
+    should_still_parse = [
+        "add 5 hdhmr 18mm sheets to my purchase cart",
+        "add a new laminate sheet to my material list",
+        "add plywood",
+    ]
+    for message in should_still_parse:
+        result = parse_add_material_command(message)
+        assert result is not None, f"{message!r} should still parse as a material command"

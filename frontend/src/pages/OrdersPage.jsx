@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { ordersAPI, clientsAPI, reportsAPI } from '../utils/api';
-import LineItemEditor, { emptyRow } from '../components/LineItemEditor';
+import LineItemEditor, { emptyRow, quantityViolatesWholeUnitRule } from '../components/LineItemEditor';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -88,6 +88,11 @@ function OrdersPage() {
   const handleCreate = async (formData) => {
     if (!selectedClientId) {
       setError('Please select a client first.');
+      return;
+    }
+    const invalidRow = orderLineItems.find((row) => row.description.trim() && quantityViolatesWholeUnitRule(row.quantity, row.unit));
+    if (invalidRow) {
+      setError(`"${invalidRow.description}" - ${invalidRow.unit} must be a whole number, not a fractional quantity.`);
       return;
     }
     setLoading(true);
@@ -247,7 +252,7 @@ function OrdersPage() {
           onPageChange={goToPage}
         />
       )}
-      <Modal isOpen={showAdd} title="New Order" onClose={() => { setShowAdd(false); setSelectedClientId(''); }}>
+      <Modal isOpen={showAdd} title="New Order" size="wide" onClose={() => { setShowAdd(false); setSelectedClientId(''); setOrderLineItems([emptyRow()]); }}>
         <div className="form-group">
           <label className="form-label">Client *</label>
           <select className="form-input" value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>

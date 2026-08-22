@@ -4,10 +4,23 @@ from datetime import datetime
 
 from app.utils.validators import validate_phone, validate_email
 
+# Family 103 section 9: controlled Client Type list, shared verbatim by the
+# UI dropdown, the Excel dropdown/validation, and the importer - never an
+# Excel-only or UI-only list.
+CLIENT_TYPES = ("Individual", "Business")
+
 
 class ClientBase(BaseModel):
     client_code: Optional[str] = None  # server-generated on create, ignored if supplied
     name: str
+    # Mandatory in the Client form and Excel importer (Family 103 section 9),
+    # which both always supply it and never let a user skip past it. A
+    # default is still kept here (rather than making this field itself
+    # required with no default) so existing integrations/tests created
+    # before this field existed keep working instead of failing with a
+    # hard 422 - the same accommodation already made for other additive
+    # fields on this model. Any value that IS supplied is still validated.
+    client_type: str = "Individual"
     contact_person: Optional[str] = None
     alternate_phone: Optional[str] = None
     # Mandatory (Client Master section 3) - a confirmed demo-testing
@@ -20,11 +33,21 @@ class ClientBase(BaseModel):
     address: Optional[str] = None
     site_address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
     gstin: Optional[str] = None
     status: str = "Active"
     lead_source: Optional[str] = None
     first_contact_date: Optional[datetime] = None
     remarks: Optional[str] = None
+
+    @field_validator("client_type")
+    @classmethod
+    def client_type_must_be_valid(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v not in CLIENT_TYPES:
+            raise ValueError(f"Client Type must be one of: {', '.join(CLIENT_TYPES)}")
+        return v
 
     @field_validator("phone")
     @classmethod
@@ -55,6 +78,7 @@ class ClientCreate(ClientBase):
 
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
+    client_type: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     alternate_phone: Optional[str] = None
@@ -62,10 +86,22 @@ class ClientUpdate(BaseModel):
     address: Optional[str] = None
     site_address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
     gstin: Optional[str] = None
     status: Optional[str] = None
     lead_source: Optional[str] = None
     remarks: Optional[str] = None
+
+    @field_validator("client_type")
+    @classmethod
+    def client_type_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if v not in CLIENT_TYPES:
+            raise ValueError(f"Client Type must be one of: {', '.join(CLIENT_TYPES)}")
+        return v
 
     @field_validator("phone")
     @classmethod

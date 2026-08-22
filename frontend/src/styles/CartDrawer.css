@@ -44,7 +44,18 @@
   display: flex; align-items: center; gap: 8px; justify-self: end;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden;
 }
-.cart-drawer-item-qty button { background: var(--color-ivory-dim); border: none; width: 24px; height: 26px; font-size: 0.9rem; }
+/* Was only theming the background - the +/- glyphs inherited the page's
+   light --text-primary from body, landing light text on this same light
+   ivory fill (invisible). Text color needed pairing explicitly, same as
+   any other light-fill control in the app (e.g. .btn-submit uses
+   --color-ink on a gold fill). */
+.cart-drawer-item-qty button {
+  background: var(--color-ivory-dim); color: var(--color-ink); border: none;
+  width: 24px; height: 26px; font-size: 0.9rem; cursor: pointer;
+  transition: background-color var(--transition);
+}
+.cart-drawer-item-qty button:hover:not(:disabled) { background: var(--color-tan); }
+.cart-drawer-item-qty button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 .cart-drawer-item-qty span { min-width: 18px; text-align: center; font-size: 0.82rem; font-weight: 600; }
 .cart-drawer-item-value { font-size: 0.82rem; color: var(--text-secondary); grid-column: 1; }
 .cart-drawer-item-actions { grid-column: 2; display: flex; align-items: center; gap: 10px; justify-self: end; }

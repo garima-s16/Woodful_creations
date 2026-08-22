@@ -21,7 +21,7 @@ from app.models.payment import Payment
 from app.models.leave import Leave
 from app.utils.document_style import (
     format_inr, get_styles, build_header, section_table, line_items_table, build_footer_text,
-    INK, GOLD, BORDER, IVORY, TEXT_SECONDARY, LOGO_PATH, pdf_text,
+    INK, GOLD, BORDER, IVORY, TEXT_SECONDARY, LOGO_PATH, LOGO_ASPECT, pdf_text, _contact_block,
 )
 
 
@@ -37,21 +37,58 @@ def generate_order_estimate_pdf(order: Order) -> BytesIO:
     elements = build_header("ORDER SUMMARY", order.order_code, _fmt_date(order.order_date), order.business_id)
 
     client_name = order.client.name if order.client else "-"
-    client_phone = order.client.phone if order.client else "-"
+    client_id_display = f"{client_name} ({order.client.client_code})" if order.client and order.client.client_code else client_name
+    client_phone = _mask_phone(order.client.phone) if order.client else "-"
     client_address = order.site_address or (order.client.address if order.client else "-")
+    # Source Estimate where applicable (spec's own explicit requirement) -
+    # a direct order genuinely has none, and that's shown plainly as
+    # "Direct Order" rather than a blank/missing field.
+    source_line = ("SOURCE ESTIMATE", order.source_estimate_code) if order.source_estimate_code else ("SOURCE", "Direct Order")
 
     elements.append(section_table(
-        [[("CLIENT", client_name), ("PHONE", client_phone)],
+        [[("CLIENT", client_id_display), ("PHONE", client_phone)],
          [("PROJECT TYPE", order.project_type or "-"), ("DELIVERY DATE", _fmt_date(order.delivery_date))],
-         [("SITE ADDRESS", client_address), ("STATUS", f"{order.project_status} ({order.progress_percent}% complete)")]],
+         [("SITE ADDRESS", client_address), ("STATUS", f"{order.project_status} ({order.progress_percent}% complete)")],
+         [source_line, ("PAYMENT", order.payment_status)]],
         [3.5 * inch, 3.5 * inch],
     ))
     elements.append(Spacer(1, 14))
 
+    if order.items:
+        item_rows = [
+            [Paragraph(pdf_text(f"{item.product_code} - {item.description}" if item.product_id else item.description), styles["table_cell"]),
+             item.category or "-", f"{float(item.quantity):g}", item.unit or "-",
+             format_inr(item.rate), format_inr(item.amount)]
+            for item in order.items
+        ]
+        subtotal = order.items_subtotal
+        totals_rows = [["Subtotal", "", "", "", "", format_inr(subtotal)]]
+        if order.discount:
+            totals_rows.append(["Discount", "", "", "", "", f"-{format_inr(order.discount)}"])
+        totals_rows.append([f"GST ({float(order.tax_percent)}%)", "", "", "", "", format_inr(order.tax_amount)])
+        totals_rows.append(["Grand Total", "", "", "", "", format_inr(order.order_value)])
+        elements.append(line_items_table(
+            ["Description", "Category", "Qty", "Unit", "Rate", "Amount"],
+            item_rows,
+            [2.1 * inch, 0.85 * inch, 0.55 * inch, 0.65 * inch, 1.2 * inch, 1.65 * inch],
+            totals_rows=totals_rows,
+        ))
+    else:
+        # Legacy fallback for an order created before line items existed
+        # (a bare order_value with no itemized scope) - still identifies
+        # this honestly as "no itemized scope recorded" rather than
+        # silently showing nothing.
+        elements.append(line_items_table(
+            ["Description", "Amount"],
+            [["Order Value (no itemized scope on record)", format_inr(order.order_value)]],
+            [5 * inch, 2 * inch],
+            totals_rows=[["Grand Total", format_inr(order.order_value)]],
+        ))
+
+    elements.append(Spacer(1, 14))
     elements.append(line_items_table(
-        ["Description", "Amount"],
+        ["Payment Summary", "Amount"],
         [
-            ["Order Value", format_inr(order.order_value)],
             ["Advance Received", format_inr(order.advance)],
             ["Other Received", format_inr(order.other_received)],
         ],
@@ -82,7 +119,8 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
     elements = build_header("ESTIMATE", estimate.estimate_code, _fmt_date(estimate.created_at), estimate.business_id)
 
     client_name = estimate.client.name if estimate.client else "-"
-    client_phone = estimate.client.phone if estimate.client else "-"
+    client_id_display = f"{client_name} ({estimate.client.client_code})" if estimate.client and estimate.client.client_code else client_name
+    client_phone = _mask_phone(estimate.client.phone) if estimate.client else "-"
     client_address = estimate.client.address if estimate.client else "-"
 
     # Only surface version info when this is genuinely part of a
@@ -92,16 +130,17 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
     row2_right = ("VERSION", f"v{estimate.version}") if is_revision else ("SCOPE", estimate.description or "-")
 
     elements.append(section_table(
-        [[("CLIENT", client_name), ("PHONE", client_phone)],
-         [("VALID UNTIL", _fmt_date(estimate.valid_until)), row2_right],
+        [[("CLIENT", client_id_display), ("PHONE", client_phone)],
+         [("VALID UNTIL *", _fmt_date(estimate.valid_until)), row2_right],
          [("ADDRESS", client_address), ("SCOPE", estimate.description or "-") if is_revision else ("STATUS", estimate.status.title())]],
         [3.5 * inch, 3.5 * inch],
+        title="CLIENT & ESTIMATE DETAILS",
     ))
     elements.append(Spacer(1, 14))
 
     if estimate.line_items:
         item_rows = [
-            [(f"{item.product_code} - {item.description}" if item.product_id else item.description),
+            [Paragraph(pdf_text(f"{item.product_code} - {item.description}" if item.product_id else item.description), styles["table_cell"]),
              item.category or "-", f"{float(item.quantity):g}", item.unit or "-",
              format_inr(item.rate), format_inr(item.amount)]
             for item in estimate.line_items
@@ -114,7 +153,7 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
         elements.append(line_items_table(
             ["Description", "Category", "Qty", "Unit", "Rate", "Amount"],
             item_rows,
-            [1.8 * inch, 1.1 * inch, 0.6 * inch, 0.7 * inch, 1.1 * inch, 1.7 * inch],
+            [2.1 * inch, 0.85 * inch, 0.55 * inch, 0.65 * inch, 1.2 * inch, 1.65 * inch],
             totals_rows=totals_rows,
         ))
     else:
@@ -131,16 +170,16 @@ def generate_estimate_pdf(estimate: Estimate) -> BytesIO:
             totals_rows=[["Total Estimate Value", format_inr(estimate.total_cost)]],
         ))
 
-    elements.append(Spacer(1, 14))
-    elements.append(Paragraph(
-        '<font color="#70685D" size="8">PAYMENT TERMS</font><br/>'
-        "As per agreed schedule. This estimate is valid until the date above; "
-        "prices may change after expiry.",
-        styles["body"],
-    ))
     if estimate.remarks:
-        elements.append(Spacer(1, 10))
+        elements.append(Spacer(1, 14))
         elements.append(Paragraph(f'<font color="#70685D" size="8">REMARKS</font><br/>{pdf_text(estimate.remarks)}', styles["body"]))
+
+    elements.append(Spacer(1, 18))
+    elements.append(Paragraph(
+        '* As per agreed schedule. This estimate is valid until the date marked above; '
+        'prices may change after expiry.',
+        ParagraphStyle("TermsNote", parent=styles["body_secondary"], alignment=TA_LEFT),
+    ))
 
     elements.append(Spacer(1, 24))
     elements.append(Paragraph(build_footer_text(), styles["footer"]))
@@ -163,9 +202,9 @@ def generate_client_pdf(client: Client) -> BytesIO:
     styles = get_styles()
     elements = build_header("CLIENT PROFILE", client.client_code, datetime.utcnow().strftime("%d %b %Y"), client.business_id)
 
-    contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("PHONE", client.phone)]
+    contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("PHONE", _mask_phone(client.phone))]
     if client.alternate_phone:
-        contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("ALTERNATE PHONE", client.alternate_phone)]
+        contact_row = [("CONTACT PERSON", client.contact_person or "-"), ("ALTERNATE PHONE", _mask_phone(client.alternate_phone))]
     elements.append(section_table(
         [contact_row,
          [("EMAIL", client.email or "-"), ("CITY", client.city or "-")],
@@ -271,6 +310,23 @@ def _mask(value, keep_last=4):
     return "X" * (len(value) - keep_last) + value[-keep_last:]
 
 
+def _mask_phone(value):
+    """98XXXXXX10 style masking for client phone numbers on
+    customer-facing PDFs - first 2 and last 2 digits visible, middle
+    masked. A different convention from _mask() above (which shows only
+    a tail) - phone numbers use this head+tail pattern specifically per
+    the approved Woodful privacy requirement. The complete number
+    always remains in the database and visible to authorized users
+    inside the application; this only affects what's printed on a
+    document that could leave the building."""
+    if not value:
+        return "-"
+    value = str(value)
+    if len(value) <= 4:
+        return "X" * len(value)
+    return value[:2] + "X" * (len(value) - 4) + value[-2:]
+
+
 def _leave_summary(db: Session, employee_id: int, year: str):
     """Days used per leave type this calendar year, from real Approved
     Leave records - this system tracks individual leave requests, not
@@ -304,18 +360,29 @@ def generate_salary_slip_pdf(slip: SalarySlip, db: Session) -> BytesIO:
     employee_name = employee.name if employee else "-"
     employee_code = employee.employee_code if employee else "-"
 
-    # Header: logo top-left only - no fabricated contact/location block,
-    # matching the requirement not to carry over the reference
-    # company's own contact/branding details.
+    # Header: logo top-left, Woodful contact details top-right -
+    # matching the approved Woodful visual template. Logo size and the
+    # contact block (all four lines with icons, including the phone
+    # line - the reference's own masked placeholder, reproduced
+    # verbatim) were corrected against the actual reference; see the
+    # detailed rationale on build_header() in document_style.py, which
+    # this duplicates rather than calls because the payslip's title
+    # block (Payslip / MAY 2026 / Employee Name bar) has a different
+    # shape than every other document's title+reference/date row.
     if os.path.exists(LOGO_PATH):
-        logo = Image(LOGO_PATH, width=1.3 * inch, height=1.3 * inch * (609 / 2435))
+        logo = Image(LOGO_PATH, width=2.7 * inch, height=2.7 * inch * LOGO_ASPECT)
         logo.hAlign = "LEFT"
     else:
         logo = Paragraph("WOODFUL CREATIONS", styles["doc_title"])
-    elements.append(logo)
+    top_row = Table([[logo, _contact_block()]], colWidths=[4 * inch, 3.4 * inch])
+    top_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(top_row)
     elements.append(Spacer(1, 4))
-    elements.append(Table([[""]], colWidths=[7.4 * inch], rowHeights=[1.2],
-                           style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), GOLD)])))
+    elements.append(Table([[""]], colWidths=[7.4 * inch], rowHeights=[0.75],
+                           style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), INK)])))
     elements.append(Spacer(1, 6))
 
     title_style = ParagraphStyle("PayslipTitle", parent=styles["doc_title"], fontSize=20, spaceAfter=0, leading=24)
@@ -351,7 +418,7 @@ def generate_salary_slip_pdf(slip: SalarySlip, db: Session) -> BytesIO:
 
     def _field(label, value):
         return Paragraph(f'<font color="#70685D" size="8">{label}</font><br/>'
-                          f'<font color="#11110F" size="9.5">{pdf_text(value)}</font>', styles["body"])
+                          f'<font color="#3B1400" size="9.5">{pdf_text(value)}</font>', styles["body"])
 
     def _header_cell(text):
         return Paragraph(f'<font color="#FFFFFF" size="8.5"><b>{text}</b></font>', styles["body"])
@@ -490,7 +557,7 @@ def generate_salary_slip_pdf(slip: SalarySlip, db: Session) -> BytesIO:
     footer_row = Table(
         [[
             Paragraph(f"Payslip generated on: {timestamp}", sign_style_left),
-            Paragraph('<font color="#11110F" size="11"><b>Nikhil Soni</b></font><br/>'
+            Paragraph('<font color="#3B1400" size="11"><b>Nikhil Soni</b></font><br/>'
                       '<font color="#70685D" size="9">Chief Executive Officer</font><br/>'
                       '<font color="#70685D" size="9">Woodful Creations</font>', sign_style_right),
         ]],
@@ -521,11 +588,12 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
     elements = build_header("INVOICE", order.order_code, datetime.utcnow().strftime("%d %b %Y"), order.business_id)
 
     client_name = order.client.name if order.client else "-"
-    client_phone = order.client.phone if order.client else "-"
+    client_id_display = f"{client_name} ({order.client.client_code})" if order.client and order.client.client_code else client_name
+    client_phone = _mask_phone(order.client.phone) if order.client else "-"
     client_address = order.site_address or (order.client.address if order.client else "-")
 
     elements.append(section_table(
-        [[("CLIENT", client_name), ("PHONE", client_phone)],
+        [[("CLIENT", client_id_display), ("PHONE", client_phone)],
          [("ADDRESS", client_address), ("PROJECT", order.project_type or "-")]],
         [3.5 * inch, 3.5 * inch],
     ))
@@ -533,7 +601,7 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
 
     if order.items:
         item_rows = [
-            [(f"{item.product_code} - {item.description}" if item.product_id else item.description),
+            [Paragraph(pdf_text(f"{item.product_code} - {item.description}" if item.product_id else item.description), styles["table_cell"]),
              f"{float(item.quantity):g}", item.unit or "-", format_inr(item.rate), format_inr(item.amount)]
             for item in order.items
         ]
@@ -548,7 +616,7 @@ def generate_invoice_pdf(order: Order, payments: list[Payment]) -> BytesIO:
         elements.append(line_items_table(
             ["Description", "Qty", "Unit", "Rate", "Amount"],
             item_rows,
-            [2.6 * inch, 0.7 * inch, 0.9 * inch, 1.3 * inch, 1.5 * inch],
+            [2.85 * inch, 0.65 * inch, 0.85 * inch, 1.2 * inch, 1.45 * inch],
             totals_rows=totals_rows,
         ))
     else:

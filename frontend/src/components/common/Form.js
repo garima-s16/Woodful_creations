@@ -57,8 +57,13 @@ function FieldInput({ field, value, error, onChange, onBlur, formData }) {
 function FieldGroup({ field, formData, errors, handleChange, handleBlur }) {
   const label = field.getLabel ? field.getLabel(formData) : field.label;
   const hint = field.getHint ? field.getHint(formData) : field.hint;
+  // textarea/computed fields (long free text, or a derived readout) stay
+  // full-width even in the two-column grid below - everything else
+  // (text/number/date/select) is short enough to comfortably pair up
+  // with a neighbour on wide screens.
+  const isFullWidth = field.type === 'textarea' || field.type === 'computed' || field.fullWidth;
   return (
-    <div className="form-group">
+    <div className={`form-group${isFullWidth ? ' form-group--full' : ''}`}>
       <label htmlFor={field.name} className="form-label">
         {label} {field.required && <span className="required">*</span>}
       </label>

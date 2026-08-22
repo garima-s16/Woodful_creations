@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI, locationsAPI } from '../utils/api';
+import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI, locationsAPI, purchaseImportAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
@@ -111,6 +111,8 @@ function PurchasesPage() {
         </div>
         <div className="page-actions">
           <a className="btn-secondary" href={reportsAPI.downloadUrl('purchases.xlsx')} target="_blank" rel="noreferrer">Export</a>
+          {isPrivileged && <a className="btn-secondary" href={purchaseImportAPI.templateUrl}>Download Template</a>}
+          {isPrivileged && <button className="btn-secondary" onClick={() => navigate('/purchases/import')}>Import Excel</button>}
           {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Purchase</button>}
         </div>
       </div>

@@ -47,6 +47,10 @@ from app.models.product import Product, ProductMaterial
 from app.models.order_item import OrderItem
 from app.models.estimate_line_item import EstimateLineItem
 from app.utils.id_generator import generate_business_id
+from scripts.seed_master_catalog import (
+    seed_extended_materials, seed_extended_products,
+    seed_extended_product_materials, seed_extended_estimates_and_orders,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -90,7 +94,7 @@ WOODFUL_CLIENTS = [
     ("Sanket", "7864678341", "24 Saket Nagar, Indore, Madhya Pradesh - 452018"),
     ("Ishu", "7864678342", "70 Indrapuri, Mhow, Madhya Pradesh - 453441"),
     ("Ashu", "7864678343", "18 Vijay Nagar, Indore, Madhya Pradesh - 452010"),
-    ("Shrangi", "7009870098", "42 Scheme No. 54, Indore, Madhya Pradesh - 452010"),
+    ("Shrangi Soni", "7009870098", "42 Scheme No. 54, Indore, Madhya Pradesh - 452010"),
     ("Nimisha", "7864678345", "15 Nehru Nagar, Bhopal, Madhya Pradesh - 462003"),
     ("Siddharth", "7864678346", "31 Freeganj, Ujjain, Madhya Pradesh - 456001"),
     ("Priya", "7864678347", "56 Arera Colony, Bhopal, Madhya Pradesh - 462016"),
@@ -265,6 +269,11 @@ def seed_material_hierarchy(db):
         "Finishing": ["Adhesive", "Paint/PU"],
         "Edge Banding": ["Edge Band"],
         "Packaging & Consumables": ["Packaging", "Consumable"],
+        # Section 5's "LASER / DECOR MATERIALS" family (MDF/plywood/veneer
+        # laser sheets) - distinct from ordinary board goods since these
+        # are bought/stocked specifically for CNC/laser work, not general
+        # carcass construction.
+        "Laser & Decor Materials": ["Laser Sheet"],
     }
     existing_categories = {c.name: c for c in db.query(MaterialCategory).all()}
     out = {s.name: s for s in db.query(MaterialSubcategory).all()}
@@ -298,16 +307,26 @@ def seed_master_users(db):
     creation is skipped with a clear warning; the other person can
     still be created normally.
 
-    Idempotent and non-destructive: matched by email (the roster's own
-    stable identifier). An existing account is never modified, never
-    deleted, and never duplicated - just skipped, so this is always
+    Idempotent and non-destructive: matched by username OR email, not
+    email alone. Matching only on email missed the real-world case
+    that actually broke this - an existing row with the same username
+    (e.g. "garimas") but a different/older email address than what's
+    in WOODFUL_MASTER_USERS today, which passed the email-only check
+    right through to an INSERT and hit "UNIQUE constraint failed:
+    users.username". Checking both fields closes that gap. An existing
+    account is never modified, never deleted, and never duplicated -
+    just skipped - and one person already existing never stops the
+    next person in the list from being created, so this is always
     safe to re-run."""
+    from sqlalchemy import or_
     from app.core.security import hash_password
     from app.models.user import User
 
     for username, email, full_name, password_env_var in WOODFUL_MASTER_USERS:
         first_name = full_name.split()[0]
-        existing = db.query(User).filter(User.email == email).first()
+        existing = db.query(User).filter(
+            or_(User.username == username, User.email == email)
+        ).first()
         if existing:
             print(f"{first_name} already exists — skipping.")
             continue
@@ -640,6 +659,7 @@ def seed_estimate_line_items(db, estimates, products):
         ("EST-006", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("EST-007", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("EST-008", "Harbor 3-Seater Sofa", "Furniture", 1, "Nos", 48000, "PRD-001"),
+        ("EST-009", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
     ]
     # No natural unique key per line item - the correct idempotency
     # granularity is per PARENT estimate: has this specific estimate's
@@ -689,6 +709,9 @@ def seed_order_items(db, orders, products):
         ("WC-2026-006", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("WC-2026-007", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("WC-2026-008", "Everline 4-Door Wardrobe", "Furniture", 1, "Nos", 49000, "PRD-003"),
+        ("WC-2026-009", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
+        ("WC-2026-009", "Harbor 3-Seater Sofa", "Furniture", 1, "Nos", 48000, "PRD-001"),
+        ("WC-2026-009", "Delivery and installation", "Installation", 1, "Nos", 8000, "PRD-009"),
     ]
     # No natural unique key per line item - correct granularity is per
     # PARENT order: an order missing items (e.g. from an interrupted
@@ -730,18 +753,14 @@ def seed_clients(db):
         # lead with no estimate/order/payment yet at all - exercises the
         # "no orders yet" empty state rather than a decorative zero KPI.
         ("CL-007", "Pratharv", "9734567842", "pratharv@example.com", "Rajwada, Indore", "Instagram", "2026-08-15", "Enquired about dining furniture, awaiting site visit"),
-        # Client Recognition rule in action (the exact business rule from
-        # the Client Recognition Business Rule doc): this is a
-        # DIFFERENT Shrangi from CL-003 - same name, but a different
-        # phone number, so per the rule (name AND phone must both
-        # match to reuse a client) this must be a distinct client
-        # record, not a merge. Full workflow: Estimate (coffee table,
-        # April) -> Estimate (sofa, May) -> coffee table Estimate
-        # approved & converted to Order (June) -> Order completed &
-        # fully paid -> direct Order for a wardrobe (July, no source
-        # estimate). The sofa estimate is left "sent" - approved but
-        # not yet converted is a realistic, common state to demonstrate.
-        ("CL-008", "Shrangi", "7009870098", "shrangi.new@example.com", "Palasia, Indore", "Referral", "2026-04-05", "Different Shrangi from CL-003 - different phone, per Client Recognition rule"),
+        # Primary demo client (unrelated to CL-003, a different person
+        # despite the similar-looking name). Full chronological
+        # workflow: Estimate (coffee table, April, never converted) ->
+        # Estimate (sofa, May, never converted) -> a SEPARATE Estimate
+        # (coffee table again, June) approved & converted to an Order
+        # -> Order completed & fully paid -> a completely independent
+        # direct Order for a wardrobe (July, no source Estimate at all).
+        ("CL-008", "Shrangi Soni", "7009870098", "shrangi.soni@example.com", "Palasia, Indore", "Referral", "2026-04-05", "Primary demo client - full chronological Estimate/Order history"),
         ("CL-009", "Ishu", "9845673001", "ishu@example.com", "Bicholi, Indore", "Referral", "2026-08-18", "New lead"),
         ("CL-010", "Ashu", "9845673002", "ashu@example.com", "Vijay Nagar", "Instagram", "2026-08-18", "New lead"),
     ]
@@ -813,13 +832,18 @@ def seed_orders(db, clients):
         # Sanket - full chain demo (Client Master section 9): dining set +
         # coffee table, partially paid, genuinely outstanding balance.
         ("WC-2026-006", "CL-006", "Dining Furniture", "2026-08-02", "2026-08-30", 50500, 20000, 0, "Cutting", 25, "Medium", "Pankaj", "Palasia, Indore", "Dining table + coffee table, from Sanket's approved estimate"),
-        # Shrangi (CL-008, the new/different Shrangi) - coffee table
-        # Estimate approved & converted to Order in June, fully paid and
-        # marked Completed before her direct wardrobe order in July.
-        ("WC-2026-007", "CL-008", "Coffee Table", "2026-06-10", "2026-06-25", 12500, 12500, 0, "Completed", 100, "Low", "Devendra", "Palasia, Indore", "Converted from Shrangi's approved coffee table estimate; fully paid"),
+        # Shrangi Soni (CL-008) - June coffee table Estimate approved &
+        # converted to Order, fully paid and marked Completed before
+        # her direct wardrobe order in July.
+        ("WC-2026-007", "CL-008", "Coffee Table", "2026-06-10", "2026-06-25", 12500, 12500, 0, "Completed", 100, "Low", "Devendra", "Palasia, Indore", "Converted from Shrangi's approved June coffee table estimate; fully paid"),
         # Direct order (no source estimate) - placed in July, after the
         # coffee table order above was completed and fully paid.
         ("WC-2026-008", "CL-008", "Wardrobe", "2026-07-15", "2026-08-10", 49000, 15000, 0, "Material Purchase", 15, "Medium", "Pankaj", "Palasia, Indore", "Direct order - no estimate, placed after coffee table completion"),
+        # Ishu (CL-009) - direct order, no source estimate, genuine
+        # multi-line-item test case: Coffee Table + Sofa + Installation
+        # Service together on one order, matching the exact combination
+        # the runtime QA scenario calls for. Partially paid.
+        ("WC-2026-009", "CL-009", "Living Room Furniture", "2026-08-05", "2026-09-05", 68500, 25000, 0, "Cutting", 20, "Medium", "Ravi", "Bicholi, Indore", "Coffee table + sofa + installation, direct order"),
     ]
     out = {o.order_code: o for o in db.query(Order).all()}
     created = 0
@@ -850,38 +874,51 @@ def seed_estimates(db, clients, orders):
     order_id points at the real order that estimate became; the rest
     stay unlinked, representing estimates still in progress or declined."""
     rows = [
-        # code, client, order (None if not yet/never converted), status, material_cost, labor_cost, valid_until, remarks
-        ("EST-001", "CL-001", "WC-2026-001", "approved", 200000, 80000, "2026-08-05", "Approved - became the bedroom furniture order"),
-        ("EST-002", "CL-002", "WC-2026-002", "approved", 140000, 50000, "2026-08-05", "Approved - became the modular kitchen order"),
-        ("EST-003", "CL-003", None, "sent", 55000, 20000, "2026-08-15", "Sent to client, awaiting decision on the CNC panel"),
-        ("EST-004", "CL-004", None, "draft", 30000, 10000, "2026-08-20", "Draft for an additional puja room piece"),
-        ("EST-005", "CL-001", None, "rejected", 45000, 15000, "2026-07-30", "Client declined a separate TV unit estimate"),
-        ("EST-006", "CL-006", "WC-2026-006", "approved", 42000, 8500, "2026-08-10", "Approved - became Sanket's dining furniture order"),
-        # Shrangi (CL-008) - coffee table estimate: approved in June,
-        # converted to WC-2026-007 - status is "closed" (not "approved"),
+        # code, client, order (None if not yet/never converted), status, material_cost, labor_cost, discount, valid_until, remarks, estimate_date
+        ("EST-001", "CL-001", "WC-2026-001", "approved", 200000, 80000, 0, "2026-08-05", "Approved - became the bedroom furniture order", "2026-07-15"),
+        ("EST-002", "CL-002", "WC-2026-002", "approved", 140000, 50000, 5000, "2026-08-05", "Approved - became the modular kitchen order; loyalty discount applied", "2026-07-18"),
+        ("EST-003", "CL-003", None, "sent", 55000, 20000, 0, "2026-08-15", "Sent to client, awaiting decision on the CNC panel", "2026-07-20"),
+        ("EST-004", "CL-004", None, "draft", 30000, 10000, 0, "2026-08-20", "Draft for an additional puja room piece", "2026-07-22"),
+        ("EST-005", "CL-001", None, "rejected", 45000, 15000, 0, "2026-07-30", "Client declined a separate TV unit estimate", "2026-07-10"),
+        ("EST-006", "CL-006", "WC-2026-006", "approved", 42000, 8500, 0, "2026-08-10", "Approved - became Sanket's dining furniture order", "2026-07-28"),
+        # Shrangi Soni (CL-008) - primary demo scenario, three
+        # independent Estimates (each its own quotation with its own
+        # date, not a timeline/history feature - the date on each one
+        # is simply when that particular quotation was given):
+        #   April: Coffee Table - given, never converted, never acted on further.
+        #   May:   Sofa - given, never converted either.
+        #   June:  Coffee Table AGAIN - a separate, later quotation for
+        #          the same kind of item - THIS is the one actually
+        #          approved and converted to WC-2026-007.
+        ("EST-007", "CL-008", None, "sent", 10500, 2000, 0, "2026-05-15", "Coffee table quotation - April", "2026-04-10"),
+        ("EST-008", "CL-008", None, "sent", 40000, 8000, 2000, "2026-06-15", "Sofa quotation - May; festival discount offered", "2026-05-12"),
+        # Converted estimate: status is "closed" (not "approved"),
         # matching exactly what the real conversion route sets
         # atomically alongside order_id (see orders.py's estimate-claim
         # logic) - a converted estimate is never left showing "approved".
-        ("EST-007", "CL-008", "WC-2026-007", "closed", 10500, 2000, "2026-05-01", "Coffee table - approved and converted to order in June"),
-        # Sofa estimate: sent in May, still awaiting Shrangi's decision -
-        # a realistic "approved but not yet ordered" gap is common, but
-        # here she simply hasn't decided yet.
-        ("EST-008", "CL-008", None, "sent", 40000, 8000, "2026-06-15", "Sofa - sent to client in May, awaiting decision"),
+        ("EST-009", "CL-008", "WC-2026-007", "closed", 10500, 2000, 0, "2026-07-01", "Coffee table quotation - June, approved and converted to order", "2026-06-08"),
     ]
     out = {e.estimate_code: e for e in db.query(Estimate).all()}
     created = 0
-    for code, cl_code, order_code, status, mat_cost, lab_cost, valid_until, remarks in rows:
+    for code, cl_code, order_code, status, mat_cost, lab_cost, discount, valid_until, remarks, estimate_date in rows:
         if code in out:
             continue
         subtotal = Decimal(str(mat_cost)) + Decimal(str(lab_cost))
-        tax_amount, total_cost = _compute_totals(subtotal, Decimal("0"), Decimal("18"))
+        tax_amount, total_cost = _compute_totals(subtotal, Decimal(str(discount)), Decimal("18"))
         e = Estimate(
             estimate_code=code, client_id=clients[cl_code].id,
             order_id=orders[order_code].id if order_code else None,
             material_cost=Decimal(str(mat_cost)), labor_cost=Decimal(str(lab_cost)),
-            discount=Decimal("0"), tax_percent=Decimal("18"), tax_amount=tax_amount, total_cost=total_cost,
+            discount=Decimal(str(discount)), tax_percent=Decimal("18"), tax_amount=tax_amount, total_cost=total_cost,
             status=status, valid_until=_d(valid_until), remarks=remarks,
             business_id=generate_business_id(db),
+            # Estimate has no separate "estimate date" column - this IS
+            # that field for every display/reporting purpose. Without
+            # setting it explicitly, it would default to whenever the
+            # seed script happens to run, not the intended historical
+            # date - required for the April/May/June scenario above to
+            # actually show those months in the UI.
+            created_at=_d(estimate_date), updated_at=_d(estimate_date),
         )
         db.add(e)
         out[code] = e
@@ -910,6 +947,7 @@ def seed_payments(db, orders):
         ("WC-2026-006", "Advance", "UPI", 20000, "2026-08-02", "Pankaj", "Advance on dining furniture order"),
         ("WC-2026-007", "Advance", "UPI", 12500, "2026-06-10", "Devendra", "Full payment on coffee table order - paid in full at booking"),
         ("WC-2026-008", "Advance", "UPI", 15000, "2026-07-15", "Pankaj", "Advance on wardrobe - direct order after coffee table completion"),
+        ("WC-2026-009", "Advance", "UPI", 25000, "2026-08-05", "Ravi", "Advance on coffee table + sofa + installation order"),
     ]
     # receipt_code is deterministic (RCPT-001, RCPT-002, ... by
     # position in this fixed list) - a real, stable per-record key.
@@ -1485,15 +1523,19 @@ if __name__ == "__main__":
         named_suppliers = seed_named_suppliers(db)
         seed_woodful_suppliers(db)
         materials = seed_materials(db, suppliers, locations, subcategories)
+        materials.update(seed_extended_materials(db, suppliers, locations, subcategories))
         seed_supplier_materials(db, suppliers, named_suppliers, materials)
         products = seed_products(db)
+        products.update(seed_extended_products(db))
         seed_product_materials(db, products, materials)
+        seed_extended_product_materials(db, products, materials)
         clients = seed_clients(db)
         seed_woodful_clients(db)
         orders = seed_orders(db, clients)
         estimates = seed_estimates(db, clients, orders)
         seed_estimate_line_items(db, estimates, products)
         seed_order_items(db, orders, products)
+        seed_extended_estimates_and_orders(db, clients, orders, products)
         seed_payments(db, orders)
         seed_project_expenses(db, orders)
         seed_purchases(db, suppliers, materials)

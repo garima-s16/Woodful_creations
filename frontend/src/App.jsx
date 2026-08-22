@@ -28,6 +28,7 @@ import SuppliersPage from './pages/SuppliersPage';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import ProductImportPage from './pages/ProductImportPage';
+import MaterialImportPage from './pages/MaterialImportPage';
 import RateCardsPage from './pages/RateCardsPage';
 import RateCardImportPage from './pages/RateCardImportPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
@@ -171,6 +172,7 @@ function AppRoutes() {
       <Route path="/suppliers" element={<Protected><SuppliersPage /></Protected>} />
       <Route path="/products" element={<Protected><ProductsPage /></Protected>} />
       <Route path="/products/import" element={<Protected><ProductImportPage /></Protected>} />
+      <Route path="/materials/import" element={<Protected><MaterialImportPage /></Protected>} />
       <Route path="/rate-master" element={<Protected><RateCardsPage /></Protected>} />
       <Route path="/rate-master/import" element={<Protected><RateCardImportPage /></Protected>} />
       <Route path="/products/:productId" element={<Protected><ProductDetailPage /></Protected>} />

@@ -44,6 +44,13 @@ class OrderItemCreate(OrderItemBase):
             raise ValueError("Product ID is required")
         return self
 
+    @model_validator(mode="after")
+    def quantity_must_be_whole_for_countable_units(self):
+        from app.schemas.estimate import quantity_violates_whole_unit_rule
+        if quantity_violates_whole_unit_rule(self.quantity, self.unit):
+            raise ValueError(f"{self.unit} must be a whole number, not a fractional quantity.")
+        return self
+
     @field_validator("quantity")
     @classmethod
     def quantity_must_be_positive(cls, v):

@@ -146,6 +146,7 @@
 .import-result-label { font-size: 0.78rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
 
 .import-row-error { font-size: 0.76rem; color: var(--danger); margin-top: 3px; }
+.import-row-possible-match { font-size: 0.76rem; color: var(--warning); margin-top: 4px; max-width: 320px; }
 
 .order-item-product-link { font-size: 0.76rem; color: var(--color-gold-soft); margin-top: 2px; }
 .detail-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-3); }

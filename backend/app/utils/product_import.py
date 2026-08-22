@@ -13,10 +13,12 @@ from typing import List, Optional
 import openpyxl
 from openpyxl import Workbook
 
-from app.utils.exporters import write_sheet
+from app.utils.exporters import write_sheet, write_instructions_sheet
+
+TEMPLATE_VERSION = "2.0"  # bumped: adds Instructions sheet + possible-match handling - Family 103 section 4/5
 
 PRODUCT_IMPORT_COLUMNS = [
-    "Product Name", "Type", "Category", "Subcategory", "Unit",
+    "Product Name *", "Type", "Category", "Subcategory", "Unit *",
     "Length", "Width", "Height", "Dimension Unit",
     "Primary Material", "Finish",
     "Material Cost", "Hardware Cost", "Labour Cost", "Machine Cost",
@@ -25,15 +27,15 @@ PRODUCT_IMPORT_COLUMNS = [
 ]
 
 HEADER_ALIASES = {
-    "product": "Product Name",
-    "product name": "Product Name",
-    "name": "Product Name",
+    "product": "Product Name *",
+    "product name": "Product Name *",
+    "name": "Product Name *",
     "type": "Type",
     "product type": "Type",
     "category": "Category",
     "subcategory": "Subcategory",
     "sub category": "Subcategory",
-    "unit": "Unit",
+    "unit": "Unit *",
     "length": "Length",
     "width": "Width",
     "height": "Height",
@@ -58,12 +60,14 @@ HEADER_ALIASES = {
     "cost price": "Cost Price",
     "cost": "Cost Price",
     "selling price": "Selling Price",
+    "default rate": "Selling Price",  # matches the Product export's own column header exactly - Export -> Edit -> Re-import must round-trip without silently losing this field
     "price": "Selling Price",
     "notes": "Notes",
     "remarks": "Notes",
 }
 for _col in PRODUCT_IMPORT_COLUMNS:
     HEADER_ALIASES.setdefault(_col.lower(), _col)
+    HEADER_ALIASES.setdefault(_col.rstrip(" *").lower(), _col)
 
 
 def _normalize_header_cell(raw) -> Optional[str]:
@@ -76,7 +80,7 @@ def _normalize_header_cell(raw) -> Optional[str]:
 # Only Product Name and Unit are hard requirements - everything else on
 # a product is genuinely optional, unlike the purchase import's tighter
 # required set.
-REQUIRED_COLUMNS = ["Product Name", "Unit"]
+REQUIRED_COLUMNS = ["Product Name *", "Unit *"]
 
 
 def _resolve_header_row(values) -> Optional[dict]:
@@ -116,23 +120,50 @@ def normalize_match_key(name: Optional[str]) -> str:
 
 EXAMPLE_ROWS = [
     {
-        "Product Name": "Harbor 3-Seater Sofa", "Type": "standard", "Category": "Seating", "Subcategory": "Sofas",
-        "Unit": "Nos", "Length": 84, "Width": 36, "Height": 32, "Dimension Unit": "in",
-        "Primary Material": "Teak frame + linen upholstery", "Finish": "Natural teak",
-        "Material Cost": 18000, "Hardware Cost": 2500, "Labour Cost": 6000, "Machine Cost": 1200,
-        "Finish Cost": 2000, "Packing Cost": 800, "Transport Cost": 1000, "Other Cost": 500,
-        "Overhead %": 8, "Margin %": 30, "Cost Price": 32000, "Selling Price": 48000,
-        "Notes": "Best seller, kept in standard catalog",
-    },
-    {
-        "Product Name": "Custom Walk-in Wardrobe - Reference Build", "Type": "custom", "Category": "Storage",
-        "Subcategory": "Wardrobes", "Unit": "Nos", "Length": 120, "Width": 24, "Height": 96,
+        "Product Name *": "Custom Walk-in Wardrobe", "Type": "custom", "Category": "Furniture",
+        "Subcategory": "Wardrobes", "Unit *": "Nos", "Length": 120, "Width": 24, "Height": 96,
         "Dimension Unit": "in", "Primary Material": "BWP Plywood + laminate", "Finish": "Matte laminate",
         "Material Cost": 55000, "Hardware Cost": 8000, "Labour Cost": 15000, "Machine Cost": 3000,
         "Finish Cost": 2500, "Packing Cost": 1000, "Transport Cost": 1500, "Other Cost": 500,
         "Overhead %": 8, "Margin %": 25, "Cost Price": 85000, "Selling Price": 125000,
-        "Notes": "Client-specific, created from an approved estimate",
+        "Notes": "Sample row - delete before uploading your real data",
     },
+    {
+        "Product Name *": "CNC Fluted Wall Panel", "Type": "standard", "Category": "CNC Services",
+        "Subcategory": "CNC Routing", "Unit *": "Sq Ft", "Length": None, "Width": None, "Height": None,
+        "Dimension Unit": "in", "Primary Material": "MDF", "Finish": "Natural / painted",
+        "Material Cost": 90, "Hardware Cost": 0, "Labour Cost": 40, "Machine Cost": 35,
+        "Finish Cost": 15, "Packing Cost": 5, "Transport Cost": 5, "Other Cost": 0,
+        "Overhead %": 8, "Margin %": 30, "Cost Price": 190, "Selling Price": 271,
+        "Notes": "Sample row - priced per Sq Ft; delete before uploading your real data",
+    },
+]
+
+PRODUCT_FIELD_DOCS = [
+    {"name": "Product Name *", "mandatory": True, "meaning": "Full name of the product or service, as it should appear on Estimates/Orders.",
+     "format": "Free text."},
+    {"name": "Type", "mandatory": False, "meaning": "Whether this is a standard catalog item or a one-off custom build.",
+     "format": "Must match exactly.", "accepted_values": ["standard", "custom"]},
+    {"name": "Category", "mandatory": False, "meaning": "Top-level grouping (e.g. Furniture, CNC Services, Laser Services, Gift Items).",
+     "format": "Free text - use the same values as the Product form's Category field."},
+    {"name": "Subcategory", "mandatory": False, "meaning": "More specific grouping within the category.", "format": "Free text."},
+    {"name": "Unit *", "mandatory": True, "meaning": "The unit this product is priced/sold in.",
+     "format": "Free text, e.g. Nos, Sq Ft, Set, Pair."},
+    {"name": "Length / Width / Height", "mandatory": False, "meaning": "Physical dimensions, where applicable.", "format": "Number."},
+    {"name": "Dimension Unit", "mandatory": False, "meaning": "Unit the Length/Width/Height are measured in.", "format": "e.g. in, cm, ft."},
+    {"name": "Primary Material", "mandatory": False, "meaning": "Main material used.", "format": "Free text."},
+    {"name": "Finish", "mandatory": False, "meaning": "Surface finish.", "format": "Free text."},
+    {"name": "Material/Hardware/Labour/Machine/Finish/Packing/Transport/Other Cost", "mandatory": False,
+     "meaning": "Internal cost components (Woodful Internal Cost) - never shown to customers.", "format": "Number, in Rs."},
+    {"name": "Overhead %", "mandatory": False, "meaning": "Overhead allocation applied on top of direct costs.", "format": "Number, e.g. 8 for 8%."},
+    {"name": "Margin %", "mandatory": False,
+     "meaning": "Woodful's target margin - used to suggest a selling price (Selling Price = Cost / (1 - Margin%)). Does not by itself set Selling Price.",
+     "format": "Number, e.g. 25 for 25%."},
+    {"name": "Cost Price", "mandatory": False, "meaning": "Total internal cost, if known directly rather than built up from the cost columns.", "format": "Number, in Rs."},
+    {"name": "Selling Price", "mandatory": False,
+     "meaning": "Woodful Selling Rate - what is actually charged. A market/reference rate is never automatically the selling price; this is Woodful's own chosen rate.",
+     "format": "Number, in Rs."},
+    {"name": "Notes", "mandatory": False, "meaning": "Any other remarks.", "format": "Free text."},
 ]
 
 
@@ -140,9 +171,28 @@ def build_import_template() -> BytesIO:
     wb = Workbook()
     wb.remove(wb.active)
     write_sheet(
-        wb, sheet_name="Product Import", title="Woodful Creations - Product Import Template",
-        subtitle="Fill in one row per product. Type must be 'standard' or 'custom'. Do not change the column headers.",
+        wb, sheet_name="Product Data", title="Woodful Creations - Product Import Template",
+        subtitle="Product Name and Unit are required for every row (marked with *). Type must be 'standard' or "
+                  "'custom'. Product ID is generated automatically - do not add a Product ID column. "
+                  "Do not change the column headers.",
         columns=PRODUCT_IMPORT_COLUMNS, rows=EXAMPLE_ROWS,
+    )
+    write_instructions_sheet(
+        wb, template_name="Woodful Product Import Template", version=TEMPLATE_VERSION,
+        field_docs=PRODUCT_FIELD_DOCS,
+        id_rule="Product ID is system-generated and never typed in by hand. Leave any ID column out entirely - "
+                "there is none in this template.",
+        duplicate_rule="A row is only treated as an existing product if its name matches an existing active "
+                        "product exactly - it will be reused, not re-created. A row whose name closely resembles "
+                        "(but doesn't exactly match) an existing product is flagged as a possible match during "
+                        "preview; you will be asked to confirm whether to use the existing product or create a "
+                        "new one. Nothing is merged or created automatically on a possible match.",
+        extra_notes=[
+            "A completely blank row is skipped. A row with only some fields filled in is still validated - "
+            "if Product Name or Unit is missing, that row will show an error.",
+            "Internal cost fields and Margin % are never shown to customers and only affect Woodful's own "
+            "records - they never automatically change the customer-facing Selling Price.",
+        ],
     )
     buffer = BytesIO()
     wb.save(buffer)
@@ -191,13 +241,18 @@ def parse_uploaded_workbook(file_bytes: bytes) -> List[dict]:
 VALID_PRODUCT_TYPES = {"standard", "custom"}
 
 
-def validate_and_match_row(row: dict, existing_by_name: dict):
+def validate_and_match_row(row: dict, existing_by_name: dict, fuzzy_candidates: Optional[list] = None):
     """Validates one parsed row and checks whether a product with this
-    name already exists (case-insensitive exact match, never fuzzy -
-    same standing principle as the purchase import). Returns
-    (result_dict, errors_list); never writes anything."""
+    name already exists (case-insensitive exact match - reused, not
+    re-created), and, when fuzzy_candidates is supplied, flags a
+    "possible match" typo/near-match nudge (Family 103 section 5) using
+    the exact same shared logic as the Product UI's own duplicate check
+    (see app.utils.client_matching.find_fuzzy_name_matches, reused here
+    rather than reimplemented so the UI and Excel import can never
+    silently disagree about what counts as a possible match). Never
+    writes anything."""
     errors = []
-    name = row.get("Product Name")
+    name = row.get("Product Name *")
     if not name:
         errors.append("Product Name is required")
 
@@ -205,7 +260,7 @@ def validate_and_match_row(row: dict, existing_by_name: dict):
     if product_type not in VALID_PRODUCT_TYPES:
         errors.append(f"Type must be 'standard' or 'custom' (got {row.get('Type')!r})")
 
-    unit = row.get("Unit") or "Nos"
+    unit = row.get("Unit *") or "Nos"
 
     def _num(col):
         raw = row.get(col)
@@ -237,6 +292,12 @@ def validate_and_match_row(row: dict, existing_by_name: dict):
 
     matched = existing_by_name.get(normalize_match_key(name)) if name else None
 
+    possible_match = None
+    if not matched and name and fuzzy_candidates is not None:
+        from app.utils.client_matching import find_fuzzy_name_matches
+        fuzzy_hits = find_fuzzy_name_matches(db=None, name=name, candidates=fuzzy_candidates, limit=1)
+        possible_match = fuzzy_hits[0] if fuzzy_hits else None
+
     result = {
         "name": name, "product_type": product_type, "category": row.get("Category"),
         "subcategory": row.get("Subcategory"), "unit": unit,
@@ -250,5 +311,7 @@ def validate_and_match_row(row: dict, existing_by_name: dict):
         "cost_price": cost_price, "selling_price": selling_price, "notes": row.get("Notes"),
         "matched_product_id": matched.id if matched else None,
         "is_duplicate": matched is not None,
+        "possible_match_product_id": possible_match.id if possible_match else None,
+        "possible_match_name": possible_match.name if possible_match else None,
     }
     return result, errors

@@ -24,8 +24,12 @@ app = FastAPI(
     openapi_url=None if settings.is_production else "/openapi.json",
 )
 
-# CORS: explicit origin allow-list only. Required for cookie-based auth to work
-# from the browser (credentials cannot be used with a wildcard origin).
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GlobalRateLimitMiddleware)
+# CORS must be added LAST - Starlette wraps middleware in reverse
+# registration order, so the last one added is the OUTERMOST layer and
+# sees every response, including one that another middleware short-
+# circuits.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -34,9 +38,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
     expose_headers=["X-Total-Count"],
 )
-
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(GlobalRateLimitMiddleware)
 
 for router in all_routers:
     app.include_router(router)

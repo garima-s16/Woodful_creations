@@ -10,9 +10,11 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function rowStatus(row) {
+function rowStatus(row, resolution) {
   if (row.errors.length > 0) return { label: 'ERROR', className: 'status-danger' };
   if (row.is_duplicate) return { label: 'EXISTING CLIENT', className: 'status-info' };
+  if (row.possible_match_client_id && resolution === 'existing') return { label: 'WILL USE EXISTING', className: 'status-info' };
+  if (row.possible_match_client_id && resolution !== 'new') return { label: 'POSSIBLE MATCH - REVIEW', className: 'status-warning' };
   return { label: 'NEW', className: 'status-gold' };
 }
 
@@ -23,6 +25,9 @@ function ClientImportPage() {
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null);
   const [excludedRows, setExcludedRows] = useState({}); // row_number -> true if user opted out
+  // Family 103 section 8: a possible (fuzzy) match is never auto-resolved.
+  // row_number -> 'existing' | 'new', unset until the user picks one.
+  const [matchResolutions, setMatchResolutions] = useState({});
   const [stage, setStage] = useState('empty'); // empty | selected | validating | preview | importing | success | error
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -32,6 +37,7 @@ function ClientImportPage() {
     setFile(null);
     setPreview(null);
     setExcludedRows({});
+    setMatchResolutions({});
     setLastUploadedFile(null);
     setStage('empty');
     setError('');
@@ -70,6 +76,7 @@ function ClientImportPage() {
       // create-a-duplicate-anyway option per the Client Recognition rule)
       // and error rows can never be included until fixed and re-uploaded.
       setExcludedRows({});
+      setMatchResolutions({});
       setStage('preview');
     } catch (err) {
       setError(err.response?.data?.detail || 'Could not read this file. Make sure you used the downloaded template.');
@@ -84,14 +91,22 @@ function ClientImportPage() {
     try {
       const rowsToCommit = preview.rows
         .filter((r) => r.errors.length === 0)
-        .map((r) => ({
-          name: r.name, contact_person: r.contact_person, phone: r.phone,
-          alternate_phone: r.alternate_phone, email: r.email, address: r.address,
-          site_address: r.site_address, city: r.city, gstin: r.gstin,
-          lead_source: r.lead_source, remarks: r.remarks,
-          matched_client_id: r.matched_client_id,
-          skip: !!excludedRows[r.row_number],
-        }));
+        .map((r) => {
+          const resolution = matchResolutions[r.row_number];
+          const usingExisting = r.possible_match_client_id && resolution === 'existing';
+          // A possible (not exact) match that hasn't been explicitly resolved
+          // yet is never imported silently as either choice - skip it until
+          // the user picks "Use Existing" or "Create New" (Family 103 section 8).
+          const unresolvedPossibleMatch = r.possible_match_client_id && !resolution;
+          return {
+            name: r.name, client_type: r.client_type, contact_person: r.contact_person, phone: r.phone,
+            alternate_phone: r.alternate_phone, email: r.email, address: r.address,
+            site_address: r.site_address, city: r.city, state: r.state, pincode: r.pincode, gstin: r.gstin,
+            lead_source: r.lead_source, remarks: r.remarks,
+            matched_client_id: usingExisting ? r.possible_match_client_id : r.matched_client_id,
+            skip: !!excludedRows[r.row_number] || unresolvedPossibleMatch,
+          };
+        });
       const res = await clientImportAPI.commit(rowsToCommit);
       setResult(res.data);
       setPreview(null);
@@ -124,7 +139,11 @@ function ClientImportPage() {
   };
 
   const errorCount = preview ? preview.rows.filter((r) => r.errors.length > 0).length : 0;
-  const importableCount = preview ? preview.rows.filter((r) => r.errors.length === 0 && !excludedRows[r.row_number]).length : 0;
+  const importableCount = preview ? preview.rows.filter((r) => {
+    if (r.errors.length > 0 || excludedRows[r.row_number]) return false;
+    if (r.possible_match_client_id && !matchResolutions[r.row_number]) return false;
+    return true;
+  }).length : 0;
 
   return (
     <div className="page">
@@ -230,12 +249,13 @@ function ClientImportPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th></th><th>Client Name</th><th>Phone</th><th>Email</th><th>City</th><th>Status</th>
+                <th></th><th>Client Name</th><th>Type</th><th>Phone</th><th>Email</th><th>City</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
               {preview.rows.map((r) => {
-                const status = rowStatus(r);
+                const resolution = matchResolutions[r.row_number];
+                const status = rowStatus(r, resolution);
                 const canExclude = r.errors.length === 0 && !r.is_duplicate;
                 return (
                   <tr key={r.row_number} style={{ opacity: excludedRows[r.row_number] ? 0.5 : 1 }}>
@@ -248,6 +268,7 @@ function ClientImportPage() {
                       )}
                     </td>
                     <td>{r.name || '-'}</td>
+                    <td>{r.client_type || '-'}</td>
                     <td>{r.phone || '-'}</td>
                     <td>{r.email || '-'}</td>
                     <td>{r.city || '-'}</td>
@@ -255,6 +276,26 @@ function ClientImportPage() {
                       <span className={`status-badge ${status.className}`}>{status.label}</span>
                       {r.errors.length > 0 && (
                         <div className="import-row-error">{r.errors.join('; ')}</div>
+                      )}
+                      {r.possible_match_client_id && !r.is_duplicate && r.errors.length === 0 && (
+                        <div className="import-row-possible-match">
+                          <span>You entered <strong>{r.name}</strong> - an existing client named{' '}
+                            <strong>{r.possible_match_name}</strong> looks similar. Is this the same client?</span>
+                          <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                            <button
+                              type="button" className="btn-link"
+                              onClick={() => setMatchResolutions((prev) => ({ ...prev, [r.row_number]: 'existing' }))}
+                            >
+                              Use Existing
+                            </button>
+                            <button
+                              type="button" className="btn-link"
+                              onClick={() => setMatchResolutions((prev) => ({ ...prev, [r.row_number]: 'new' }))}
+                            >
+                              Create New (Different Client)
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </td>
                   </tr>

@@ -88,6 +88,18 @@ export const productImportAPI = {
   commit: (rows) => client.post('/api/product-imports/commit', { rows }),
 };
 
+export const materialImportAPI = {
+  templateUrl: `${API_URL}/api/material-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/material-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/material-imports/commit', { rows }),
+};
+
 export const ratesAPI = {
   list: (params) => client.get('/api/rate-cards/', { params }),
   get: (id) => client.get(`/api/rate-cards/${id}`),

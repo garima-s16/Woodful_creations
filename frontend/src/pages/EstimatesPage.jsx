@@ -7,7 +7,7 @@ import Modal from '../components/common/Modal';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
 import { formatCurrency } from '../utils/currency';
-import LineItemEditor, { emptyRow } from '../components/LineItemEditor';
+import LineItemEditor, { emptyRow, quantityViolatesWholeUnitRule } from '../components/LineItemEditor';
 
 function EstimatesPage() {
   const navigate = useNavigate();
@@ -36,6 +36,11 @@ function EstimatesPage() {
   const handleCreate = async (formData) => {
     if (!selectedClientId) {
       setError('Please select a client first.');
+      return;
+    }
+    const invalidRow = lineItems.find((row) => row.description.trim() && quantityViolatesWholeUnitRule(row.quantity, row.unit));
+    if (invalidRow) {
+      setError(`"${invalidRow.description}" - ${invalidRow.unit} must be a whole number, not a fractional quantity.`);
       return;
     }
     setLoading(true);
@@ -140,7 +145,7 @@ function EstimatesPage() {
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       <Table columns={columns} data={estimates} loading={pageLoading} onRowClick={(row) => navigate(`/estimates/${row.id}`)} emptyMessage="No estimates yet. Create your first estimate to get started." />
-      <Modal isOpen={showAdd} title="New Estimate" onClose={() => { setShowAdd(false); setSelectedClientId(''); }}>
+      <Modal isOpen={showAdd} title="New Estimate" size="wide" onClose={() => { setShowAdd(false); setSelectedClientId(''); setLineItems([emptyRow()]); }}>
         <div className="form-group">
           <label className="form-label">Client *</label>
           <select className="form-input" value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>

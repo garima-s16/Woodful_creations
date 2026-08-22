@@ -53,6 +53,7 @@
 .chat-row-assistant { justify-content: flex-start; }
 
 .chat-bubble { max-width: 78%; padding: 9px 12px; border-radius: var(--radius-md); font-size: 0.85rem; }
+.chat-text { color: inherit; }
 .chat-user { background: var(--color-ink); color: var(--color-ivory); }
 .chat-assistant { background: var(--surface); border: 1px solid var(--border-color); color: var(--text-primary); white-space: pre-line; }
 

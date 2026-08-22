@@ -29,6 +29,19 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATABASE_URL: str = "sqlite:///./woodful.db"
+    # Family 105 Section 5 - which StorageProvider the new repository
+    # layer (app/storage/) would use, if/when a route is actually
+    # switched over to it. Not read by any existing route yet - every
+    # current route still talks directly to SQLAlchemy via
+    # DATABASE_URL above, completely unaffected by this setting.
+    # "local" -> LocalJSONStorageProvider (development, no external
+    # dependencies). "google_drive" -> GoogleDriveStorageProvider
+    # (production target - see that module's docstring for its
+    # current, honestly-unverified status).
+    STORAGE_PROVIDER: str = "local"
+    STORAGE_LOCAL_ROOT: str = "./storage_data"
+    GOOGLE_DRIVE_CREDENTIALS_PATH: str = ""
+    GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""
 
     # --- Auth / JWT ---
     SECRET_KEY: str

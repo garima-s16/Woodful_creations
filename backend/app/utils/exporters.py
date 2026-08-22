@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.worksheet.datavalidation import DataValidation
 
 FORMULA_INJECTION_PREFIXES = ("=", "+", "-", "@")
 
@@ -166,6 +167,7 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
         ws.column_dimensions[get_column_letter(idx)].width = max(header_len + 2, 14)
 
     ws.freeze_panes = f"A{header_row + 1}"
+    ws.woodful_header_row = header_row  # first data row = header_row + 1; used by callers adding dropdown validation
 
     # Filters (dropdown arrows on the header row) and print setup - applies
     # to every export sheet, not just this one, since every report benefits
@@ -179,6 +181,120 @@ def write_sheet(wb: Workbook, sheet_name: str, title: str, columns: Sequence[str
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_title_rows = f"{header_row}:{header_row}"
 
+    return ws
+
+
+def add_dropdown_validation(ws, column_letter: str, values: Sequence[str], first_row: int, last_row: int = 1000):
+    """Excel dropdown for a genuine controlled-value column (Family 103
+    section 36) - only call this where the same value list also exists in
+    the UI/backend (e.g. Client Type). `last_row` defaults generously so
+    the dropdown still applies to rows a user adds below the sample data."""
+    dv = DataValidation(type="list", formula1=f'"{",".join(values)}"', allow_blank=True, showDropDown=False)
+    dv.error = f"Please choose one of: {', '.join(values)}"
+    dv.errorTitle = "Invalid value"
+    ws.add_data_validation(dv)
+    dv.add(f"{column_letter}{first_row}:{column_letter}{last_row}")
+    return dv
+
+
+def write_instructions_sheet(wb: Workbook, template_name: str, version: str, field_docs: list,
+                              id_rule: str = None, duplicate_rule: str = None,
+                              blank_row_rule: str = None, relationship_notes: list = None,
+                              extra_notes: list = None):
+    """Family 103 section 2: EVERY import workbook must have an
+    Instructions tab. One shared implementation so every Woodful import
+    workbook explains its fields, ID rule, and blank-row handling the
+    same way rather than each importer hand-rolling its own text sheet.
+
+    field_docs: list of dicts with keys name, mandatory (bool), meaning,
+    format, accepted_values (optional). Mandatory fields are marked the
+    same "*" convention used on the Data sheet header (section 4).
+    """
+    ws = wb.create_sheet(title="Instructions")
+    row = 1
+    if os.path.exists(LOGO_PATH):
+        img = XLImage(LOGO_PATH)
+        img.width, img.height = 130, 33
+        ws.add_image(img, "A1")
+        ws.row_dimensions[1].height = 28
+        row = 2
+
+    ws.cell(row=row, column=1, value=f"{template_name}").font = TITLE_FONT
+    row += 1
+    ws.cell(row=row, column=1, value=f"Version: {version}").font = SUBTITLE_FONT
+    row += 2
+
+    ws.cell(row=row, column=1, value="* = Mandatory field").font = Font(name="Arial", bold=True, size=10, color=INK)
+    row += 2
+
+    headers = ["Field", "Mandatory", "Meaning", "Format / Accepted Values"]
+    for idx, h in enumerate(headers, start=1):
+        cell = ws.cell(row=row, column=idx, value=h)
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+    row += 1
+    for i, field in enumerate(field_docs):
+        ws.cell(row=row, column=1, value=field["name"]).font = BODY_FONT
+        ws.cell(row=row, column=2, value="Yes" if field.get("mandatory") else "No").font = BODY_FONT
+        ws.cell(row=row, column=3, value=field.get("meaning", "")).font = BODY_FONT
+        accepted = field.get("accepted_values")
+        fmt = field.get("format", "")
+        combined = f"{fmt}" + (f" Accepted values: {', '.join(accepted)}." if accepted else "")
+        cell = ws.cell(row=row, column=4, value=combined)
+        cell.font = BODY_FONT
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        if i % 2 == 1:
+            for c in range(1, 5):
+                ws.cell(row=row, column=c).fill = ZEBRA_FILL
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="ID Rule").font = Font(name="Arial", bold=True, size=10, color=INK)
+    row += 1
+    ws.cell(row=row, column=1, value=id_rule or "IDs are system-generated. Do not add or edit an ID column.").font = BODY_FONT
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    row += 2
+
+    ws.cell(row=row, column=1, value="Duplicate / Typo Handling").font = Font(name="Arial", bold=True, size=10, color=INK)
+    row += 1
+    ws.cell(row=row, column=1, value=duplicate_rule or (
+        "A row that closely matches an existing record is flagged as a possible match during preview - "
+        "you will be asked to confirm whether to use the existing record or create a new one. "
+        "Matches are never created or merged automatically."
+    )).font = BODY_FONT
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    row += 2
+
+    ws.cell(row=row, column=1, value="Blank Rows").font = Font(name="Arial", bold=True, size=10, color=INK)
+    row += 1
+    ws.cell(row=row, column=1, value=blank_row_rule or (
+        "A completely empty row is ignored. A partially filled row (e.g. only some columns filled in) "
+        "is validated and will show an error if a mandatory field is missing."
+    )).font = BODY_FONT
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    row += 2
+
+    if relationship_notes:
+        ws.cell(row=row, column=1, value="Sheet Relationships").font = Font(name="Arial", bold=True, size=10, color=INK)
+        row += 1
+        for note in relationship_notes:
+            ws.cell(row=row, column=1, value=note).font = BODY_FONT
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+            row += 1
+        row += 1
+
+    if extra_notes:
+        ws.cell(row=row, column=1, value="Other Notes").font = Font(name="Arial", bold=True, size=10, color=INK)
+        row += 1
+        for note in extra_notes:
+            ws.cell(row=row, column=1, value=note).font = BODY_FONT
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+            row += 1
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["C"].width = 38
+    ws.column_dimensions["D"].width = 48
     return ws
 
 

@@ -3,6 +3,8 @@ from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 
+from app.utils.quantity_rules import WHOLE_NUMBER_UNITS, quantity_violates_whole_unit_rule  # noqa: F401 - re-exported for existing importers
+
 LINE_ITEM_CATEGORIES = [
     "Material", "Labor", "Furniture", "Hardware", "Installation", "Transportation", "Design", "Service", "Other",
 ]
@@ -47,6 +49,12 @@ class EstimateLineItemCreate(EstimateLineItemBase):
     def product_id_required_unless_custom(self):
         if not self.is_custom_item and self.product_id is None:
             raise ValueError("Product ID is required")
+        return self
+
+    @model_validator(mode="after")
+    def quantity_must_be_whole_for_countable_units(self):
+        if quantity_violates_whole_unit_rule(self.quantity, self.unit):
+            raise ValueError(f"{self.unit} must be a whole number, not a fractional quantity.")
         return self
 
     @field_validator("quantity")

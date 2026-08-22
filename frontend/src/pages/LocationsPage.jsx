@@ -114,7 +114,7 @@ function LocationsPage() {
       <Modal
         isOpen={showAdd}
         title={parentForNew ? `New location under "${parentForNew.name}"` : 'New Top-Level Location'}
-        onClose={() => setShowAdd(false)}
+        onClose={() => { setShowAdd(false); setParentForNew(null); }}
       >
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Create Location" />
       </Modal>

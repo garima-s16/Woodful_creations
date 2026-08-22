@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useId } from 'react';
 import './Modal.css';
 
-const Modal = ({ isOpen, title, children, onClose }) => {
+const Modal = ({ isOpen, title, children, onClose, size }) => {
   const contentRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const titleId = useId();
@@ -59,7 +59,7 @@ const Modal = ({ isOpen, title, children, onClose }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-content"
+        className={`modal-content${size === 'wide' ? ' modal-content--wide' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -15,14 +15,22 @@ creation, so it needs a bright-line rule a person could audit, not a
 similarity score. A near-miss on either name or phone must create a
 new client rather than silently guess.
 """
+import difflib
 import re
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.models.client import Client
 from app.utils.id_generator import generate_unique_code, generate_business_id
+
+# Family 103 section 8: typo/possible-duplicate detection must be the SAME
+# logic everywhere it's used (UI master-data search AND Excel import), never
+# reimplemented per call site. 0.8 is the same threshold GET
+# /api/clients/check-duplicates has used since it was introduced - kept here
+# so the Excel importer can share it exactly rather than drifting.
+FUZZY_MATCH_THRESHOLD = 0.8
 
 
 def normalize_name(name: Optional[str]) -> str:
@@ -65,6 +73,33 @@ def find_matching_client(db: Session, name: Optional[str], phone: Optional[str])
         if normalize_name(candidate.name) == name_key and normalize_phone(candidate.phone) == phone_key:
             return candidate
     return None
+
+
+def find_fuzzy_name_matches(db: Session, name: str, limit: int = 5,
+                             candidates: Optional[List[Client]] = None) -> List[Client]:
+    """Non-blocking "possible duplicate" nudge (Family 103 section 8) -
+    catches typo-variants ("Fevikol" vs "Fevicol") and substrings via
+    fuzzy similarity. Distinct from find_matching_client above: that
+    function is a bright-line exact-match rule used to make an unattended
+    decision (order intake); this one is an advisory signal for a human
+    to review (both GET /api/clients/check-duplicates and the Client
+    Excel importer call this same function, so the two can never
+    disagree about what counts as a "possible" match) and never by
+    itself creates, reuses, or rejects a record.
+    """
+    name_lower = (name or "").strip().lower()
+    if not name_lower:
+        return []
+    matches = []
+    for candidate in (candidates if candidates is not None else db.query(Client).all()):
+        c_name_lower = candidate.name.lower()
+        if name_lower in c_name_lower or c_name_lower in name_lower:
+            matches.append(candidate)
+            continue
+        similarity = difflib.SequenceMatcher(None, name_lower, c_name_lower).ratio()
+        if similarity >= FUZZY_MATCH_THRESHOLD:
+            matches.append(candidate)
+    return matches[:limit]
 
 
 def find_or_create_client(db: Session, name: str, phone: str, **extra_fields) -> Tuple[Client, bool]:

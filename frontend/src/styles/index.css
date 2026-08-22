@@ -105,6 +105,14 @@ html, body {
   width: 100%;
   min-height: 100%;
   font-family: var(--font-body);
+  /* Tells the browser this page's own UI is dark, so native controls
+     it renders itself - a <select>'s dropdown popup, a date input's
+     calendar picker, checkboxes/radios, the default scrollbar - use
+     the browser's dark-mode-native palette instead of assuming a light
+     page and rendering black-on-near-black inside them. Every control
+     we style ourselves (via CSS below) is unaffected; this only fixes
+     the parts we can't reach with CSS. */
+  color-scheme: dark;
 }
 
 #root {
@@ -128,6 +136,17 @@ button {
 
 input, select, textarea {
   font-family: var(--font-body);
+}
+
+/* Belt-and-suspenders alongside color-scheme above: some browsers still
+   render a <select>'s open dropdown list using each <option>'s own
+   background/color rather than inheriting the closed <select> box's
+   styling, so every option across the app (whichever component's CSS
+   styles the select itself) gets the same dark surface + readable text
+   explicitly, instead of falling back to the OS's light-mode default. */
+select option {
+  background: var(--surface);
+  color: var(--text-primary);
 }
 
 h1, h2, h3, h4, h5, h6 {

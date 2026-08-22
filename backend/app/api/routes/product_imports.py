@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 import zipfile
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import require_role
+from app.core.audit import log_action
 from app.models.product import Product
 from app.schemas.product_import import (
     ProductImportPreviewResponse, ProductImportRowPreview,
@@ -60,14 +61,15 @@ def preview_import(file: UploadFile = File(...), db: Session = Depends(get_db),
             detail="Couldn't read this file - please upload a valid .xlsx file using the downloaded template.",
         )
 
-    existing_by_name = {normalize_match_key(p.name): p for p in db.query(Product).all()}
+    existing_products = db.query(Product).filter(Product.is_active == True).all()  # noqa: E712
+    existing_by_name = {normalize_match_key(p.name): p for p in existing_products}
 
     preview_rows = []
     new_count = 0
     duplicate_count = 0
     error_count = 0
     for idx, row in enumerate(raw_rows, start=1):
-        result, errors = validate_and_match_row(row, existing_by_name)
+        result, errors = validate_and_match_row(row, existing_by_name, fuzzy_candidates=existing_products)
         if errors:
             error_count += 1
         elif result["is_duplicate"]:
@@ -83,14 +85,18 @@ def preview_import(file: UploadFile = File(...), db: Session = Depends(get_db),
 
 
 @router.post("/commit", response_model=ProductImportCommitResult)
-def commit_import(data: ProductImportCommitRequest, db: Session = Depends(get_db),
+def commit_import(data: ProductImportCommitRequest, request: Request, db: Session = Depends(get_db),
                    auth=Depends(require_role("master"))):
-    """Creates a Product Master row per confirmed row. Same
-    not-fully-atomic behavior as the purchase import commit: each row
-    commits individually, and if one fails the response reflects exactly
-    what succeeded before the failure - re-upload just the rows that
-    didn't go through."""
+    """Creates a Product Master row per confirmed row that is genuinely
+    new. A row carrying matched_product_id (the user resolved a possible
+    match during preview as "Use Existing") is never re-created - counted
+    as matched instead, exactly like the Client importer's
+    matched_client_id handling. Same not-fully-atomic behavior as the
+    purchase import commit: each row commits individually, and if one
+    fails the response reflects exactly what succeeded before the
+    failure - re-upload just the rows that didn't go through."""
     created = 0
+    matched_existing = 0
     skipped = 0
     product_ids = []
     error_message = None
@@ -98,6 +104,10 @@ def commit_import(data: ProductImportCommitRequest, db: Session = Depends(get_db
     for i, row in enumerate(data.rows):
         if row.skip:
             skipped += 1
+            continue
+        if row.matched_product_id:
+            matched_existing += 1
+            product_ids.append(row.matched_product_id)
             continue
         try:
             product_id = None
@@ -131,6 +141,12 @@ def commit_import(data: ProductImportCommitRequest, db: Session = Depends(get_db
             error_message = f"Stopped at row {i + 1}: {detail}"
             break
 
+    log_action(
+        db, request, user_id=auth.get("user_id"), action="import_products", module_name="products",
+        details=f"Imported {created} new product(s), matched {matched_existing} existing, skipped {skipped}.",
+    )
+
     return ProductImportCommitResult(
-        created_products=created, skipped=skipped, product_ids=product_ids, error=error_message,
+        created_products=created, matched_existing=matched_existing, skipped=skipped,
+        product_ids=product_ids, error=error_message,
     )

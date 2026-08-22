@@ -27,7 +27,6 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
           { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
-          { path: '/purchases/import', label: 'Import from Excel', icon: PurchaseIcon },
         ] : []),
         { path: '/issues', label: 'Material Issues', icon: IssueIcon },
         { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },
@@ -81,37 +80,34 @@ function Sidebar({ isOpen, user, onClose }) {
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
   const groupHasActive = (group) => group.items.some((item) => isActive(item.path));
 
-  // openGroups is the single source of truth for expand/collapse state.
+  // openGroup (a single value, not a Set) is the source of truth for
+  // which one section is expanded - true accordion behavior, only one
+  // open at a time (see toggleGroup below).
   // It is initialized from the current route, and re-synced whenever the
   // route changes so client-side navigation (which does not remount this
   // component) always auto-expands the section that owns the active page.
-  const [openGroups, setOpenGroups] = useState(() => {
-    const initial = new Set();
+  const [openGroup, setOpenGroup] = useState(() => {
     const activeGroup = groups.find(groupHasActive);
-    if (activeGroup) initial.add(activeGroup.name);
-    return initial;
+    return activeGroup ? activeGroup.name : null;
   });
 
   useEffect(() => {
     const activeGroup = groups.find(groupHasActive);
     if (!activeGroup) return;
-    setOpenGroups((prev) => {
-      if (prev.has(activeGroup.name)) return prev; // already open, avoid extra renders
-      const next = new Set(prev);
-      next.add(activeGroup.name);
-      return next;
-    });
+    // Auto-expand the section owning the newly-active route - and, per
+    // the accordion requirement, this REPLACES whatever was open
+    // before rather than adding to it, so direct navigation to a page
+    // in a different section correctly collapses the previous one too.
+    setOpenGroup((prev) => (prev === activeGroup.name ? prev : activeGroup.name));
     // Re-run whenever the route changes; group definitions are stable per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   const toggleGroup = (name) => {
-    setOpenGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
+    // True accordion: opening a section always closes whichever other
+    // section was open - only one can ever be expanded at a time.
+    // Clicking the already-open section's own header collapses it.
+    setOpenGroup((prev) => (prev === name ? null : name));
   };
 
   return (
@@ -123,7 +119,7 @@ function Sidebar({ isOpen, user, onClose }) {
       <div className="sidebar-content">
         <nav className="sidebar-nav">
           {groups.map((group) => {
-            const isCollapsed = !openGroups.has(group.name);
+            const isCollapsed = openGroup !== group.name;
             return (
               <div className="nav-group" key={group.name}>
                 <button

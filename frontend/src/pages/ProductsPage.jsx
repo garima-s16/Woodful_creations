@@ -192,7 +192,7 @@ function ProductsPage() {
         emptyAction={isMaster ? { label: 'Add Product', onClick: () => setShowAdd(true) } : undefined}
       />
 
-      <Modal isOpen={showAdd} title="Add Product" onClose={() => setShowAdd(false)}>
+      <Modal isOpen={showAdd} title="Add Product" onClose={() => { setShowAdd(false); setDuplicateWarning(null); }}>
         <Form fields={fields} onSubmit={(data) => submitCreate(data, false)} loading={loading} submitText="Add Product" />
       </Modal>
 

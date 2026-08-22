@@ -362,6 +362,7 @@ function MaterialsPage() {
           <a className="btn-secondary" href={reportsAPI.downloadUrl('stock-dashboard.xlsx')} target="_blank" rel="noreferrer">
             Export Stock Dashboard
           </a>
+          {isPrivileged && <button className="btn-secondary" onClick={() => navigate('/materials/import')}>Import Excel</button>}
           {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Material</button>}
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientsAPI, reportsAPI, clientImportAPI } from '../utils/api';
+import { clientsAPI, reportsAPI, clientImportAPI, settingsAPI } from '../utils/api';
 import Table from '../components/common/Table';
 import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -17,6 +17,7 @@ function ClientsPage() {
   const { user } = useSelector((state) => state.auth);
   const isStrictlyMaster = user?.role === 'master';
   const [clients, setClients] = useState([]);
+  const [leadSources, setLeadSources] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -47,6 +48,7 @@ function ClientsPage() {
 
   useEffect(() => {
     load();
+    settingsAPI.list('lead-sources').then((res) => setLeadSources(res.data)).catch(() => setLeadSources([]));
   }, []);
 
   const handleSearch = (e) => {
@@ -130,6 +132,7 @@ function ClientsPage() {
       ),
     },
     { key: 'name', label: 'Name' },
+    { key: 'client_type', label: 'Type' },
     { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'city', label: 'City' },
     { key: 'status', label: 'Status' },
     { key: 'lead_source', label: 'Lead Source' }, { key: 'address', label: 'Address' },
@@ -148,6 +151,10 @@ function ClientsPage() {
   const fields = [
     { name: 'name', label: 'Client Name', required: true },
     {
+      name: 'client_type', label: 'Client Type', type: 'select', required: true,
+      options: [{ value: 'Individual', label: 'Individual' }, { value: 'Business', label: 'Business' }],
+    },
+    {
       name: 'phone', label: 'Phone', required: true,
       hint: 'Exactly 10 digits.',
       validate: (value) => (/^[0-9]{10}$/.test(value) ? '' : 'Please enter valid mobile number'),
@@ -164,9 +171,12 @@ function ClientsPage() {
     { name: 'site_address', label: 'Site Address', type: 'textarea', advanced: true,
       hint: 'Where the work actually happens, if different from the address above.' },
     { name: 'city', label: 'City', advanced: true },
+    { name: 'state', label: 'State', advanced: true },
+    { name: 'pincode', label: 'Pincode', advanced: true },
     { name: 'gstin', label: 'GSTIN', advanced: true,
       validate: (value) => (value.length === 15 ? '' : 'GSTIN must contain 15 characters') },
-    { name: 'lead_source', label: 'Lead Source', advanced: true },
+    { name: 'lead_source', label: 'Lead Source', type: 'select', advanced: true,
+      options: leadSources.map((s) => ({ value: s.name, label: s.name })) },
     { name: 'remarks', label: 'Notes', type: 'textarea', advanced: true },
   ];
 

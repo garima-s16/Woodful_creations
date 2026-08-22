@@ -5,6 +5,7 @@ from app.api.routes import materials
 from app.api.routes import material_categories
 from app.api.routes import products
 from app.api.routes import product_imports
+from app.api.routes import material_imports
 from app.api.routes import client_imports
 from app.api.routes import rate_cards
 from app.api.routes import rate_card_imports
@@ -21,6 +22,7 @@ from app.api.routes import clients
 from app.api.routes import client_activities
 from app.api.routes import search
 from app.api.routes import orders
+from app.api.routes import order_imports
 from app.api.routes import payments
 from app.api.routes import project_expenses
 from app.api.routes import employees
@@ -31,6 +33,7 @@ from app.api.routes import production_jobs
 from app.api.routes import dashboard
 from app.api.routes import reports
 from app.api.routes import estimates
+from app.api.routes import estimate_imports
 from app.api.routes import candidates
 from app.api.routes import interviews
 from app.api.routes import salary_slips
@@ -54,6 +57,7 @@ all_routers = [
     material_categories.router,
     products.router,
     product_imports.router,
+    material_imports.router,
     client_imports.router,
     rate_cards.router,
     rate_card_imports.router,
@@ -70,6 +74,7 @@ all_routers = [
     client_activities.router,
     search.router,
     orders.router,
+    order_imports.router,
     payments.router,
     project_expenses.router,
     employees.router,
@@ -80,6 +85,7 @@ all_routers = [
     dashboard.router,
     reports.router,
     estimates.router,
+    estimate_imports.router,
     candidates.router,
     interviews.router,
     salary_slips.router,

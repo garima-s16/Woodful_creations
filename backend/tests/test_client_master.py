@@ -239,32 +239,32 @@ def test_client_search_by_phone(client, test_user):
 # ---------------------------------------------------------------------
 
 def test_import_row_missing_phone_flagged():
-    result, errors = validate_and_match_row({"Client Name": "No Phone Row"}, {})
+    result, errors = validate_and_match_row({"Client Name *": "No Phone Row", "Client Type *": "Individual"}, {})
     assert "Please enter valid mobile number" in errors
 
 
 def test_import_row_invalid_phone_flagged():
-    result, errors = validate_and_match_row({"Client Name": "Bad Phone Row", "Phone": "abc"}, {})
+    result, errors = validate_and_match_row({"Client Name *": "Bad Phone Row", "Client Type *": "Individual", "Phone *": "abc"}, {})
     assert any("Invalid phone" in e for e in errors)
 
 
 def test_import_row_invalid_email_flagged():
     result, errors = validate_and_match_row(
-        {"Client Name": "Bad Email Row", "Phone": "9812345684", "Email": "not-an-email"}, {},
+        {"Client Name *": "Bad Email Row", "Client Type *": "Individual", "Phone *": "9812345684", "Email": "not-an-email"}, {},
     )
     assert any("Invalid email" in e for e in errors)
 
 
 def test_import_row_short_gstin_flagged():
     result, errors = validate_and_match_row(
-        {"Client Name": "Bad GSTIN Row", "Phone": "9812345685", "GSTIN": "SHORT"}, {},
+        {"Client Name *": "Bad GSTIN Row", "Client Type *": "Individual", "Phone *": "9812345685", "GSTIN": "SHORT"}, {},
     )
     assert any("GSTIN must contain 15 characters" in e for e in errors)
 
 
 def test_import_row_valid_data_no_errors():
     result, errors = validate_and_match_row(
-        {"Client Name": "Clean Row", "Phone": "9812345686", "Email": "clean@example.com"}, {},
+        {"Client Name *": "Clean Row", "Client Type *": "Individual", "Phone *": "9812345686", "Email": "clean@example.com"}, {},
     )
     assert errors == []
     assert result["is_duplicate"] is False

@@ -31,6 +31,8 @@ class ProductImportRowPreview(BaseModel):
     notes: Optional[str] = None
     matched_product_id: Optional[int] = None
     is_duplicate: bool = False
+    possible_match_product_id: Optional[int] = None
+    possible_match_name: Optional[str] = None
     errors: List[str] = []
 
 
@@ -71,7 +73,11 @@ class ProductImportCommitRow(BaseModel):
     cost_price: Optional[Decimal] = None
     selling_price: Optional[Decimal] = None
     notes: Optional[str] = None
-    skip: bool = False  # user chose not to import this row (e.g. unresolved duplicate)
+    # Set by the frontend when the user resolves a possible (fuzzy) match
+    # as "Use Existing" - reuses that product instead of creating a new
+    # one, same as matched_client_id in the Client importer.
+    matched_product_id: Optional[int] = None
+    skip: bool = False  # user chose not to import this row (e.g. unresolved possible match)
 
 
 class ProductImportCommitRequest(BaseModel):
@@ -80,6 +86,7 @@ class ProductImportCommitRequest(BaseModel):
 
 class ProductImportCommitResult(BaseModel):
     created_products: int
+    matched_existing: int = 0
     skipped: int
     product_ids: List[int]
     error: Optional[str] = None

@@ -1,5 +1,4 @@
 from typing import List, Optional
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session, joinedload
@@ -16,10 +15,6 @@ from app.schemas.product import ProductCreate, ProductUpdate, ProductResponse
 from app.utils.id_generator import generate_unique_code, generate_business_id
 
 router = APIRouter(prefix="/api/products", tags=["products"])
-
-
-def _normalize_product_name(name: str) -> str:
-    return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
 def _serialize_products(products, role: str):
@@ -100,12 +95,21 @@ def create_product(data: ProductCreate, request: Request, confirm_duplicate: boo
     # be two different real products (e.g. two custom one-offs that
     # happen to share a description). confirm_duplicate=true proceeds
     # anyway once the user has seen the warning and decided it's fine.
+    # Duplicate check (Product Master section 9, Family 103 section 5): a
+    # warning, not an automatic rejection - the same normalized name could
+    # legitimately be two different real products (e.g. two custom
+    # one-offs that happen to share a description). confirm_duplicate=true
+    # proceeds anyway once the user has seen the warning and decided it's
+    # fine. Uses the same fuzzy matcher as the Product Excel importer
+    # (app.utils.client_matching.find_fuzzy_name_matches) - an exact match
+    # ("Custom Walk-in Wardrobe" typed twice) and a close typo ("Custom
+    # Walk-in Wardrob") are both caught here, not just in Excel, so the UI
+    # and the importer can never silently disagree about what counts as a
+    # possible duplicate.
     if not confirm_duplicate:
-        target_key = _normalize_product_name(data.name)
-        matches = [
-            p for p in db.query(Product).filter(Product.is_active == True).all()  # noqa: E712
-            if _normalize_product_name(p.name) == target_key
-        ]
+        from app.utils.client_matching import find_fuzzy_name_matches
+        active_products = db.query(Product).filter(Product.is_active == True).all()  # noqa: E712
+        matches = find_fuzzy_name_matches(db=None, name=data.name, candidates=active_products, limit=5)
         if matches:
             raise HTTPException(status_code=409, detail={
                 "warning": "Possible existing product found.",

@@ -1,6 +1,5 @@
 from typing import List, Optional
 from decimal import Decimal
-import difflib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request, UploadFile, File
@@ -21,6 +20,7 @@ from app.models.client_document import ClientDocument
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientWithStats
 from app.schemas.client_document import ClientDocumentResponse
 from app.utils.id_generator import generate_unique_code, generate_business_id
+from app.utils.client_matching import find_fuzzy_name_matches
 
 # A broader allowlist than resumes (candidates.py) - client documents
 # genuinely include contracts/ID proofs (PDF/DOC) as well as site
@@ -83,21 +83,11 @@ def check_duplicate_clients(name: str = Query(..., min_length=2), db: Session = 
     shares a name with someone else (e.g. two different "Sanket"s are
     a real possibility, not necessarily a mistake). Catches both
     substring matches and typo-variants via fuzzy similarity."""
-    all_clients = db.query(Client).all()
-    name_lower = name.strip().lower()
-    matches = []
-    for c in all_clients:
-        c_name_lower = c.name.lower()
-        if name_lower in c_name_lower or c_name_lower in name_lower:
-            matches.append(c)
-            continue
-        similarity = difflib.SequenceMatcher(None, name_lower, c_name_lower).ratio()
-        if similarity >= 0.8:
-            matches.append(c)
+    matches = find_fuzzy_name_matches(db, name)
     return {
         "possible_duplicates": [
             {"id": c.id, "name": c.name, "client_code": c.client_code, "phone": c.phone, "email": c.email}
-            for c in matches[:5]
+            for c in matches
         ],
     }
 

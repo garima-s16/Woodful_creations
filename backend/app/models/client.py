@@ -25,6 +25,10 @@ class Client(BaseModel):
     # constraint already enforced by migration 0007's backfill.
     business_id = Column(String(10), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False, index=True)
+    # Mandatory (Family 103 section 9) - controlled value ("Individual" /
+    # "Business"), same list in UI and Excel. Defaults existing rows to
+    # "Individual" via migration 0055's backfill.
+    client_type = Column(String(20), nullable=False, default="Individual")
     contact_person = Column(String(255), nullable=True)  # who to actually call, when the client is a company/family, not an individual
     # Mandatory - a confirmed demo-testing finding (Client Master
     # section 3): a client record with no way to reach them isn't
@@ -35,6 +39,8 @@ class Client(BaseModel):
     address = Column(Text, nullable=True)  # billing address
     site_address = Column(Text, nullable=True)  # where the work actually happens, when different from the billing address
     city = Column(String(100), nullable=True)
+    state = Column(String(100), nullable=True)
+    pincode = Column(String(10), nullable=True)
     gstin = Column(String(20), nullable=True)
     status = Column(String(20), nullable=False, default="Active")  # Active / Inactive
     lead_source = Column(String(100), nullable=True)

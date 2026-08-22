@@ -104,21 +104,26 @@ def generate_business_id(db: Session) -> str:
     caller's transaction. That integer is guaranteed unique and
     strictly increasing by the database engine itself - concurrent
     callers each get a distinct number with no race window - then it's
-    base36-encoded and zero-padded to exactly 10 characters.
+    offset and base36-encoded to exactly 10 characters.
 
-    Callers should still create the owning entity and commit within the
-    same retry-on-IntegrityError loop already used for the human-
-    readable sequential codes (see generate_unique_code) - not because
-    this function can collide with itself, but so a rolled-back attempt
-    (e.g. a sequential-code collision on the *same* insert) doesn't
-    leave the entity half-created.
+    The offset (10 * 36^9, i.e. base36 "A000000000") exists so every
+    generated ID - including the very first one - includes a leading
+    letter rather than being purely numeric. Without it, early
+    sequence values base36-encode to something indistinguishable from
+    a plain zero-padded decimal number (id=5 -> "0000000005", id=9 ->
+    "0000000009"), defeating the entire point of an alphanumeric ID.
+    The offset preserves strict ordering (it's a constant added before
+    encoding, so relative order between any two IDs is unchanged) and
+    leaves ~2.6 quadrillion IDs of headroom before it would ever need
+    an 11th character.
     """
     from app.models.id_sequence import IdSequence
 
     seq = IdSequence()
     db.add(seq)
     db.flush()
-    return _to_base36(seq.id).rjust(SHORT_ID_LENGTH, _BASE36_ALPHABET[0])
+    offset = 10 * 36 ** 9  # base36 "A000000000"
+    return _to_base36(offset + seq.id).rjust(SHORT_ID_LENGTH, _BASE36_ALPHABET[0])
 
 
 def generate_short_id() -> str:

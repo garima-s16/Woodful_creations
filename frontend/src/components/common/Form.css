@@ -1,6 +1,28 @@
-.form { display: flex; flex-direction: column; gap: var(--space-4); }
+.form {
+  display: grid;
+  /* auto-fit picks the column count from the modal's actual width - 1
+     column in the default ~560px modal (where two 240px+ columns
+     plus gap wouldn't comfortably fit), 2-3 in a "wide" 1040px modal
+     (Estimate/Order) - instead of every field stacking full-width
+     and leaving the extra space next to it empty. */
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4) var(--space-5);
+}
 
 .form-group { display: flex; flex-direction: column; gap: 6px; }
+/* Caps how wide a short field (date, number, a 2-3 word select) can
+   stretch when auto-fit gives its grid track more room than it has
+   neighbours to share with - e.g. a lone trailing field in the row.
+   Full-width fields (textareas, computed readouts) are exempt. */
+.form-group:not(.form-group--full) { max-width: 460px; }
+/* Textareas and derived/computed readouts stay full-width even when
+   short fields around them pair up - see Form.js's isFullWidth. */
+.form-group--full,
+.form-advanced-toggle,
+.form-advanced-section,
+.btn-submit {
+  grid-column: 1 / -1;
+}
 
 .form-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
 .required { color: var(--danger); }
@@ -43,10 +65,16 @@
 .form-advanced-toggle:hover { color: var(--color-gold); }
 .form-advanced-toggle:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: var(--radius-sm); }
 
-.form-advanced-section { display: flex; flex-direction: column; gap: var(--space-5); }
+.form-advanced-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4) var(--space-5); }
 
-/* Multi-step wizard */
-.form-wizard { gap: var(--space-5); }
+/* Multi-step wizard - the wizard <form> carries both .form and
+   .form-wizard together, so this must override .form's grid back to a
+   simple flex column for the wizard's OWN direct children (steps
+   pills / current panel / actions row) - otherwise each of those
+   would get placed into its own auto-fit grid column instead of
+   spanning the full width. The actual field grid still applies one
+   level down, inside .wizard-panel (below). */
+.form-wizard { display: flex; flex-direction: column; gap: var(--space-5); }
 
 .wizard-steps {
   display: flex; flex-wrap: wrap; gap: var(--space-2);
@@ -59,9 +87,16 @@
 .wizard-step.active { background: var(--color-ink); color: var(--color-ivory); }
 .wizard-step.done { color: var(--success); }
 
-.wizard-panel { display: flex; flex-direction: column; gap: var(--space-4); min-height: 120px; }
+.wizard-panel {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4) var(--space-5); min-height: 120px;
+}
 
-.wizard-review { gap: var(--space-5); }
+/* The review step's div carries both .wizard-panel and .wizard-review
+   together (see Form.js) - override the field-grid back to a plain
+   flex column here too, so each section's review rows stack normally
+   instead of being placed into separate grid columns. */
+.wizard-review { display: flex; flex-direction: column; gap: var(--space-5); }
 .review-section h4 { font-size: 0.85rem; margin-bottom: var(--space-2); color: var(--color-wood); }
 .review-row {
   display: flex; justify-content: space-between; padding: 6px 0;

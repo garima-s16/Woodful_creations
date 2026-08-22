@@ -7,6 +7,7 @@ from app.utils.validators import validate_phone, validate_email
 class ClientImportRowPreview(BaseModel):
     row_number: int
     name: Optional[str] = None
+    client_type: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     alternate_phone: Optional[str] = None
@@ -14,11 +15,19 @@ class ClientImportRowPreview(BaseModel):
     address: Optional[str] = None
     site_address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
     gstin: Optional[str] = None
     lead_source: Optional[str] = None
     remarks: Optional[str] = None
     matched_client_id: Optional[int] = None
     is_duplicate: bool = False
+    # Family 103 section 8: a name that closely resembles (but doesn't
+    # exactly match) an existing client - never auto-resolved. The caller
+    # must show "Use Existing" (set matched_client_id to this value on
+    # commit) / "Create New" (leave as-is) / "Edit" to the user.
+    possible_match_client_id: Optional[int] = None
+    possible_match_name: Optional[str] = None
     errors: List[str] = []
 
 
@@ -38,6 +47,7 @@ class ClientImportCommitRow(BaseModel):
     generated, per the Client Recognition rule. A row without a match
     is only created if the caller explicitly leaves skip=False for it."""
     name: str
+    client_type: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     alternate_phone: Optional[str] = None
@@ -45,6 +55,8 @@ class ClientImportCommitRow(BaseModel):
     address: Optional[str] = None
     site_address: Optional[str] = None
     city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
     gstin: Optional[str] = None
     lead_source: Optional[str] = None
     remarks: Optional[str] = None
@@ -62,6 +74,9 @@ class ClientImportCommitRow(BaseModel):
         # a valid, existing record.
         if self.skip or self.matched_client_id:
             return self
+        from app.schemas.client import CLIENT_TYPES
+        if not self.client_type or self.client_type not in CLIENT_TYPES:
+            raise ValueError(f"Client Type must be one of: {', '.join(CLIENT_TYPES)}")
         phone = (self.phone or "").strip()
         if not phone or not validate_phone(phone):
             raise ValueError("Please enter valid mobile number")

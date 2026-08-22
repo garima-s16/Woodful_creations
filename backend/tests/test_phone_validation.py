@@ -119,13 +119,13 @@ def test_client_import_invalid_phone_row_rejected_exact_message(client, test_use
     message shown, row not committed - via the pure validator used by
     the actual import route."""
     from app.utils.client_import import validate_and_match_row
-    result, errors = validate_and_match_row({"Client Name": "Bad Import Phone", "Phone": "12345"}, {})
+    result, errors = validate_and_match_row({"Client Name *": "Bad Import Phone", "Client Type *": "Individual", "Phone *": "12345"}, {})
     assert EXACT_MESSAGE in errors
 
 
 def test_client_import_missing_phone_row_exact_message():
     from app.utils.client_import import validate_and_match_row
-    result, errors = validate_and_match_row({"Client Name": "Missing Import Phone"}, {})
+    result, errors = validate_and_match_row({"Client Name *": "Missing Import Phone", "Client Type *": "Individual"}, {})
     assert EXACT_MESSAGE in errors
 
 

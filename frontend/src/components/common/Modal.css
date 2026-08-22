@@ -27,9 +27,26 @@
   max-width: 560px;
   width: 92%;
   max-height: 90vh;
-  overflow-y: auto;
+  /* A flex column with only .modal-body scrolling (not the whole
+     card) - keeps the header, including the close button, pinned in
+     view for a long form instead of scrolling out of reach. Previously
+     overflow-y:auto lived here directly, which scrolled the header
+     and close button away along with the content on any form tall
+     enough to need it. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--border-color);
   animation: modalEnter 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* For forms with genuinely wide content - the Estimate/Order line-item
+   editor (Product/Description need real room; see LineItemEditor.css) - that don't fit comfortably in the default width without
+   compressing every column. Still fluid (width: 92%) and still capped
+   below viewport width, so it degrades the same way the default size
+   does on narrower screens rather than forcing horizontal overflow. */
+.modal-content--wide {
+  max-width: 1040px;
 }
 
 .modal-header {
@@ -38,6 +55,7 @@
   align-items: center;
   padding: var(--space-5);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .modal-header h2 {
@@ -46,22 +64,39 @@
 }
 
 .modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
   background: none;
   border: none;
-  font-size: 24px;
+  border-radius: var(--radius-md);
+  font-size: 22px;
   line-height: 1;
   cursor: pointer;
   color: var(--text-secondary);
+  transition: background-color var(--transition), color var(--transition);
 }
 
-.modal-close:hover {
+.modal-close:hover,
+.modal-close:focus-visible {
   color: var(--text-primary);
+  background-color: rgba(243, 237, 225, 0.08);
 }
 
 .modal-body {
   padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
+/* Defined for any modal that does render a dedicated footer bar
+   (distinct from Form's own submit button, which lives inside
+   .modal-body) - kept pinned below the scrolling body for the same
+   reason the header is pinned above it. */
 .modal-footer {
   display: flex;
   gap: var(--space-3);
@@ -69,6 +104,7 @@
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--border-color);
   background-color: var(--color-charcoal-elevated);
+  flex-shrink: 0;
 }
 
 /* Buttons inside the modal reuse the canonical .btn-primary/.btn-secondary
@@ -89,4 +125,37 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);
+}
+
+/* Tablet: the modal already scales via width:92%, but the wide variant
+   and header/body padding stay comfortable rather than fixed-desktop. */
+@media (max-width: 768px) {
+  .modal-content,
+  .modal-content--wide {
+    width: 95%;
+    max-width: 95vw;
+    max-height: 92vh;
+  }
+}
+
+/* Small phones: reduce padding so more of the modal's actual content
+   fits above the fold, without shrinking fonts/controls themselves. */
+@media (max-width: 480px) {
+  .modal-header {
+    padding: var(--space-4);
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .modal-footer {
+    flex-direction: column;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .modal-footer .btn-primary,
+  .modal-footer .btn-secondary {
+    width: 100%;
+  }
 }

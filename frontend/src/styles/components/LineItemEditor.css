@@ -1,35 +1,82 @@
-.line-item-editor { margin: 12px 0; }
+.line-item-editor { margin: 12px 0; display: flex; flex-direction: column; gap: var(--space-4); }
 
-.line-item-header-row,
-.line-item-row {
-  display: grid;
-  grid-template-columns: 1.4fr 2fr 1.3fr 0.7fr 0.9fr 1fr 1.1fr 70px;
-  gap: 8px;
-  align-items: center;
+/* Each item is now its own card with two rows - Product/Description get
+   real, comfortable width on their own row; everything else (Category,
+   Qty, Unit, Rate, Amount, Actions) sits below as a compact row that
+   wraps onto further lines if the available width genuinely can't fit
+   them, instead of every column shrinking to keep one rigid 8-across
+   row on screen. */
+.line-item-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--surface);
 }
 
-.line-item-header-row {
-  font-size: 0.7rem;
+.line-item-primary-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.6fr);
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.line-item-secondary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  align-items: flex-end;
+}
+
+.line-item-field--category { flex: 1 1 130px; min-width: 110px; }
+.line-item-field--qty { flex: 0 1 90px; min-width: 76px; }
+.line-item-field--unit { flex: 0 1 100px; min-width: 84px; }
+.line-item-field--rate { flex: 1 1 140px; min-width: 120px; }
+.line-item-field--amount { flex: 0 1 130px; min-width: 110px; }
+
+.line-item-row-actions {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.line-item-card input,
+.line-item-card select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.88rem;
+  width: 100%;
+  min-height: 36px;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.line-item-card input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.line-item-card input:focus,
+.line-item-card select:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--color-gold);
+}
+
+.line-item-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* Every field now carries its own label - this is a compact card, not
+   a spreadsheet row sharing one header, so the label needs to travel
+   with the field at every width, desktop included. */
+.line-item-field::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-secondary);
-  padding: 0 4px 6px;
-}
-
-.line-item-row {
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border-color);
-  align-items: start;
-}
-
-.line-item-row input,
-.line-item-row select {
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  font-size: 0.82rem;
-  width: 100%;
 }
 
 .product-picker { position: relative; display: flex; flex-direction: column; gap: 2px; }
@@ -45,41 +92,62 @@
 .product-picker-toggle:hover { color: var(--color-gold); }
 .product-picker-dropdown {
   position: absolute; top: 100%; left: 0; z-index: 20;
-  width: 260px; margin-top: 4px; padding: 8px;
+  width: max(260px, 100%); max-width: min(320px, 90vw); margin-top: 4px; padding: 8px;
   background: var(--surface-elevated); border: 1px solid var(--border-strong);
   border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+/* Portal variant (see LineItemEditor.jsx) - rendered into document.body
+   instead of here, positioned in viewport coordinates via inline style
+   (top/bottom/left/width), so the static top:100%/left:0 above don't
+   apply and z-index must clear the modal overlay's own 1000 to still
+   render above the modal it visually belongs to. */
+.product-picker-dropdown--portal {
+  position: fixed;
+  top: auto; left: auto; margin-top: 0;
+  z-index: 1100;
+  max-width: min(320px, 90vw);
 }
 .product-picker-dropdown input {
   margin-bottom: 6px;
 }
-.product-picker-hint { font-size: 0.76rem; color: var(--text-secondary); padding: 4px 2px; }
+.product-picker-hint { font-size: 0.8rem; color: var(--text-secondary); padding: 4px 2px; }
 .product-picker-result {
   display: flex; flex-direction: column; gap: 1px; width: 100%;
   padding: 6px 8px; text-align: left; background: none; border: none;
   border-radius: 4px; cursor: pointer;
 }
 .product-picker-result:hover { background: rgba(192, 138, 69, 0.1); }
-.product-picker-result-id { font-size: 0.7rem; color: var(--color-gold-soft); font-family: 'Courier New', monospace; }
-.product-picker-result-name { font-size: 0.82rem; color: var(--text-primary); }
+.product-picker-result-id { font-size: 0.72rem; color: var(--color-gold-soft); font-family: 'Courier New', monospace; }
+.product-picker-result-name { font-size: 0.88rem; color: var(--text-primary); }
 
-.line-item-pricing-rule { font-size: 0.68rem; color: var(--color-gold-soft); margin-top: 2px; white-space: nowrap; }
+.line-item-pricing-rule { font-size: 0.72rem; color: var(--color-gold-soft); margin-top: 4px; white-space: nowrap; }
+.line-item-input-error { border-color: var(--danger) !important; }
+.line-item-field-error { font-size: 0.72rem; color: var(--danger); margin-top: 4px; white-space: nowrap; }
 
 .line-item-amount {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-primary);
-  text-align: right;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
 }
 
-.line-item-row-actions { display: flex; gap: 2px; }
+.line-item-row-actions { display: flex; gap: 4px; align-items: center; }
 .line-item-row-actions button {
-  width: 22px; height: 22px;
+  width: 32px; height: 32px;
   border: 1px solid var(--border-color);
-  background: var(--surface);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.82rem;
   line-height: 1;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+.line-item-row-actions button:hover:not(:disabled) {
+  background: var(--color-charcoal-elevated);
+  border-color: var(--border-strong);
 }
 .line-item-row-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
 .line-item-remove { color: var(--danger); }
@@ -91,5 +159,38 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-strong);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+/* Below this, even the compact secondary-row fields (Category/Qty/
+   Unit/Rate/Amount) don't have enough shared width to sit comfortably
+   side by side - stack Product and Description into their own full-
+   width rows too, and let the already-wrapping secondary row settle
+   into pairs. Nothing shrinks below its desktop size; it just uses
+   more vertical space instead. */
+@media (max-width: 640px) {
+  .line-item-primary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .line-item-field--category,
+  .line-item-field--rate { flex-basis: 45%; }
+  .line-item-field--qty,
+  .line-item-field--unit,
+  .line-item-field--amount { flex-basis: 28%; }
+
+  .line-item-row-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .line-item-row-actions button {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
 }
