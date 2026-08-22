@@ -14,6 +14,7 @@ Create Date: 2026-08-20
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0043"
 down_revision = "0042"
@@ -22,7 +23,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
+    bind = op.get_bind()
+    add_column_if_missing(bind, 
         "client_activities",
         sa.Column("follow_up_done", sa.Boolean(), nullable=False, server_default=sa.false()),
     )

@@ -22,6 +22,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, add_column_if_missing
 
 revision = "0011"
 down_revision = "0010"
@@ -30,9 +31,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("estimates", sa.Column("discount", sa.Numeric(12, 2), nullable=False, server_default="0"))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "estimates", sa.Column("discount", sa.Numeric(12, 2), nullable=False, server_default="0"))
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "estimate_line_items",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),

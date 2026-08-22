@@ -27,6 +27,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing, column_exists
 
 revision = "0018"
 down_revision = "0017"
@@ -49,21 +50,27 @@ def upgrade() -> None:
     # Same situation as material_categories in migration 0016: an earlier,
     # pre-hierarchy version of this app created a flat `locations` table
     # (name/description, no business_id/location_type/parent_id) directly
-    # via create_all(). Replace it automatically if it's still empty;
-    # otherwise stop rather than silently dropping real data.
+    # via create_all(). Replace it automatically if it's still empty AND
+    # genuinely has the old shape; if it already has the current shape
+    # (business_id present), it's the real already-migrated table, not
+    # the stray legacy one, so leave it alone. If it has the old shape
+    # but real data, stop rather than silently dropping it.
     if insp.has_table("locations"):
-        row_count = conn.execute(sa.text("SELECT COUNT(*) FROM locations")).scalar()
-        if row_count:
-            raise RuntimeError(
-                "A pre-existing 'locations' table with data was found that "
-                "predates this migration's schema (missing business_id/"
-                "location_type/parent_id). Migrate that data manually, then "
-                "re-run this migration."
-            )
-        op.drop_table("locations")
+        existing_columns = {c["name"] for c in insp.get_columns("locations")}
+        is_legacy_shape = "business_id" not in existing_columns
+        if is_legacy_shape:
+            row_count = conn.execute(sa.text("SELECT COUNT(*) FROM locations")).scalar()
+            if row_count:
+                raise RuntimeError(
+                    "A pre-existing 'locations' table with data was found that "
+                    "predates this migration's schema (missing business_id/"
+                    "location_type/parent_id). Migrate that data manually, then "
+                    "re-run this migration."
+                )
+            op.drop_table("locations")
 
-    op.create_table(
-        "locations",
+    create_table_if_missing(
+        conn, "locations",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -74,15 +81,16 @@ def upgrade() -> None:
         sa.UniqueConstraint("business_id", name="uq_locations_business_id"),
         sa.UniqueConstraint("parent_id", "name", name="uq_location_name_per_parent"),
     )
-    op.create_index("ix_locations_name", "locations", ["name"])
-    op.create_index("ix_locations_parent_id", "locations", ["parent_id"])
+    create_index_if_missing(conn, "ix_locations_name", "locations", ["name"])
+    create_index_if_missing(conn, "ix_locations_parent_id", "locations", ["parent_id"])
 
-    with op.batch_alter_table("materials", naming_convention=NAMING_CONVENTION) as batch_op:
-        batch_op.add_column(sa.Column(
-            "location_id", sa.Integer(),
-            sa.ForeignKey("locations.id", name="fk_materials_location_id_locations"), nullable=True,
-        ))
-        batch_op.create_index("ix_materials_location_id", ["location_id"])
+    if not column_exists(conn, "materials", "location_id"):
+        with op.batch_alter_table("materials", naming_convention=NAMING_CONVENTION) as batch_op:
+            batch_op.add_column(sa.Column(
+                "location_id", sa.Integer(),
+                sa.ForeignKey("locations.id", name="fk_materials_location_id_locations"), nullable=True,
+            ))
+            batch_op.create_index("ix_materials_location_id", ["location_id"])
 
 
 def downgrade() -> None:

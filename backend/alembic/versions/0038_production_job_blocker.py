@@ -10,6 +10,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0038"
 down_revision = "0037"
@@ -18,7 +19,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("production_jobs", sa.Column("blocker_reason", sa.Text(), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "production_jobs", sa.Column("blocker_reason", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:

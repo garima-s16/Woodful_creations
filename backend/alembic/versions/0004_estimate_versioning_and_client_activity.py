@@ -7,6 +7,7 @@ Create Date: 2026-08-11
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, column_exists
 
 revision = "0004"
 down_revision = "0003"
@@ -15,6 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     # SQLite does not support adding a column with a foreign key
     # constraint via a plain ALTER TABLE - batch mode works around this
     # (by rebuilding the table under the hood) and behaves identically
@@ -35,17 +37,21 @@ def upgrade() -> None:
         "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
         "pk": "pk_%(table_name)s",
     }
-    with op.batch_alter_table("estimates", naming_convention=naming_convention) as batch_op:
-        batch_op.add_column(sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
-        batch_op.add_column(sa.Column(
-            "parent_estimate_id", sa.Integer(),
-            sa.ForeignKey("estimates.id", name="fk_estimates_parent_estimate_id"),
-            nullable=True,
-        ))
-        batch_op.create_index("ix_estimates_parent_estimate_id", ["parent_estimate_id"])
+    # Both columns (and the index) are added together in this one batch
+    # op - checking just the first is enough to know whether the whole
+    # block already ran (they were always added atomically here).
+    if not column_exists(bind, "estimates", "version"):
+        with op.batch_alter_table("estimates", naming_convention=naming_convention) as batch_op:
+            batch_op.add_column(sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
+            batch_op.add_column(sa.Column(
+                "parent_estimate_id", sa.Integer(),
+                sa.ForeignKey("estimates.id", name="fk_estimates_parent_estimate_id"),
+                nullable=True,
+            ))
+            batch_op.create_index("ix_estimates_parent_estimate_id", ["parent_estimate_id"])
 
-    op.create_table(
-        "client_activities",
+    create_table_if_missing(
+        bind, "client_activities",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),

@@ -8,6 +8,7 @@ Create Date: 2026-08-10
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, add_column_if_missing
 
 revision = "0002"
 down_revision = "0001"
@@ -16,11 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("orders", sa.Column("design_status", sa.String(50), nullable=False, server_default="Pending"))
-    op.add_column("orders", sa.Column("execution_status", sa.String(50), nullable=False, server_default="Pending"))
-    op.add_column("orders", sa.Column("delivery_status", sa.String(50), nullable=False, server_default="Pending"))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "orders", sa.Column("design_status", sa.String(50), nullable=False, server_default="Pending"))
+    add_column_if_missing(bind, "orders", sa.Column("execution_status", sa.String(50), nullable=False, server_default="Pending"))
+    add_column_if_missing(bind, "orders", sa.Column("delivery_status", sa.String(50), nullable=False, server_default="Pending"))
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "estimates",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -39,7 +42,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "candidates",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -54,7 +58,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "interviews",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -67,7 +72,8 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False, server_default="Scheduled", index=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "salary_slips",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),

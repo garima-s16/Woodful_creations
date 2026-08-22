@@ -8,6 +8,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0029"
 down_revision = "0028"
@@ -16,8 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("daily_tasks", sa.Column("task_category", sa.String(50), nullable=True))
-    op.add_column("daily_tasks", sa.Column("actual_completed_at", sa.DateTime(), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "daily_tasks", sa.Column("task_category", sa.String(50), nullable=True))
+    add_column_if_missing(bind, "daily_tasks", sa.Column("actual_completed_at", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:

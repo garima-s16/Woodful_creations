@@ -7,6 +7,7 @@ Create Date: 2026-08-12
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0009"
 down_revision = "0008"
@@ -15,9 +16,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("employees", sa.Column("designation", sa.String(100), nullable=True))
-    op.add_column("employees", sa.Column("email", sa.String(255), nullable=True))
-    op.add_column("employees", sa.Column("manager", sa.String(255), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "employees", sa.Column("designation", sa.String(100), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("email", sa.String(255), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("manager", sa.String(255), nullable=True))
 
 
 def downgrade() -> None:

@@ -9,6 +9,7 @@ Create Date: 2026-08-14
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0020"
 down_revision = "0019"
@@ -17,7 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "stock_transfers",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -31,9 +34,10 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
         sa.UniqueConstraint("business_id", name="uq_stock_transfers_business_id"),
     )
-    op.create_index("ix_stock_transfers_material_id", "stock_transfers", ["material_id"])
+    create_index_if_missing(bind, "ix_stock_transfers_material_id", "stock_transfers", ["material_id"])
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "stock_adjustments",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -48,7 +52,7 @@ def upgrade() -> None:
         sa.Column("adjusted_by", sa.String(100), nullable=True),
         sa.UniqueConstraint("business_id", name="uq_stock_adjustments_business_id"),
     )
-    op.create_index("ix_stock_adjustments_material_id", "stock_adjustments", ["material_id"])
+    create_index_if_missing(bind, "ix_stock_adjustments_material_id", "stock_adjustments", ["material_id"])
 
 
 def downgrade() -> None:

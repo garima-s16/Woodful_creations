@@ -9,6 +9,7 @@ Create Date: 2026-08-16
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0024"
 down_revision = "0023"
@@ -17,7 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("materials", sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "materials", sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()))
 
 
 def downgrade() -> None:

@@ -7,6 +7,7 @@ Create Date: 2026-08-10
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing
 
 revision = "0001"
 down_revision = None
@@ -23,7 +24,9 @@ def _base_cols():
 
 
 def _lookup_table(name):
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         name,
         *_base_cols(),
         sa.Column("name", sa.String(100), unique=True, nullable=False, index=True),
@@ -32,7 +35,9 @@ def _lookup_table(name):
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "users",
         *_base_cols(),
         sa.Column("username", sa.String(255), unique=True, nullable=False, index=True),
@@ -58,7 +63,8 @@ def upgrade() -> None:
     ]:
         _lookup_table(lookup)
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "suppliers",
         *_base_cols(),
         sa.Column("supplier_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -71,7 +77,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "materials",
         *_base_cols(),
         sa.Column("material_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -90,7 +97,8 @@ def upgrade() -> None:
         sa.Column("location", sa.String(100), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "clients",
         *_base_cols(),
         sa.Column("client_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -103,7 +111,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "orders",
         *_base_cols(),
         sa.Column("order_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -124,7 +133,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "employees",
         *_base_cols(),
         sa.Column("employee_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -138,7 +148,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "purchases",
         *_base_cols(),
         sa.Column("purchase_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -155,7 +166,8 @@ def upgrade() -> None:
         sa.Column("payment_status", sa.String(20), nullable=False, server_default="Paid"),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "issues",
         *_base_cols(),
         sa.Column("issue_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -171,7 +183,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "payments",
         *_base_cols(),
         sa.Column("receipt_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -185,7 +198,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "project_expenses",
         *_base_cols(),
         sa.Column("expense_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -199,7 +213,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "attendance",
         *_base_cols(),
         sa.Column("date", sa.DateTime(), nullable=False, index=True),
@@ -211,7 +226,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "daily_tasks",
         *_base_cols(),
         sa.Column("task_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -229,7 +245,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "production_jobs",
         *_base_cols(),
         sa.Column("job_code", sa.String(20), unique=True, nullable=False, index=True),
@@ -247,7 +264,8 @@ def upgrade() -> None:
         sa.Column("remarks", sa.Text(), nullable=True),
     )
 
-    op.create_table(
+    create_table_if_missing(
+        bind,
         "audit_logs",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),

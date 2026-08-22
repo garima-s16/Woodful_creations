@@ -16,6 +16,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import column_exists
 
 revision = "0012"
 down_revision = "0011"
@@ -32,6 +33,9 @@ NAMING_CONVENTION = {
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if column_exists(bind, "users", "employee_id"):
+        return
     with op.batch_alter_table("users", naming_convention=NAMING_CONVENTION) as batch_op:
         batch_op.add_column(sa.Column(
             "employee_id", sa.Integer(),

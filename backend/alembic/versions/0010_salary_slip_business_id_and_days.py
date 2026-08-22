@@ -14,6 +14,7 @@ from alembic import op
 import sqlalchemy as sa
 
 from app.utils.id_generator import generate_short_id
+from app.core.migration_guards import add_column_if_missing, create_index_if_missing
 
 revision = "0010"
 down_revision = "0009"
@@ -22,17 +23,19 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("salary_slips", sa.Column("business_id", sa.String(10), nullable=True))
-    op.create_index("ix_salary_slips_business_id", "salary_slips", ["business_id"], unique=True)
+    bind = op.get_bind()
+    add_column_if_missing(bind, "salary_slips", sa.Column("business_id", sa.String(10), nullable=True))
+    create_index_if_missing(bind, "ix_salary_slips_business_id", "salary_slips", ["business_id"], unique=True)
     # Working days = calendar days in the period the employee was expected to
     # work; paid days = days actually paid for (may differ due to unpaid
     # leave). Both are plain editable numbers here for the same reason
     # PF/TDS are (see SalarySlip's model docstring) - the source-of-truth
     # attendance/leave reconciliation is a separate, larger payroll feature.
-    op.add_column("salary_slips", sa.Column("working_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
-    op.add_column("salary_slips", sa.Column("paid_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
+    add_column_if_missing(bind, "salary_slips", sa.Column("working_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
+    add_column_if_missing(bind, "salary_slips", sa.Column("paid_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
 
-    bind = op.get_bind()
+    # Already idempotent by construction - only ever touches rows that
+    # still need a business_id, so safe to re-run.
     rows = bind.execute(sa.text("SELECT id FROM salary_slips WHERE business_id IS NULL")).fetchall()
     for (row_id,) in rows:
         for attempt in range(5):
@@ -49,6 +52,8 @@ def upgrade() -> None:
                     raise
                 continue
 
+    # Safe to re-apply even if already NOT NULL - not a create/add, so
+    # no "already exists" failure mode here.
     with op.batch_alter_table("salary_slips") as batch_op:
         batch_op.alter_column("business_id", existing_type=sa.String(10), nullable=False)
 

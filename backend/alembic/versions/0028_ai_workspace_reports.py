@@ -8,6 +8,7 @@ Create Date: 2026-08-20
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing
 
 revision = "0028"
 down_revision = "0027"
@@ -16,7 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "ai_workspace_reports",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("order_id", sa.Integer(), sa.ForeignKey("orders.id"), nullable=False, index=True),

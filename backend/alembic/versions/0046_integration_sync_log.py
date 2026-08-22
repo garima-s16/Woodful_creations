@@ -10,6 +10,7 @@ Create Date: 2026-08-20
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0046"
 down_revision = "0045"
@@ -18,7 +19,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "integration_sync_logs",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -35,7 +38,7 @@ def upgrade() -> None:
         sa.Column("triggered_by_user_id", sa.Integer(), nullable=True),
         sa.Column("synced_at", sa.DateTime(), nullable=True),
     )
-    op.create_index("ix_integration_sync_logs_entity", "integration_sync_logs", ["entity_type", "entity_id"])
+    create_index_if_missing(bind, "ix_integration_sync_logs_entity", "integration_sync_logs", ["entity_type", "entity_id"])
 
 
 def downgrade() -> None:

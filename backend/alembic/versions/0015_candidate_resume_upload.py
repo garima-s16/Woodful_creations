@@ -15,6 +15,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0015"
 down_revision = "0014"
@@ -23,9 +24,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("candidates", sa.Column("resume_stored_filename", sa.String(255), nullable=True))
-    op.add_column("candidates", sa.Column("resume_original_filename", sa.String(255), nullable=True))
-    op.add_column("candidates", sa.Column("resume_content_type", sa.String(100), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "candidates", sa.Column("resume_stored_filename", sa.String(255), nullable=True))
+    add_column_if_missing(bind, "candidates", sa.Column("resume_original_filename", sa.String(255), nullable=True))
+    add_column_if_missing(bind, "candidates", sa.Column("resume_content_type", sa.String(100), nullable=True))
 
 
 def downgrade() -> None:

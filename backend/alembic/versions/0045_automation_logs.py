@@ -12,6 +12,7 @@ Create Date: 2026-08-20
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0045"
 down_revision = "0044"
@@ -20,7 +21,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "automation_logs",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -36,9 +39,9 @@ def upgrade() -> None:
         sa.Column("dedup_key", sa.String(150), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
     )
-    op.create_index("ix_automation_logs_rule_key", "automation_logs", ["rule_key"])
-    op.create_index("ix_automation_logs_status", "automation_logs", ["status"])
-    op.create_index("ix_automation_logs_dedup_key", "automation_logs", ["dedup_key"])
+    create_index_if_missing(bind, "ix_automation_logs_rule_key", "automation_logs", ["rule_key"])
+    create_index_if_missing(bind, "ix_automation_logs_status", "automation_logs", ["status"])
+    create_index_if_missing(bind, "ix_automation_logs_dedup_key", "automation_logs", ["dedup_key"])
 
 
 def downgrade() -> None:

@@ -9,6 +9,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0041"
 down_revision = "0040"
@@ -17,7 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("purchases", sa.Column("expected_delivery_date", sa.DateTime(), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "purchases", sa.Column("expected_delivery_date", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:

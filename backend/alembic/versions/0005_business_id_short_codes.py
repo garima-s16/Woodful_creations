@@ -18,6 +18,7 @@ Create Date: 2026-08-12
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing, create_index_if_missing
 
 revision = "0005"
 down_revision = "0004"
@@ -31,9 +32,10 @@ TABLES = [
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     for table in TABLES:
-        op.add_column(table, sa.Column("business_id", sa.String(10), nullable=True))
-        op.create_index(f"ix_{table}_business_id", table, ["business_id"], unique=True)
+        add_column_if_missing(bind, table, sa.Column("business_id", sa.String(10), nullable=True))
+        create_index_if_missing(bind, f"ix_{table}_business_id", table, ["business_id"], unique=True)
 
 
 def downgrade() -> None:

@@ -8,6 +8,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, add_column_if_missing, column_exists
 
 revision = "0026"
 down_revision = "0025"
@@ -24,21 +25,23 @@ NAMING_CONVENTION = {
 
 
 def upgrade() -> None:
-    op.add_column("daily_tasks", sa.Column("created_by", sa.String(255), nullable=True))
-    with op.batch_alter_table("daily_tasks", naming_convention=NAMING_CONVENTION) as batch_op:
-        batch_op.add_column(sa.Column(
-            "parent_task_id", sa.Integer(),
-            sa.ForeignKey("daily_tasks.id", name="fk_daily_tasks_parent_task_id_daily_tasks"), nullable=True,
-        ))
-        batch_op.add_column(sa.Column(
-            "previous_task_id", sa.Integer(),
-            sa.ForeignKey("daily_tasks.id", name="fk_daily_tasks_previous_task_id_daily_tasks"), nullable=True,
-        ))
-        batch_op.create_index("ix_daily_tasks_parent_task_id", ["parent_task_id"])
-        batch_op.create_index("ix_daily_tasks_previous_task_id", ["previous_task_id"])
+    bind = op.get_bind()
+    add_column_if_missing(bind, "daily_tasks", sa.Column("created_by", sa.String(255), nullable=True))
+    if not column_exists(bind, "daily_tasks", "parent_task_id"):
+        with op.batch_alter_table("daily_tasks", naming_convention=NAMING_CONVENTION) as batch_op:
+            batch_op.add_column(sa.Column(
+                "parent_task_id", sa.Integer(),
+                sa.ForeignKey("daily_tasks.id", name="fk_daily_tasks_parent_task_id_daily_tasks"), nullable=True,
+            ))
+            batch_op.add_column(sa.Column(
+                "previous_task_id", sa.Integer(),
+                sa.ForeignKey("daily_tasks.id", name="fk_daily_tasks_previous_task_id_daily_tasks"), nullable=True,
+            ))
+            batch_op.create_index("ix_daily_tasks_parent_task_id", ["parent_task_id"])
+            batch_op.create_index("ix_daily_tasks_previous_task_id", ["previous_task_id"])
 
-    op.create_table(
-        "task_comments",
+    create_table_if_missing(
+        bind, "task_comments",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("task_id", sa.Integer(), sa.ForeignKey("daily_tasks.id"), nullable=False, index=True),
         sa.Column("author", sa.String(255), nullable=False),

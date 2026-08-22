@@ -16,6 +16,7 @@ Create Date: 2026-08-15
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0022"
 down_revision = "0021"
@@ -24,7 +25,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
+    bind = op.get_bind()
+    add_column_if_missing(bind, 
         "purchases",
         sa.Column("receipt_status", sa.String(20), nullable=False, server_default="Received"),
     )

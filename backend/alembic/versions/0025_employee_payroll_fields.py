@@ -8,6 +8,7 @@ Create Date: 2026-08-17
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0025"
 down_revision = "0024"
@@ -16,11 +17,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("employees", sa.Column("pan", sa.String(10), nullable=True))
-    op.add_column("employees", sa.Column("uan", sa.String(20), nullable=True))
-    op.add_column("employees", sa.Column("bank_name", sa.String(100), nullable=True))
-    op.add_column("employees", sa.Column("bank_account_number", sa.String(30), nullable=True))
-    op.add_column("employees", sa.Column("tax_regime", sa.String(10), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "employees", sa.Column("pan", sa.String(10), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("uan", sa.String(20), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("bank_name", sa.String(100), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("bank_account_number", sa.String(30), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("tax_regime", sa.String(10), nullable=True))
 
 
 def downgrade() -> None:

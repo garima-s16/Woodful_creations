@@ -13,6 +13,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0019"
 down_revision = "0018"
@@ -21,7 +22,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "notifications",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -39,10 +42,10 @@ def upgrade() -> None:
         sa.Column("dedup_key", sa.String(150), nullable=True),
         sa.UniqueConstraint("business_id", name="uq_notifications_business_id"),
     )
-    op.create_index("ix_notifications_notification_type", "notifications", ["notification_type"])
-    op.create_index("ix_notifications_is_read", "notifications", ["is_read"])
-    op.create_index("ix_notifications_recipient_user_id", "notifications", ["recipient_user_id"])
-    op.create_index("ix_notifications_dedup_key", "notifications", ["dedup_key"])
+    create_index_if_missing(bind, "ix_notifications_notification_type", "notifications", ["notification_type"])
+    create_index_if_missing(bind, "ix_notifications_is_read", "notifications", ["is_read"])
+    create_index_if_missing(bind, "ix_notifications_recipient_user_id", "notifications", ["recipient_user_id"])
+    create_index_if_missing(bind, "ix_notifications_dedup_key", "notifications", ["dedup_key"])
 
 
 def downgrade() -> None:

@@ -14,6 +14,7 @@ Create Date: 2026-08-13
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0013"
 down_revision = "0012"
@@ -22,14 +23,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("interviews", sa.Column("overall_rating", sa.Integer(), nullable=True))
-    op.add_column("interviews", sa.Column("technical_rating", sa.Integer(), nullable=True))
-    op.add_column("interviews", sa.Column("communication_rating", sa.Integer(), nullable=True))
-    op.add_column("interviews", sa.Column("culture_fit_rating", sa.Integer(), nullable=True))
-    op.add_column("interviews", sa.Column("strengths", sa.Text(), nullable=True))
-    op.add_column("interviews", sa.Column("weaknesses", sa.Text(), nullable=True))
-    op.add_column("interviews", sa.Column("observations", sa.Text(), nullable=True))
-    op.add_column("interviews", sa.Column("recommendation", sa.String(20), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "interviews", sa.Column("overall_rating", sa.Integer(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("technical_rating", sa.Integer(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("communication_rating", sa.Integer(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("culture_fit_rating", sa.Integer(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("strengths", sa.Text(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("weaknesses", sa.Text(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("observations", sa.Text(), nullable=True))
+    add_column_if_missing(bind, "interviews", sa.Column("recommendation", sa.String(20), nullable=True))
 
 
 def downgrade() -> None:

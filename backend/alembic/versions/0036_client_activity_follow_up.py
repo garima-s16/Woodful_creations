@@ -9,6 +9,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing, create_index_if_missing
 
 revision = "0036"
 down_revision = "0035"
@@ -17,8 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("client_activities", sa.Column("follow_up_date", sa.DateTime(), nullable=True))
-    op.create_index("ix_client_activities_follow_up_date", "client_activities", ["follow_up_date"])
+    bind = op.get_bind()
+    add_column_if_missing(bind, "client_activities", sa.Column("follow_up_date", sa.DateTime(), nullable=True))
+    create_index_if_missing(bind, "ix_client_activities_follow_up_date", "client_activities", ["follow_up_date"])
 
 
 def downgrade() -> None:

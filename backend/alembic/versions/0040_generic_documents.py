@@ -12,6 +12,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0040"
 down_revision = "0039"
@@ -20,7 +21,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "generic_documents",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("parent_type", sa.String(20), nullable=False, index=True),
@@ -33,7 +36,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_generic_documents_parent", "generic_documents", ["parent_type", "parent_id"])
+    create_index_if_missing(bind, "ix_generic_documents_parent", "generic_documents", ["parent_type", "parent_id"])
 
 
 def downgrade() -> None:

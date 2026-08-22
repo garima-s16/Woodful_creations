@@ -9,6 +9,7 @@ Create Date: 2026-08-14
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0021"
 down_revision = "0020"
@@ -17,7 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind,
         "personal_cart_items",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -33,8 +36,8 @@ def upgrade() -> None:
         sa.Column("note", sa.String(500), nullable=True),
         sa.Column("status", sa.String(20), nullable=False, server_default="ACTIVE"),
     )
-    op.create_index("ix_personal_cart_items_user_id", "personal_cart_items", ["user_id"])
-    op.create_index("ix_personal_cart_items_material_id", "personal_cart_items", ["material_id"])
+    create_index_if_missing(bind, "ix_personal_cart_items_user_id", "personal_cart_items", ["user_id"])
+    create_index_if_missing(bind, "ix_personal_cart_items_material_id", "personal_cart_items", ["material_id"])
 
 
 def downgrade() -> None:
