@@ -9,16 +9,31 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import create_table_if_missing, column_exists, index_exists
 
 revision = "0048"
 down_revision = "0047"
 branch_labels = None
 depends_on = None
 
+# Required for batch_alter_table on SQLite whenever the rebuilt table
+# has (or gains) a foreign key - SQLite stores no name for a
+# constraint created without one, so Alembic needs this to reflect and
+# name every constraint on the table being rebuilt, not just the new
+# one. Same convention as migrations 0004/0012/0016.
+NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
 
 def upgrade() -> None:
-    op.create_table(
-        "products",
+    bind = op.get_bind()
+    create_table_if_missing(
+        bind, "products",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -52,8 +67,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
     )
 
-    op.create_table(
-        "product_materials",
+    create_table_if_missing(
+        bind, "product_materials",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -65,21 +80,33 @@ def upgrade() -> None:
         sa.UniqueConstraint("product_id", "material_id", name="uq_product_material_pair"),
     )
 
-    with op.batch_alter_table("order_items") as batch_op:
-        batch_op.add_column(sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id"), nullable=True))
-        batch_op.create_index("ix_order_items_product_id", ["product_id"])
+    if not column_exists(bind, "order_items", "product_id"):
+        with op.batch_alter_table("order_items", naming_convention=NAMING_CONVENTION) as batch_op:
+            batch_op.add_column(sa.Column(
+                "product_id", sa.Integer(),
+                sa.ForeignKey("products.id", name="fk_order_items_product_id_products"), nullable=True,
+            ))
+            batch_op.create_index("ix_order_items_product_id", ["product_id"])
+    elif not index_exists(bind, "order_items", "ix_order_items_product_id"):
+        op.create_index("ix_order_items_product_id", "order_items", ["product_id"])
 
-    with op.batch_alter_table("estimate_line_items") as batch_op:
-        batch_op.add_column(sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id"), nullable=True))
-        batch_op.create_index("ix_estimate_line_items_product_id", ["product_id"])
+    if not column_exists(bind, "estimate_line_items", "product_id"):
+        with op.batch_alter_table("estimate_line_items", naming_convention=NAMING_CONVENTION) as batch_op:
+            batch_op.add_column(sa.Column(
+                "product_id", sa.Integer(),
+                sa.ForeignKey("products.id", name="fk_estimate_line_items_product_id_products"), nullable=True,
+            ))
+            batch_op.create_index("ix_estimate_line_items_product_id", ["product_id"])
+    elif not index_exists(bind, "estimate_line_items", "ix_estimate_line_items_product_id"):
+        op.create_index("ix_estimate_line_items_product_id", "estimate_line_items", ["product_id"])
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("estimate_line_items") as batch_op:
+    with op.batch_alter_table("estimate_line_items", naming_convention=NAMING_CONVENTION) as batch_op:
         batch_op.drop_index("ix_estimate_line_items_product_id")
         batch_op.drop_column("product_id")
 
-    with op.batch_alter_table("order_items") as batch_op:
+    with op.batch_alter_table("order_items", naming_convention=NAMING_CONVENTION) as batch_op:
         batch_op.drop_index("ix_order_items_product_id")
         batch_op.drop_column("product_id")
 

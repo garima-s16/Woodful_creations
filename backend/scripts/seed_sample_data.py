@@ -7,12 +7,13 @@ Idempotent - safe to re-run; skips any table that already has rows.
 import logging
 import os
 import sys
+from pathlib import Path
 from datetime import datetime
 from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app import models  # noqa: F401
 from app.models.setting import (
     Unit, StockStatus, StockPaymentStatus, SupplierTerm,
@@ -153,10 +154,12 @@ WOODFUL_EMPLOYEES = [
 ]
 
 # Master Users - real names, MASTER permissions only. Never seeded as
-# Client/Supplier/Employee rows.
+# Client/Supplier/Employee rows. Each has its own independent password
+# env var (SEED_GARIMA_PASSWORD / SEED_NIKHIL_PASSWORD) - never shared,
+# so one can be rotated without touching the other.
 WOODFUL_MASTER_USERS = [
     # (username, email, full_name, password_env_var)
-    ("nikhils", "nikhil@woodful.local", "Nikhil Soni", "SEED_NIKHIL_PASSWORD"),
+    ("Nikhils", "nikhil@woodful.local", "Nikhil Soni", "SEED_NIKHIL_PASSWORD"),
     ("garimas", "garima@woodful.local", "Garima Sharma", "SEED_GARIMA_PASSWORD"),
 ]
 
@@ -201,15 +204,25 @@ def seed_locations(db):
     """Real hierarchy (Warehouse -> Area -> Rack), not a flat name-only
     list - matches the brief's exact example: Main Workshop -> Board
     Storage -> Rack A1/A2/A3, etc. Returns a flat dict keyed by leaf
-    location name for other seed functions to reference."""
-    if db.query(Location).count() > 0:
-        return {l.name: l for l in db.query(Location).all()}
+    location name for other seed functions to reference.
 
-    workshop = Location(name="Main Workshop", location_type="Warehouse", business_id=generate_business_id(db))
-    db.add(workshop)
-    db.flush()
+    Idempotent per-record, not per-table: each node is looked up by
+    its own name (the natural unique key here) before creating it, so
+    a previous run that only got partway through the hierarchy is
+    completed on the next run instead of being silently skipped
+    entirely."""
+    existing = {l.name: l for l in db.query(Location).all()}
+    out = dict(existing)
+    created = 0
 
-    out = {"Main Workshop": workshop}
+    workshop = existing.get("Main Workshop")
+    if not workshop:
+        workshop = Location(name="Main Workshop", location_type="Warehouse", business_id=generate_business_id(db))
+        db.add(workshop)
+        db.flush()
+        out["Main Workshop"] = workshop
+        created += 1
+
     areas = {
         "Board Storage": ["Rack A1", "Rack A2", "Rack A3"],
         "Hardware Storage": ["Rack B1", "Rack B2"],
@@ -219,18 +232,23 @@ def seed_locations(db):
         "Packaging Area": [],
     }
     for area_name, racks in areas.items():
-        area = Location(name=area_name, location_type="Area", parent_id=workshop.id, business_id=generate_business_id(db))
-        db.add(area)
-        db.flush()
-        out[area_name] = area
-        for rack_name in racks:
-            rack = Location(name=rack_name, location_type="Rack", parent_id=area.id, business_id=generate_business_id(db))
-            db.add(rack)
+        area = out.get(area_name)
+        if not area:
+            area = Location(name=area_name, location_type="Area", parent_id=workshop.id, business_id=generate_business_id(db))
+            db.add(area)
             db.flush()
-            out[rack_name] = rack
+            out[area_name] = area
+            created += 1
+        for rack_name in racks:
+            if rack_name not in out:
+                rack = Location(name=rack_name, location_type="Rack", parent_id=area.id, business_id=generate_business_id(db))
+                db.add(rack)
+                db.flush()
+                out[rack_name] = rack
+                created += 1
 
     db.commit()
-    logger.info("Seeded location hierarchy: %d nodes", len(out))
+    logger.info("Locations: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -240,9 +258,6 @@ def seed_material_hierarchy(db):
     grouping. Returns a dict keyed by subcategory name so seed_materials
     can wire each seeded material's subcategory_id correctly, the same
     way seed_locations' returned dict wires location_id."""
-    if db.query(MaterialSubcategory).count() > 0:
-        return {s.name: s for s in db.query(MaterialSubcategory).all()}
-
     hierarchy = {
         "Board & Wood Materials": ["Plywood", "HDHMR", "MDF", "Particle Board", "Block Board", "Solid Wood"],
         "Surface Materials": ["Laminate", "Acrylic", "ACP", "WPC"],
@@ -251,95 +266,67 @@ def seed_material_hierarchy(db):
         "Edge Banding": ["Edge Band"],
         "Packaging & Consumables": ["Packaging", "Consumable"],
     }
-    out = {}
+    existing_categories = {c.name: c for c in db.query(MaterialCategory).all()}
+    out = {s.name: s for s in db.query(MaterialSubcategory).all()}
+    created = 0
     for category_name, subcategory_names in hierarchy.items():
-        category = MaterialCategory(name=category_name)
-        db.add(category)
-        db.flush()
+        category = existing_categories.get(category_name)
+        if not category:
+            category = MaterialCategory(name=category_name)
+            db.add(category)
+            db.flush()
+            existing_categories[category_name] = category
         for sub_name in subcategory_names:
+            if sub_name in out:
+                continue
             sub = MaterialSubcategory(category_id=category.id, name=sub_name)
             db.add(sub)
             db.flush()
             out[sub_name] = sub
+            created += 1
 
     db.commit()
-    logger.info("Seeded material hierarchy: %d categories, %d subcategories", len(hierarchy), len(out))
+    logger.info("Material subcategories: created %d, existing %d", created, len(out) - created)
     return out
 
 
 def seed_master_users(db):
-    """Two named master admin accounts (Nikhil Soni, Garima Sharma) with
-    independent passwords and usernames, per repeated explicit request.
+    """Two named master admin accounts (Nikhil Soni, Garima Sharma),
+    each with its own independent password env var
+    (SEED_NIKHIL_PASSWORD / SEED_GARIMA_PASSWORD) - never shared, never
+    hard-coded. If a person's env var isn't set, that ONE account's
+    creation is skipped with a clear warning; the other person can
+    still be created normally.
 
-    Each account's password comes from its own env var
-    (SEED_NIKHIL_PASSWORD / SEED_GARIMA_PASSWORD) - never hard-coded,
-    and never shared between the two accounts, so one can be rotated
-    without touching the other. If an account's env var isn't set:
-      - a NEW account for that person is skipped entirely (with a
-        loud warning - see below), same as before.
-      - an EXISTING account for that person keeps its current
-        password untouched - the var is only used to (re)create or
-        explicitly reset a password, never required just to keep an
-        already-working account working.
-
-    Idempotent and non-destructive: for an existing account (matched
-    by email - the roster's own stable identifier for each person),
-    full_name and username are corrected to the exact roster values in
-    place (so a roster username change like this one actually reaches
-    an already-seeded account, not just brand-new ones), but role,
-    is_active and cannot_be_deleted are never touched here, and the
-    password is only touched if that person's env var is explicitly
-    set."""
+    Idempotent and non-destructive: matched by email (the roster's own
+    stable identifier). An existing account is never modified, never
+    deleted, and never duplicated - just skipped, so this is always
+    safe to re-run."""
     from app.core.security import hash_password
     from app.models.user import User
 
-    created = 0
-    updated = 0
-    password_reset = 0
     for username, email, full_name, password_env_var in WOODFUL_MASTER_USERS:
-        password = os.environ.get(password_env_var)
+        first_name = full_name.split()[0]
         existing = db.query(User).filter(User.email == email).first()
         if existing:
-            if existing.full_name != full_name:
-                existing.full_name = full_name
-                updated += 1
-            if existing.username != username:
-                existing.username = username
-                updated += 1
-            if password:
-                existing.password_hash = hash_password(password)
-                password_reset += 1
+            print(f"{first_name} already exists — skipping.")
             continue
+
+        password = os.environ.get(password_env_var)
         if not password:
-            banner = (
-                "\n" + "!" * 78 + "\n"
-                f"!!  {password_env_var} is not set - the {full_name} master account\n"
-                "!!  ({email}) will NOT be created. If this is your only master\n"
-                "!!  account, you will be LOCKED OUT after this seed run finishes.\n"
-                "!!  Stop now and run instead:\n"
-                "!!\n"
-                f"!!      export {password_env_var}='choose-a-real-password'\n"
-                "!!      python scripts/seed_sample_data.py\n"
-                "!!\n"
-                f"!!  (Windows PowerShell: $env:{password_env_var} = 'choose-a-real-password')\n"
-                + "!" * 78 + "\n"
-            ).format(email=email)
-            print(banner)
-            logger.warning("%s is not set - skipping creation of the %s master account (%s).",
-                            password_env_var, full_name, email)
+            print(
+                f"{first_name} does not exist and {password_env_var} is not set — "
+                f"skipping. Set it and re-run to create this account: "
+                f"$env:{password_env_var} = 'a-real-password'"
+            )
             continue
+
+        print(f"{first_name} does not exist — creating.")
         db.add(User(
             username=username, email=email, full_name=full_name, role="master",
             password_hash=hash_password(password), is_active=True, cannot_be_deleted=True,
         ))
-        created += 1
-    db.commit()
-    if created:
-        logger.info("Seeded %d master user(s)", created)
-    if updated:
-        logger.info("Corrected %d master user field(s) (username/full name) to match the roster", updated)
-    if password_reset:
-        logger.info("Reset password for %d existing master user(s) (their env var was set)", password_reset)
+        db.commit()
 
 
 def seed_named_suppliers(db):
@@ -378,48 +365,30 @@ def seed_woodful_suppliers(db):
     """Upserts the permanent Woodful supplier roster (WOODFUL_SUPPLIERS)
     - added alongside the existing SUP-xxx suppliers, not replacing
     them. Uses its own SUPW-xxx code range so it can never collide with
-    SUP-xxx codes. Each roster address is stored in the Supplier
-    model's own `address` column.
-
-    Also migrates any SUPW-xxx row created by an older run of this
-    script, back when there was no address column and the address was
-    stashed in remarks as "Address: <address>" - the address moves
-    into the real column and that stopgap remark is cleared, so
-    remarks is free again for genuine notes.
+    SUP-xxx codes. The Supplier model has no address column (and this
+    task doesn't add one), so each roster address is kept verbatim in
+    remarks rather than dropped.
 
     Idempotent per-row by supplier_code, matching seed_named_suppliers'
     own pattern."""
-    existing = {
-        s.supplier_code: s for s in
+    existing_codes = {
+        s.supplier_code for s in
         db.query(Supplier).filter(Supplier.supplier_code.like("SUPW-%")).all()
     }
     created = 0
-    updated = 0
     for i, (name, phone, address) in enumerate(WOODFUL_SUPPLIERS, start=1):
         code = f"SUPW-{i:03d}"
-        row = existing.get(code)
-        if row:
-            changed = False
-            if row.address != address:
-                row.address = address
-                changed = True
-            if row.remarks == f"Address: {address}":
-                row.remarks = None
-                changed = True
-            if changed:
-                updated += 1
+        if code in existing_codes:
             continue
         db.add(Supplier(
             supplier_code=code, name=name, category="General Supplier",
-            contact_person=name, phone=phone, address=address,
+            contact_person=name, phone=phone, remarks=f"Address: {address}",
             business_id=generate_business_id(db),
         ))
         created += 1
     db.commit()
     if created:
         logger.info("Seeded %d Woodful roster suppliers", created)
-    if updated:
-        logger.info("Migrated %d Woodful roster supplier(s) onto the address column", updated)
 
 
 def seed_supplier_materials(db, suppliers, named_suppliers, materials):
@@ -427,8 +396,6 @@ def seed_supplier_materials(db, suppliers, named_suppliers, materials):
     example: BWP Plywood from Sanket at 2350, Ashu at 2410). Uses
     SupplierMaterial, not the legacy single Material.supplier_id -
     that stays pointed at each material's existing primary supplier."""
-    if db.query(SupplierMaterial).count() > 0:
-        return
     rows = [
         # (material_code, supplier_code, price, moq, lead_time_days, is_preferred)
         ("MAT-002", "SUP-001", "2350.00", 10, 2, True),   # BWP Plywood - existing primary supplier
@@ -440,11 +407,16 @@ def seed_supplier_materials(db, suppliers, named_suppliers, materials):
         ("MAT-004", "SUP-003", "950.00", 10, 3, True),     # White Laminate - existing primary supplier
         ("MAT-004", "SUP-008", "970.00", 5, 1, False),     # White Laminate - Shruti, alternate
     ]
+    existing_pairs = {
+        (sm.material_id, sm.supplier_id) for sm in db.query(SupplierMaterial.material_id, SupplierMaterial.supplier_id).all()
+    }
     count = 0
     for mat_code, sup_code, price, moq, lead, preferred in rows:
         material = materials.get(mat_code)
         supplier = suppliers.get(sup_code) or named_suppliers.get(sup_code)
         if not material or not supplier:
+            continue
+        if (material.id, supplier.id) in existing_pairs:
             continue
         db.add(SupplierMaterial(
             material_id=material.id, supplier_id=supplier.id, supplier_price=Decimal(price),
@@ -452,22 +424,24 @@ def seed_supplier_materials(db, suppliers, named_suppliers, materials):
         ))
         count += 1
     db.commit()
-    logger.info("Seeded %d supplier-material pricing rows", count)
+    logger.info("Supplier-material pricing rows: created %d", count)
 
 
 def seed_lookups(db):
     for model, names in LOOKUPS.items():
-        if db.query(model).count() > 0:
-            continue
+        existing_names = {row.name for row in db.query(model).all()}
+        created = 0
         for n in names:
+            if n in existing_names:
+                continue
             db.add(model(name=n))
-        logger.info("Seeded %d rows into %s", len(names), model.__tablename__)
+            created += 1
+        if created:
+            logger.info("Lookup %s: created %d, existing %d", model.__tablename__, created, len(names) - created)
     db.commit()
 
 
 def seed_suppliers(db):
-    if db.query(Supplier).count() > 0:
-        return {s.supplier_code: s for s in db.query(Supplier).all()}
     rows = [
         ("SUP-001", "Century Plywood Dealer", "Plywood", "Sanket", "9856781121", "23ABCDE1234F1Z5", "15 Days", "Primary plywood supplier"),
         ("SUP-002", "Greenpanel Distributor", "HDHMR", "Ishu", "9856781122", "23ABCDE2234F1Z5", "Cash", "HDHMR and MDF"),
@@ -475,21 +449,23 @@ def seed_suppliers(db):
         ("SUP-004", "Hardware Hub", "Hardware", "Mahek", "9856781124", "23ABCDE4234F1Z5", "7 Days", "Hinges and channels"),
         ("SUP-005", "Paint Solutions", "Paint/PU", "Aviral", "9856781125", "23ABCDE5234F1Z5", "Cash", "PU and polish material"),
     ]
-    out = {}
+    out = {s.supplier_code: s for s in db.query(Supplier).all()}
+    created = 0
     for code, name, cat, contact, phone, gstin, terms, remarks in rows:
+        if code in out:
+            continue
         s = Supplier(supplier_code=code, name=name, category=cat, contact_person=contact,
                       phone=phone, gstin=gstin, payment_terms=terms, remarks=remarks,
                       business_id=generate_business_id(db))
         db.add(s)
         out[code] = s
+        created += 1
     db.commit()
-    logger.info("Seeded %d suppliers", len(rows))
+    logger.info("Suppliers: created %d, existing %d", created, len(out) - created)
     return out
 
 
 def seed_materials(db, suppliers, locations, subcategories):
-    if db.query(Material).count() > 0:
-        return {m.material_code: m for m in db.query(Material).all()}
     rows = [
         # code, name, category/subcategory-name, brand, size, unit, opening, purchased, issued, current, minimum, rate, supplier, location
         ("MAT-001", "HDHMR 18mm", "HDHMR", "Greenpanel", "8x4 ft / 18mm", "Sheets", 35, 20, 32, 23, 20, 1800, "SUP-002", "Rack A1"),
@@ -503,8 +479,11 @@ def seed_materials(db, suppliers, locations, subcategories):
         ("MAT-009", "PVC Edge Band White", "Edge Band", "Rehau", "22mm x 0.8mm", "Metres", 450, 300, 380, 370, 150, 18, "SUP-004", "Rack B2"),
         ("MAT-010", "PU White Paint", "Paint/PU", "Asian Paints", "20 Litre", "Litres", 24, 20, 9, 35, 10, 620, "SUP-005", "Paint Store"),
     ]
-    out = {}
+    out = {m.material_code: m for m in db.query(Material).all()}
+    created = 0
     for code, name, cat, brand, size, unit, opening, purchased, issued, current, minimum, rate, sup_code, loc in rows:
+        if code in out:
+            continue
         # location_id/subcategory_id set from the real hierarchies where a
         # name match exists; the legacy `category`/`location` strings are
         # always set regardless, so nothing breaks even without a match.
@@ -520,8 +499,9 @@ def seed_materials(db, suppliers, locations, subcategories):
                       business_id=generate_business_id(db))
         db.add(m)
         out[code] = m
+        created += 1
     db.commit()
-    logger.info("Seeded %d materials", len(rows))
+    logger.info("Materials: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -531,9 +511,10 @@ def seed_products(db):
     real itemized cost breakdown (material/hardware/labour/machine/
     finish/packing/transport/other + overhead/margin %), the same shape
     a real production cost estimate would use. Names/figures here are
-    original demo data, not sourced from any external record."""
-    if db.query(Product).count() > 0:
-        return {p.product_code: p for p in db.query(Product).all()}
+    original demo data, not sourced from any external record.
+
+    Idempotent per-record: checked by product_code, so a prior partial
+    run is completed rather than left incomplete."""
     rows = [
         # code, name, type, category, subcategory, unit, L, W, H, dim_unit, primary_material, finish,
         # mat, hw, labour, machine, finish_c, pack, transport, other, overhead%, margin%, cost, selling
@@ -577,9 +558,12 @@ def seed_products(db):
          None, None, None, "in", None, None,
          0, 0, 3500, 0, 0, 0, 500, 500, 8, 25, 4500, 5800),
     ]
-    out = {}
+    out = {p.product_code: p for p in db.query(Product).all()}
+    created = 0
     for (code, name, ptype, cat, sub, unit, length, width, height, dim_unit, primary_mat, finish,
          mat_c, hw_c, lab_c, mach_c, fin_c, pack_c, trans_c, other_c, overhead, margin, cost, selling) in rows:
+        if code in out:
+            continue
         p = Product(
             product_code=code, business_id=generate_business_id(db), name=name, product_type=ptype,
             category=cat, subcategory=sub, unit=unit,
@@ -596,8 +580,9 @@ def seed_products(db):
         )
         db.add(p)
         out[code] = p
+        created += 1
     db.commit()
-    logger.info("Seeded %d products", len(rows))
+    logger.info("Products: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -639,8 +624,6 @@ def seed_estimate_line_items(db, estimates, products):
     custom, or billable-service product - Family 102's Product ID
     requirement means every line should resolve to a real Product Master
     row now, including services like Installation/Design Consultation."""
-    if db.query(EstimateLineItem).count() > 0:
-        return
     rows = [
         # estimate_code, description, category, qty, unit, rate, product_code (or None)
         ("EST-001", "Custom Bedroom Suite", "Furniture", 1, "Set", 219000, "PRD-006"),
@@ -655,10 +638,21 @@ def seed_estimate_line_items(db, estimates, products):
         ("EST-007", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("EST-008", "Harbor 3-Seater Sofa", "Furniture", 1, "Nos", 48000, "PRD-001"),
     ]
+    # No natural unique key per line item - the correct idempotency
+    # granularity is per PARENT estimate: has this specific estimate's
+    # line items already been seeded? If a prior run created some
+    # estimates' items but not others (e.g. it was interrupted
+    # partway through), only the estimates still missing items get
+    # anything inserted here.
+    estimate_ids_with_items = {
+        row[0] for row in db.query(EstimateLineItem.estimate_id).distinct().all()
+    }
     count = 0
     for est_code, desc, category, qty, unit, rate, prod_code in rows:
         estimate = estimates.get(est_code)
         if not estimate:
+            continue
+        if estimate.id in estimate_ids_with_items:
             continue
         product = products.get(prod_code) if prod_code else None
         qty_d = Decimal(str(qty))
@@ -670,15 +664,13 @@ def seed_estimate_line_items(db, estimates, products):
         ))
         count += 1
     db.commit()
-    logger.info("Seeded %d estimate line items", count)
+    logger.info("Estimate line items: created %d", count)
 
 
 def seed_order_items(db, orders, products):
     """Real Order Items so an order identifies exactly what was ordered
     (Family 21's core requirement), linked to the Product Master where
     applicable."""
-    if db.query(OrderItem).count() > 0:
-        return
     rows = [
         # order_code, description, category, qty, unit, rate, product_code (or None)
         ("WC-2026-001", "Custom Bedroom Suite", "Furniture", 1, "Set", 219000, "PRD-006"),
@@ -695,10 +687,17 @@ def seed_order_items(db, orders, products):
         ("WC-2026-007", "Meridian Coffee Table", "Furniture", 1, "Nos", 12500, "PRD-002"),
         ("WC-2026-008", "Everline 4-Door Wardrobe", "Furniture", 1, "Nos", 49000, "PRD-003"),
     ]
+    # No natural unique key per line item - correct granularity is per
+    # PARENT order: an order missing items (e.g. from an interrupted
+    # prior run) gets them created; one that already has items is left
+    # alone rather than getting duplicates.
+    order_ids_with_items = {row[0] for row in db.query(OrderItem.order_id).distinct().all()}
     count = 0
     for order_code, desc, category, qty, unit, rate, prod_code in rows:
         order = orders.get(order_code)
         if not order:
+            continue
+        if order.id in order_ids_with_items:
             continue
         product = products.get(prod_code) if prod_code else None
         qty_d = Decimal(str(qty))
@@ -710,16 +709,14 @@ def seed_order_items(db, orders, products):
         ))
         count += 1
     db.commit()
-    logger.info("Seeded %d order items", count)
+    logger.info("Order items: created %d", count)
 
 
 def seed_clients(db):
-    if db.query(Client).count() > 0:
-        return {c.client_code: c for c in db.query(Client).all()}
     rows = [
         ("CL-001", "Siddharth", "9312345654", "siddharth@example.com", "Indore", "Referral", "2026-07-10", "Bedroom furniture"),
         ("CL-002", "Khushaal", "9823456731", "khushaal@example.com", "Bicholi, Indore", "Architect", "2026-07-12", "Modular kitchen"),
-        ("CL-003", "Anaya", "9823456732", "anaya@example.com", "Vijay Nagar", "Instagram", "2026-07-18", "CNC wall panel"),
+        ("CL-003", "Shrangi", "9823456732", "shrangi@example.com", "Vijay Nagar", "Instagram", "2026-07-18", "CNC wall panel"),
         ("CL-004", "Nimisha", "9823456733", "nimisha@example.com", "Rau", "Existing Client", "2026-07-19", "Mandir"),
         ("CL-005", "Mayank", "9312345600", "mayank@example.com", "Woodful Creations", "Internal", "2026-07-20", "Showroom display"),
         # Full relationship-chain demo client (Client Master section 9):
@@ -741,104 +738,43 @@ def seed_clients(db):
         # fully paid -> direct Order for a wardrobe (July, no source
         # estimate). The sofa estimate is left "sent" - approved but
         # not yet converted is a realistic, common state to demonstrate.
-        ("CL-008", "Shrangi", "7009870098", "shrangi.new@example.com", "Palasia, Indore", "Referral", "2026-04-05", "Coffee table + sofa quotations, coffee table converted to order"),
+        ("CL-008", "Shrangi", "7009870098", "shrangi.new@example.com", "Palasia, Indore", "Referral", "2026-04-05", "Different Shrangi from CL-003 - different phone, per Client Recognition rule"),
         ("CL-009", "Ishu", "9845673001", "ishu@example.com", "Bicholi, Indore", "Referral", "2026-08-18", "New lead"),
         ("CL-010", "Ashu", "9845673002", "ashu@example.com", "Vijay Nagar", "Instagram", "2026-08-18", "New lead"),
-        ("CL-011", "Ritu", "9845673003", "ritu@example.com", "Saket Nagar, Indore", "Referral", "2026-08-19", "New lead"),
-        ("CL-012", "Kushal", "9845673004", "kushal@example.com", "Rau, Indore", "Instagram", "2026-08-19", "New lead"),
-        ("CL-013", "Shruti", "9845673005", "shruti@example.com", "Palasia, Indore", "Referral", "2026-08-19", "New lead"),
     ]
-    out = {}
+    out = {c.client_code: c for c in db.query(Client).all()}
+    created = 0
     for code, name, phone, email, addr, source, contact_date, remarks in rows:
+        if code in out:
+            continue
         c = Client(client_code=code, name=name, phone=phone, email=email, address=addr,
                    lead_source=source, first_contact_date=_d(contact_date), remarks=remarks,
                    business_id=generate_business_id(db))
         db.add(c)
         out[code] = c
+        created += 1
     db.commit()
-    logger.info("Seeded %d clients", len(rows))
+    logger.info("Clients: created %d, existing %d", created, len(out) - created)
     return out
-
-
-def resolve_woodful_client_duplicates(db):
-    """Consolidates any already-seeded demo Client row onto the
-    permanent Woodful roster identity for its name, per the roster
-    rule that a name on WOODFUL_CLIENTS is one canonical person with
-    one canonical phone/address - overriding the old demo "Client
-    Recognition" scenario where a same-name-different-phone row was
-    treated as a distinct client.
-
-    For every roster name that already has one or more Client rows:
-      - the row already carrying the roster phone (if any) is
-        canonical; otherwise the oldest row (lowest id) is promoted
-        and its phone/address/city are corrected in place - so its
-        existing client_code and every FK already pointed at it
-        (Orders, Estimates, ...) survive untouched.
-      - every other row sharing that name is a true duplicate: its
-        Orders/Estimates/activities/documents/rate records are
-        re-pointed to the canonical row's id, then the duplicate row
-        itself is deleted. No transaction history is lost, only the
-        duplicate person record.
-
-    Must run before seed_woodful_clients, so that function's own
-    name+phone lookup finds the now-corrected row instead of creating
-    a second CLW-xxx record for the same person.
-
-    Idempotent: once each roster name has exactly one Client row with
-    the exact roster phone/address, there is nothing left to merge or
-    correct on the next run."""
-    from app.models.client_activity import ClientActivity
-    from app.models.client_document import ClientDocument
-    from app.models.client_product_rate import ClientProductRate
-
-    fixed = 0
-    merged = 0
-    for name, phone, address in WOODFUL_CLIENTS:
-        city = _city_from_address(address)
-        matches = db.query(Client).filter(Client.name == name).order_by(Client.id.asc()).all()
-        if not matches:
-            continue  # no existing demo row under this name yet - seed_woodful_clients will create the CLW-xxx row
-
-        canonical = next((c for c in matches if c.phone == phone), None) or matches[0]
-        if canonical.phone != phone or canonical.address != address or canonical.city != city or canonical.status != "Active":
-            canonical.phone = phone
-            canonical.address = address
-            canonical.city = city
-            canonical.status = "Active"
-            fixed += 1
-
-        for dup in matches:
-            if dup.id == canonical.id:
-                continue
-            db.query(Order).filter(Order.client_id == dup.id).update({"client_id": canonical.id})
-            db.query(Estimate).filter(Estimate.client_id == dup.id).update({"client_id": canonical.id})
-            db.query(ClientActivity).filter(ClientActivity.client_id == dup.id).update({"client_id": canonical.id})
-            db.query(ClientDocument).filter(ClientDocument.client_id == dup.id).update({"client_id": canonical.id})
-            db.query(ClientProductRate).filter(ClientProductRate.client_id == dup.id).update({"client_id": canonical.id})
-            db.delete(dup)
-            merged += 1
-    db.commit()
-    if fixed:
-        logger.info("Corrected %d Woodful roster client(s) to canonical phone/address in place", fixed)
-    if merged:
-        logger.info("Merged %d duplicate Woodful roster client record(s), re-pointing their transactions", merged)
 
 
 def seed_woodful_clients(db):
     """Upserts the permanent Woodful client roster (WOODFUL_CLIENTS).
 
-    Run after resolve_woodful_client_duplicates, which has already
-    corrected any pre-existing demo row for a roster name onto the
-    exact roster phone/address in place. So by the time this runs, a
-    name+phone lookup finds that corrected row for every name that had
-    prior demo data (e.g. Sanket, Shrangi, ...) and this function only
-    ever creates a brand-new CLW-xxx record for roster names that never
-    had a demo row at all.
+    Reconciled against already-seeded test data using this codebase's
+    own Client Recognition rule (name AND phone must both match to
+    reuse a client) - so the roster's Shrangi row (7009870098) resolves
+    to the existing CL-008 test-scenario client (only her address/city
+    are updated in place) instead of creating a duplicate Shrangi, and
+    her April-Estimate -> May-Estimate -> June-Order -> July-Order
+    scenario is left completely untouched. Every other roster name gets
+    its own new client record (CLW-xxx - a separate code range from the
+    CL-xxx test/demo clients, so neither numbering can ever collide).
 
-    Idempotent: re-running always converges to the same set of
-    records with the same phone/address values, whether that's by
-    finding an already-corrected demo row or an already-created
-    CLW-xxx row."""
+    Idempotent: re-running always converges to the same 38 records
+    with the same phone/address values, whether that's by finding the
+    already-created CLW-xxx row (matched by name+phone, same as the
+    Shrangi case) or by finding CL-008 again."""
     created = 0
     updated = 0
     for i, (name, phone, address) in enumerate(WOODFUL_CLIENTS, start=1):
@@ -864,57 +800,7 @@ def seed_woodful_clients(db):
         logger.info("Updated %d Woodful roster client(s) (address/city)", updated)
 
 
-# Client-wide margin overrides for THIS bulk-data test only (per the
-# test's own explicit instruction: "These are NOT permanent customer
-# rules... Future Estimates for the same customer may use a different
-# margin"). Each is a ClientProductRate row with product_id=None (a
-# client-wide default, see app/models/client_product_rate.py), which
-# app/utils/pricing_priority.py's resolve_selling_rate already treats
-# as priority level 3 (customer-specific margin) - applied
-# automatically wherever an Estimate for that client doesn't have a
-# more specific override, never touching the global 30% default or
-# any other client.
-TEST_MARGIN_OVERRIDES = [
-    # (client name, margin_percent)
-    ("Meenal", 15), ("Siddharth", 15), ("Priya", 15),
-    ("Shrangi", 10), ("Nimisha", 10),
-    ("Mayank", 0), ("Madhuri", 0),
-]
-
-
-def seed_client_margin_overrides(db):
-    """Must run after resolve_woodful_client_duplicates/
-    seed_woodful_clients, so every named client already exists as
-    exactly one canonical row. Idempotent: skips a client that already
-    has a client-wide override row."""
-    from app.models.client_product_rate import ClientProductRate
-    from app.models.product import Product
-
-    created = 0
-    for name, margin in TEST_MARGIN_OVERRIDES:
-        client = db.query(Client).filter(Client.name == name).first()
-        if not client:
-            logger.warning("Margin override skipped - no client named %r found", name)
-            continue
-        existing = db.query(ClientProductRate).filter(
-            ClientProductRate.client_id == client.id, ClientProductRate.product_id.is_(None),
-        ).first()
-        if existing:
-            continue
-        db.add(ClientProductRate(
-            client_id=client.id, product_id=None, margin_percent=Decimal(str(margin)),
-            notes=f"Test-specific margin for this bulk-data run - not a permanent customer rule.",
-            created_by="seed_script",
-        ))
-        created += 1
-    db.commit()
-    if created:
-        logger.info("Seeded %d client-wide margin override(s)", created)
-
-
 def seed_orders(db, clients):
-    if db.query(Order).count() > 0:
-        return {o.order_code: o for o in db.query(Order).all()}
     rows = [
         ("WC-2026-001", "CL-001", "Bedroom Furniture", "2026-07-20", "2026-08-20", 325000, 32500, 97500, "Cutting", 45, "High", "Ravi", "Indore", "Bedroom and wardrobe"),
         ("WC-2026-002", "CL-002", "Modular Kitchen", "2026-07-22", "2026-08-25", 216000, 21600, 64800, "Material Purchase", 30, "Urgent", "Devendra", "Bicholi, Indore", "Base and wall cabinets"),
@@ -932,8 +818,11 @@ def seed_orders(db, clients):
         # coffee table order above was completed and fully paid.
         ("WC-2026-008", "CL-008", "Wardrobe", "2026-07-15", "2026-08-10", 49000, 15000, 0, "Material Purchase", 15, "Medium", "Pankaj", "Palasia, Indore", "Direct order - no estimate, placed after coffee table completion"),
     ]
-    out = {}
+    out = {o.order_code: o for o in db.query(Order).all()}
+    created = 0
     for code, cl_code, ptype, odate, ddate, value, advance, other, status, progress, priority, sup, addr, remarks in rows:
+        if code in out:
+            continue
         total_received = Decimal(str(advance)) + Decimal(str(other))
         o = Order(order_code=code, client_id=clients[cl_code].id, project_type=ptype,
                   order_date=_d(odate), delivery_date=_d(ddate), order_value=Decimal(str(value)),
@@ -944,8 +833,9 @@ def seed_orders(db, clients):
                   business_id=generate_business_id(db))
         db.add(o)
         out[code] = o
+        created += 1
     db.commit()
-    logger.info("Seeded %d orders", len(rows))
+    logger.info("Orders: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -956,29 +846,30 @@ def seed_estimates(db, clients, orders):
     pending a decision too. EST-001/002 are marked approved and their
     order_id points at the real order that estimate became; the rest
     stay unlinked, representing estimates still in progress or declined."""
-    if db.query(Estimate).count() > 0:
-        return {e.estimate_code: e for e in db.query(Estimate).all()}
     rows = [
-        # code, client, order (None if not yet/never converted), status, material_cost, labor_cost, valid_until, remarks, estimate_date
-        ("EST-001", "CL-001", "WC-2026-001", "approved", 200000, 80000, "2026-08-05", "Approved - became the bedroom furniture order", "2026-07-15"),
-        ("EST-002", "CL-002", "WC-2026-002", "approved", 140000, 50000, "2026-08-05", "Approved - became the modular kitchen order", "2026-07-18"),
-        ("EST-003", "CL-003", None, "sent", 55000, 20000, "2026-08-15", "Sent to client, awaiting decision on the CNC panel", "2026-07-20"),
-        ("EST-004", "CL-004", None, "draft", 30000, 10000, "2026-08-20", "Draft for an additional puja room piece", "2026-07-22"),
-        ("EST-005", "CL-001", None, "rejected", 45000, 15000, "2026-07-30", "Client declined a separate TV unit estimate", "2026-07-10"),
-        ("EST-006", "CL-006", "WC-2026-006", "approved", 42000, 8500, "2026-08-10", "Approved - became Sanket's dining furniture order", "2026-07-28"),
-        # Each Estimate is independent - no timeline/history feature, this
-        # is simply the date this particular quotation was given. Coffee
-        # Table estimate given in April, later approved and converted to
-        # WC-2026-007 in June - status is "closed" (not "approved"),
-        # matching exactly what the real conversion route sets atomically
-        # alongside order_id (see orders.py's estimate-claim logic).
-        ("EST-007", "CL-008", "WC-2026-007", "closed", 10500, 2000, "2026-05-01", "Coffee table quotation", "2026-04-10"),
-        # A separate, independent Sofa estimate given May 15 - unrelated
-        # to EST-007 beyond both belonging to the same client.
-        ("EST-008", "CL-008", None, "sent", 40000, 8000, "2026-06-15", "Sofa quotation", "2026-05-15"),
+        # code, client, order (None if not yet/never converted), status, material_cost, labor_cost, valid_until, remarks
+        ("EST-001", "CL-001", "WC-2026-001", "approved", 200000, 80000, "2026-08-05", "Approved - became the bedroom furniture order"),
+        ("EST-002", "CL-002", "WC-2026-002", "approved", 140000, 50000, "2026-08-05", "Approved - became the modular kitchen order"),
+        ("EST-003", "CL-003", None, "sent", 55000, 20000, "2026-08-15", "Sent to client, awaiting decision on the CNC panel"),
+        ("EST-004", "CL-004", None, "draft", 30000, 10000, "2026-08-20", "Draft for an additional puja room piece"),
+        ("EST-005", "CL-001", None, "rejected", 45000, 15000, "2026-07-30", "Client declined a separate TV unit estimate"),
+        ("EST-006", "CL-006", "WC-2026-006", "approved", 42000, 8500, "2026-08-10", "Approved - became Sanket's dining furniture order"),
+        # Shrangi (CL-008) - coffee table estimate: approved in June,
+        # converted to WC-2026-007 - status is "closed" (not "approved"),
+        # matching exactly what the real conversion route sets
+        # atomically alongside order_id (see orders.py's estimate-claim
+        # logic) - a converted estimate is never left showing "approved".
+        ("EST-007", "CL-008", "WC-2026-007", "closed", 10500, 2000, "2026-05-01", "Coffee table - approved and converted to order in June"),
+        # Sofa estimate: sent in May, still awaiting Shrangi's decision -
+        # a realistic "approved but not yet ordered" gap is common, but
+        # here she simply hasn't decided yet.
+        ("EST-008", "CL-008", None, "sent", 40000, 8000, "2026-06-15", "Sofa - sent to client in May, awaiting decision"),
     ]
-    out = {}
-    for code, cl_code, order_code, status, mat_cost, lab_cost, valid_until, remarks, estimate_date in rows:
+    out = {e.estimate_code: e for e in db.query(Estimate).all()}
+    created = 0
+    for code, cl_code, order_code, status, mat_cost, lab_cost, valid_until, remarks in rows:
+        if code in out:
+            continue
         subtotal = Decimal(str(mat_cost)) + Decimal(str(lab_cost))
         tax_amount, total_cost = _compute_totals(subtotal, Decimal("0"), Decimal("18"))
         e = Estimate(
@@ -988,12 +879,12 @@ def seed_estimates(db, clients, orders):
             discount=Decimal("0"), tax_percent=Decimal("18"), tax_amount=tax_amount, total_cost=total_cost,
             status=status, valid_until=_d(valid_until), remarks=remarks,
             business_id=generate_business_id(db),
-            created_at=_d(estimate_date), updated_at=_d(estimate_date),
         )
         db.add(e)
         out[code] = e
+        created += 1
     db.commit()
-    logger.info("Seeded %d estimates", len(rows))
+    logger.info("Estimates: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -1006,8 +897,6 @@ def seed_payments(db, orders):
     "fully paid" fixtures: WC-2026-005 has zero payments (fully
     pending), WC-2026-003/004 have only an advance (partially paid),
     WC-2026-001/002 have an advance plus a progress payment."""
-    if db.query(Payment).count() > 0:
-        return
     rows = [
         ("WC-2026-001", "Advance", "Bank Transfer", 32500, "2026-07-20", "Ravi", "First advance on booking"),
         ("WC-2026-001", "Progress Payment", "UPI", 97500, "2026-08-05", "Ravi", "Progress payment - cutting stage"),
@@ -1019,22 +908,28 @@ def seed_payments(db, orders):
         ("WC-2026-007", "Advance", "UPI", 12500, "2026-06-10", "Devendra", "Full payment on coffee table order - paid in full at booking"),
         ("WC-2026-008", "Advance", "UPI", 15000, "2026-07-15", "Pankaj", "Advance on wardrobe - direct order after coffee table completion"),
     ]
+    # receipt_code is deterministic (RCPT-001, RCPT-002, ... by
+    # position in this fixed list) - a real, stable per-record key.
+    existing_codes = {p.receipt_code for p in db.query(Payment.receipt_code).all()}
     count = 0
+    created = 0
     for order_code, ptype, mode, amount, pdate, received_by, remarks in rows:
+        count += 1
+        code = f"RCPT-{count:03d}"
+        if code in existing_codes:
+            continue
         db.add(Payment(
-            receipt_code=f"RCPT-{count + 1:03d}", order_id=orders[order_code].id,
+            receipt_code=code, order_id=orders[order_code].id,
             date=_d(pdate), payment_type=ptype, payment_mode=mode,
             amount=Decimal(str(amount)), received_by=received_by, remarks=remarks,
             business_id=generate_business_id(db),
         ))
-        count += 1
+        created += 1
     db.commit()
-    logger.info("Seeded %d payments", count)
+    logger.info("Payments: created %d, existing %d", created, count - created)
 
 
 def seed_project_expenses(db, orders):
-    if db.query(ProjectExpense).count() > 0:
-        return
     rows = [
         ("EXP-001", "2026-07-21", "WC-2026-001", "Raw Material", "HDHMR and laminate", "Supplier", 85000),
         ("EXP-002", "2026-07-24", "WC-2026-001", "Labour", "Carpentry labour", "Ravi Team", 28000),
@@ -1044,18 +939,21 @@ def seed_project_expenses(db, orders):
         ("EXP-006", "2026-07-27", "WC-2026-004", "Paint/PU", "PU material", "Paint Solutions", 14000),
         ("EXP-007", "2026-07-28", "WC-2026-004", "Labour", "Carving labour", "CNC Team", 12000),
     ]
+    existing_codes = {e.expense_code for e in db.query(ProjectExpense.expense_code).all()}
+    created = 0
     for code, edate, order_code, cat, desc, paid_to, amount in rows:
+        if code in existing_codes:
+            continue
         db.add(ProjectExpense(expense_code=code, date=_d(edate), order_id=orders[order_code].id,
                                category=cat, description=desc, paid_to=paid_to,
                                amount=Decimal(str(amount)), approved_by="Nikhil",
                                business_id=generate_business_id(db)))
+        created += 1
     db.commit()
-    logger.info("Seeded %d project expenses", len(rows))
+    logger.info("Project expenses: created %d, existing %d", created, len(rows) - created)
 
 
 def seed_purchases(db, suppliers, materials):
-    if db.query(Purchase).count() > 0:
-        return
     rows = [
         ("PUR-001", "2026-07-20", "SUP-002", "MAT-001", 20, "Sheets", 1800, 36000, 18, 6480, 42480, "Paid"),
         ("PUR-002", "2026-07-21", "SUP-001", "MAT-002", 15, "Sheets", 2400, 36000, 18, 6480, 42480, "Part Paid"),
@@ -1065,20 +963,23 @@ def seed_purchases(db, suppliers, materials):
         ("PUR-006", "2026-07-24", "SUP-005", "MAT-010", 20, "Litres", 620, 12400, 18, 2232, 14632, "Credit"),
         ("PUR-007", "2026-07-25", "SUP-004", "MAT-007", 20, "Sets", 480, 9600, 18, 1728, 11328, "Paid"),
     ]
+    existing_codes = {p.purchase_code for p in db.query(Purchase.purchase_code).all()}
+    created = 0
     for code, pdate, sup_code, mat_code, qty, unit, rate, taxable, gst_pct, gst_amt, total, status in rows:
+        if code in existing_codes:
+            continue
         db.add(Purchase(purchase_code=code, date=_d(pdate), supplier_id=suppliers[sup_code].id,
                          material_id=materials[mat_code].id, quantity=Decimal(str(qty)), unit=unit,
                          rate=Decimal(str(rate)), taxable_value=Decimal(str(taxable)),
                          gst_percent=Decimal(str(gst_pct)), gst_amount=Decimal(str(gst_amt)),
                          invoice_total=Decimal(str(total)), payment_status=status,
                          business_id=generate_business_id(db)))
+        created += 1
     db.commit()
-    logger.info("Seeded %d purchases", len(rows))
+    logger.info("Purchases: created %d, existing %d", created, len(rows) - created)
 
 
 def seed_issues(db, orders, materials):
-    if db.query(Issue).count() > 0:
-        return
     rows = [
         ("ISS-001", "2026-07-23", "WC-2026-001", "MAT-001", 18, "Sheets", "Ravi", "Assembly", "Wardrobe and bed"),
         ("ISS-002", "2026-07-23", "WC-2026-001", "MAT-004", 22, "Sheets", "Madan", "Edge Banding", "Interior laminate"),
@@ -1090,18 +991,21 @@ def seed_issues(db, orders, materials):
         ("ISS-008", "2026-07-27", "WC-2026-004", "MAT-010", 9, "Litres", "Arpit", "Painting", "PU finishing"),
         ("ISS-009", "2026-07-28", "WC-2026-002", "MAT-007", 18, "Sets", "Ravi", "Assembly", "Drawers"),
     ]
+    existing_codes = {i.issue_code for i in db.query(Issue.issue_code).all()}
+    created = 0
     for code, idate, order_code, mat_code, qty, unit, issued_to, dept, purpose in rows:
+        if code in existing_codes:
+            continue
         db.add(Issue(issue_code=code, date=_d(idate), order_id=orders[order_code].id,
                       material_id=materials[mat_code].id, quantity_issued=Decimal(str(qty)),
                       unit=unit, issued_to=issued_to, department=dept, purpose=purpose,
                       approved_by="Nikhil"))
+        created += 1
     db.commit()
-    logger.info("Seeded %d issues", len(rows))
+    logger.info("Issues: created %d, existing %d", created, len(rows) - created)
 
 
 def seed_employees(db):
-    if db.query(Employee).count() > 0:
-        return {e.employee_code: e for e in db.query(Employee).all()}
     rows = [
         # code, name, dept, designation, phone, joined, salary, emergency, remarks,
         # pan, uan, bank_name, bank_account_number, tax_regime
@@ -1122,8 +1026,11 @@ def seed_employees(db):
         ("EMP-008", "Chhoutu", "Installation", "Helper", "9845671008", "2026-06-15", 14000, "9845672008", "Helper",
          None, None, None, None, None),
     ]
-    out = {}
+    out = {e.employee_code: e for e in db.query(Employee).all()}
+    created = 0
     for code, name, dept, designation, phone, joined, salary, emergency, remarks, pan, uan, bank_name, acc_no, regime in rows:
+        if code in out:
+            continue
         e = Employee(employee_code=code, name=name, department=dept, designation=designation, phone=phone,
                      joining_date=_d(joined), monthly_salary=Decimal(str(salary)),
                      status="Active", emergency_contact=emergency, remarks=remarks,
@@ -1131,8 +1038,9 @@ def seed_employees(db):
                      business_id=generate_business_id(db))
         db.add(e)
         out[code] = e
+        created += 1
     db.commit()
-    logger.info("Seeded %d employees", len(rows))
+    logger.info("Employees: created %d, existing %d", created, len(out) - created)
     return out
 
 
@@ -1143,18 +1051,10 @@ def apply_woodful_employee_roster(db, employees):
     1:1, so this reconciles those rows in place rather than creating
     new ones. designation is overwritten to exactly the given role
     (Designer / Carpenter / Helper), per the "keep these roles exactly"
-    instruction. Address is stored in the Employee model's own
-    `address` column, leaving remarks free for the genuine
-    job-description text seed_employees already put there.
-
-    Also migrates any row from an older run of this script, back
-    when there was no address column and the address was stashed in
-    remarks as "Address: <address>" - that stopgap value is cleared
-    once the address has been copied into the real column (the
-    original job-description remark it replaced can't be recovered).
+    instruction.
 
     Idempotent: setting the same phone/designation/address on a
-    re-run is a no-op (guarded by the equality checks below)."""
+    re-run is a no-op (guarded by the equality check below)."""
     by_name = {}
     for emp in employees.values():
         by_name.setdefault(emp.name, emp)
@@ -1164,17 +1064,10 @@ def apply_woodful_employee_roster(db, employees):
         if not emp:
             logger.warning("Woodful roster employee '%s' not found among seeded employees - skipping", name)
             continue
-        changed = False
         if emp.phone != phone or emp.designation != role or emp.address != address:
             emp.phone = phone
             emp.designation = role
             emp.address = address
-            changed = True
-        legacy_remark = f"Address: {address}"
-        if emp.remarks == legacy_remark:
-            emp.remarks = None
-            changed = True
-        if changed:
             updated += 1
     db.commit()
     if updated:
@@ -1473,19 +1366,56 @@ def seed_notifications(db, materials, orders, employees, tasks):
     logger.info("Seeded notifications")
 
 
+def _verify_schema_is_current():
+    """The seed script inserts/updates data only - it must never create
+    or alter schema itself. Alembic (run automatically by
+    `python main.py`, or manually via `alembic upgrade head`) is the
+    only thing responsible for schema. This just verifies that's
+    already been done, with a clear, actionable failure if not - never
+    attempts to fix it itself."""
+    from sqlalchemy import inspect, text
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    insp = inspect(engine)
+    if not insp.has_table("alembic_version"):
+        print(
+            "\n" + "!" * 78 + "\n"
+            "!!  Database schema is not initialized (no alembic_version table).\n"
+            "!!  This script only seeds data - it does not create schema.\n"
+            "!!\n"
+            "!!  Start the backend first (it migrates automatically on startup):\n"
+            "!!      python main.py\n"
+            "!!  Then stop it and re-run this seed script.\n"
+            + "!" * 78 + "\n"
+        )
+        sys.exit(1)
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    head_revision = ScriptDirectory.from_config(cfg).get_current_head()
+
+    with engine.connect() as conn:
+        current_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+
+    if current_revision != head_revision:
+        print(
+            "\n" + "!" * 78 + "\n"
+            f"!!  Database schema is at revision {current_revision!r}, but the code\n"
+            f"!!  expects {head_revision!r}. This script only seeds data - it does\n"
+            "!!  not create or alter schema.\n"
+            "!!\n"
+            "!!  Start the backend first to bring the schema up to date:\n"
+            "!!      python main.py\n"
+            "!!  Then stop it and re-run this seed script.\n"
+            + "!" * 78 + "\n"
+        )
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    # NOTE: this used to call Base.metadata.create_all(bind=engine) here.
-    # That is what caused "table X already exists" failures inside Alembic
-    # migrations (e.g. migration 0030): create_all() would silently create
-    # every table the current models define, with no record of that in
-    # alembic_version, so the NEXT time the backend started up and Alembic
-    # tried to run migrations from scratch it collided with tables that
-    # already existed. Alembic (via run_startup_migrations() at backend
-    # startup) is now the ONLY thing responsible for creating/upgrading
-    # schema. This script only seeds data and assumes the schema already
-    # exists - run the backend at least once (or `alembic upgrade head`)
-    # before running this script.
-    pass
+    _verify_schema_is_current()
     db = SessionLocal()
     try:
         seed_master_users(db)
@@ -1500,20 +1430,13 @@ if __name__ == "__main__":
         products = seed_products(db)
         seed_product_materials(db, products, materials)
         clients = seed_clients(db)
+        seed_woodful_clients(db)
         orders = seed_orders(db, clients)
         estimates = seed_estimates(db, clients, orders)
         seed_estimate_line_items(db, estimates, products)
         seed_order_items(db, orders, products)
         seed_payments(db, orders)
         seed_project_expenses(db, orders)
-        # Runs only after every Order/Estimate is seeded, so re-pointing a
-        # duplicate client's transactions onto its canonical record has
-        # real rows to act on; must run before seed_woodful_clients so that
-        # function's name+phone lookup finds the now-corrected row instead
-        # of creating a second (CLW-xxx) record for the same person.
-        resolve_woodful_client_duplicates(db)
-        seed_woodful_clients(db)
-        seed_client_margin_overrides(db)
         seed_purchases(db, suppliers, materials)
         seed_issues(db, orders, materials)
         employees = seed_employees(db)
@@ -1527,19 +1450,41 @@ if __name__ == "__main__":
         seed_company_holidays(db)
         seed_notifications(db, materials, orders, employees, tasks)
 
+        # Final verification: real counts from the database, not an
+        # assumption that the script running to completion means data
+        # actually landed. Printed unconditionally, success or not.
         from app.models.user import User
-        master_count = db.query(User).filter(User.role == "master", User.is_active == True).count()  # noqa: E712
-        if master_count == 0:
-            print(
-                "\n" + "!" * 78 + "\n"
-                "!!  SEED FINISHED, BUT THERE IS NO ACTIVE MASTER ACCOUNT IN THIS DATABASE.\n"
-                "!!  You will NOT be able to sign in. Re-run with SEED_MASTER_PASSWORD set\n"
-                "!!  (see the warning above) to create nikhil@woodful.local / garima@woodful.local.\n"
-                + "!" * 78 + "\n"
-            )
-            logger.warning("Seed run completed with zero active master users - sign-in is impossible until this is fixed.")
+
+        counts = {
+            "Users (master)": db.query(User).filter(User.role == "master").count(),
+            "Locations": db.query(Location).count(),
+            "Material Categories": db.query(MaterialCategory).count(),
+            "Material Subcategories": db.query(MaterialSubcategory).count(),
+            "Materials": db.query(Material).count(),
+            "Suppliers": db.query(Supplier).count(),
+            "Products": db.query(Product).count(),
+            "Clients": db.query(Client).count(),
+            "Employees": db.query(Employee).count(),
+            "Estimates": db.query(Estimate).count(),
+            "Estimate Line Items": db.query(EstimateLineItem).count(),
+            "Orders": db.query(Order).count(),
+            "Order Items": db.query(OrderItem).count(),
+            "Payments": db.query(Payment).count(),
+            "Purchases": db.query(Purchase).count(),
+            "Issues": db.query(Issue).count(),
+            "Production Jobs": db.query(ProductionJob).count(),
+        }
+        print("\n" + "=" * 50)
+        print("SEED VERIFICATION - actual database counts")
+        print("=" * 50)
+        for label, count in counts.items():
+            print(f"{label:.<30} {count}")
+        empty = [label for label, count in counts.items() if count == 0]
+        if empty:
+            print("\nWARNING - these tables are still empty:", ", ".join(empty))
         else:
-            logger.info("Confirmed %d active master account(s) exist.", master_count)
+            print("\nAll major tables have at least one record.")
+        print("=" * 50)
         logger.info("Seed complete.")
     finally:
         db.close()

@@ -11,9 +11,9 @@ class SupplierBase(BaseModel):
     category: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
     gstin: Optional[str] = None
     payment_terms: Optional[str] = None
-    address: Optional[str] = None
     remarks: Optional[str] = None
 
     @field_validator("phone")
@@ -47,9 +47,9 @@ class SupplierUpdate(BaseModel):
     category: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
     gstin: Optional[str] = None
     payment_terms: Optional[str] = None
-    address: Optional[str] = None
     remarks: Optional[str] = None
 
     @field_validator("phone")

@@ -7,7 +7,7 @@ function Footer() {
   return (
     <footer className="app-footer">
       <div className="app-footer-inner">
-        <p>&copy; {year} Woodful Creations. All rights reserved.</p>
+        <p>&copy; {year} Woodful Creations. All rights reserved. Founded by Nikhil Soni.</p>
       </div>
     </footer>
   );

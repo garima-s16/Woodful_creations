@@ -22,30 +22,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    # Guard each column/index individually rather than letting a "column/
-    # index already exists" error abort the whole migration (e.g. on a
-    # legacy database whose tables were created via create_all() against
-    # already-current models): the backfill and NOT NULL enforcement below
-    # must still run for any pre-existing rows even when the column
-    # itself was already present, or business_id could silently stay NULL
-    # forever for old salary slips.
-    existing_columns = {c["name"] for c in sa.inspect(bind).get_columns("salary_slips")}
-    existing_indexes = {ix["name"] for ix in sa.inspect(bind).get_indexes("salary_slips")}
-
-    if "business_id" not in existing_columns:
-        op.add_column("salary_slips", sa.Column("business_id", sa.String(10), nullable=True))
-    if "ix_salary_slips_business_id" not in existing_indexes:
-        op.create_index("ix_salary_slips_business_id", "salary_slips", ["business_id"], unique=True)
+    op.add_column("salary_slips", sa.Column("business_id", sa.String(10), nullable=True))
+    op.create_index("ix_salary_slips_business_id", "salary_slips", ["business_id"], unique=True)
     # Working days = calendar days in the period the employee was expected to
     # work; paid days = days actually paid for (may differ due to unpaid
     # leave). Both are plain editable numbers here for the same reason
     # PF/TDS are (see SalarySlip's model docstring) - the source-of-truth
     # attendance/leave reconciliation is a separate, larger payroll feature.
-    if "working_days" not in existing_columns:
-        op.add_column("salary_slips", sa.Column("working_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
-    if "paid_days" not in existing_columns:
-        op.add_column("salary_slips", sa.Column("paid_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
+    op.add_column("salary_slips", sa.Column("working_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
+    op.add_column("salary_slips", sa.Column("paid_days", sa.Numeric(5, 2), nullable=False, server_default="26"))
+
+    bind = op.get_bind()
     rows = bind.execute(sa.text("SELECT id FROM salary_slips WHERE business_id IS NULL")).fetchall()
     for (row_id,) in rows:
         for attempt in range(5):

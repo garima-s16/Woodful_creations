@@ -23,15 +23,15 @@ class ClientProductRate(BaseModel):
     # (product_id=NULL) for the same client - SQL treats NULL as
     # distinct from NULL in a unique constraint. The create route
     # enforces "at most one client-wide default per client" at the
-    # application level instead (see client_product_rates.py).
+    # application level instead.
 
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     # Nullable: a row with product_id=None is a CLIENT-WIDE default
-    # margin (e.g. "Meenal always gets 15%, regardless of product") -
-    # distinct from a row with a specific product_id, which overrides
-    # just that one product for that one client. The resolution lookup
-    # checks the specific-product row first, then falls back to the
-    # client-wide row - see client_product_rates.py's resolve_pricing.
+    # margin (e.g. "Meenal gets 15% on everything"), distinct from a
+    # row with a specific product_id, which overrides just that one
+    # product for that one client. The resolution lookup checks the
+    # specific-product row first, then falls back to the client-wide
+    # row - see client_product_rates.py's resolve_pricing.
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
 
     margin_percent = Column(Numeric(5, 2), nullable=True)  # customer-specific margin override

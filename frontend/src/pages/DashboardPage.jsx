@@ -178,7 +178,6 @@ function DashboardPage() {
   const [delayedProduction, setDelayedProduction] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [followUps, setFollowUps] = useState([]);
-  const [coreLoadError, setCoreLoadError] = useState(false);
 
   const loadFollowUps = () => {
     clientActivitiesAPI.pendingFollowUps().then((res) => setFollowUps(res.data)).catch(() => {});
@@ -194,9 +193,9 @@ function DashboardPage() {
 
   useEffect(() => {
     loadFollowUps();
-    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => setCoreLoadError(true));
-    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => setCoreLoadError(true));
-    dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => setCoreLoadError(true));
+    dashboardAPI.stock().then((res) => setStock(res.data)).catch(() => {});
+    dashboardAPI.orders().then((res) => setOrders(res.data)).catch(() => {});
+    dashboardAPI.staff().then((res) => setStaff(res.data)).catch(() => {});
     dailyTasksAPI.list({ status: 'TO DO' }).then((res) => setPendingTasks(res.data)).catch(() => {});
     if (!isPrivileged) {
       dailyTasksAPI.list({ mine: true }).then((res) => setMyTasks(res.data)).catch(() => {});
@@ -241,15 +240,6 @@ function DashboardPage() {
     });
   }, [isPrivileged]);
 
-  if (coreLoadError && (!stock || !orders || !staff)) {
-    return (
-      <div className="page">
-        <div className="card-body" style={{ color: 'var(--danger)' }}>
-          Couldn't load the dashboard. Please check your connection and refresh the page.
-        </div>
-      </div>
-    );
-  }
   if (!stock || !orders || !staff) return <div className="page">Loading...</div>;
 
   const grossMargin = orders.total_order_value

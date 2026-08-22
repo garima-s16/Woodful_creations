@@ -114,10 +114,6 @@ def resolve_pricing(data: PricingResolveRequest, db: Session = Depends(get_db),
     customer_fixed = None
     customer_margin = None
     if data.client_id:
-        # Specific-product override takes priority over a client-wide
-        # default - e.g. a client with a 15% blanket margin could also
-        # have a specific negotiated rate on one particular product,
-        # which would win.
         override = db.query(ClientProductRate).filter(
             ClientProductRate.client_id == data.client_id, ClientProductRate.product_id == data.product_id,
         ).first()

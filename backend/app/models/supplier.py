@@ -14,9 +14,9 @@ class Supplier(BaseModel):
     category = Column(String(100), nullable=True)
     contact_person = Column(String(255), nullable=True)
     phone = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
     gstin = Column(String(20), nullable=True)
     payment_terms = Column(String(50), nullable=True)
-    address = Column(Text, nullable=True)
     remarks = Column(Text, nullable=True)
 
     materials = relationship("Material", back_populates="primary_supplier")

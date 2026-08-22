@@ -62,7 +62,7 @@ function EmployeesPage() {
         name: formData.name, designation: formData.designation, department: formData.department,
         phone: formData.phone, email: formData.email, manager: formData.manager,
         monthly_salary: formData.monthly_salary, status: formData.status,
-        emergency_contact: formData.emergency_contact, address: formData.address, remarks: formData.remarks,
+        emergency_contact: formData.emergency_contact, remarks: formData.remarks,
       });
       setEditingEmployee(null);
       load(search);
@@ -100,7 +100,6 @@ function EmployeesPage() {
     { name: 'manager', label: 'Manager/Supervisor', section: 'Employment' },
     { name: 'joining_date', label: 'Joining Date', type: 'date', section: 'Employment' },
     { name: 'monthly_salary', label: 'Monthly Salary', type: 'number', required: true, section: 'Compensation' },
-    { name: 'address', label: 'Address', type: 'textarea', section: 'Personal' },
     { name: 'emergency_contact', label: 'Emergency Contact', section: 'Emergency Contact' },
     { name: 'remarks', label: 'Remarks', type: 'textarea', section: 'Emergency Contact' },
   ];
@@ -117,7 +116,6 @@ function EmployeesPage() {
     { name: 'status', label: 'Status', type: 'select', options: [
       { value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' },
     ] },
-    { name: 'address', label: 'Address', type: 'textarea' },
     { name: 'emergency_contact', label: 'Emergency Contact' },
     { name: 'remarks', label: 'Remarks', type: 'textarea' },
   ];

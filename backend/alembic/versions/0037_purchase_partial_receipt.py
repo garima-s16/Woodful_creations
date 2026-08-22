@@ -18,15 +18,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.add_column("purchases", sa.Column("quantity_received", sa.Numeric(12, 2), nullable=False, server_default="0"))
     conn = op.get_bind()
-    existing_columns = {c["name"] for c in sa.inspect(conn).get_columns("purchases")}
-    if "quantity_received" not in existing_columns:
-        op.add_column("purchases", sa.Column("quantity_received", sa.Numeric(12, 2), nullable=False, server_default="0"))
-    # Runs unconditionally, even if the column already existed (e.g. a
-    # legacy database whose tables were created via create_all() against
-    # already-current models) - otherwise already-Received purchases would
-    # be silently left at quantity_received=0 forever. Idempotent: re-running
-    # it just re-asserts quantity_received = quantity for Received rows.
     conn.execute(sa.text(
         "UPDATE purchases SET quantity_received = quantity WHERE receipt_status = 'Received'"
     ))

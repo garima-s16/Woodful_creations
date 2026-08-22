@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI } from '../utils/api';
+import BrandBackdrop from '../components/BrandBackdrop';
 import Footer from '../components/Footer';
-import WoodGrainScene from '../components/WoodGrainScene';
 import '../styles/LoginPage.css';
 
 function ResetPasswordPage() {
@@ -40,7 +40,7 @@ function ResetPasswordPage() {
     <div className="login-page">
       <div className="login-container">
         <div className="login-brand-panel">
-          <WoodGrainScene />
+          <BrandBackdrop />
           <div className="login-brand-top">
             <img src="/logo-transparent.png" alt="Woodful Creations" className="login-logo-small" />
           </div>

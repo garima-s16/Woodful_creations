@@ -54,10 +54,8 @@ function ExcelButton({ href, label = 'Export Excel' }) {
 function SalesTab({ isPrivileged }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.sales(6).then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
+  useEffect(() => { analyticsAPI.sales(6).then((r) => setData(r.data)); }, []);
   if (!isPrivileged) return <Card><div className="card-body">Sales & revenue analytics are available to master accounts only.</div></Card>;
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
   if (!data) return <div className="card-body">Loading...</div>;
 
   const scrollToOutstanding = (drill) => {
@@ -107,9 +105,7 @@ function SalesTab({ isPrivileged }) {
 function InventoryTab({ isPrivileged }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.inventory().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.inventory().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -145,9 +141,7 @@ function InventoryTab({ isPrivileged }) {
 
 function PurchasesTab() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.purchases(6).then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.purchases(6).then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -179,9 +173,7 @@ function PurchasesTab() {
 
 function ProductionTab() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.production().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.production().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -215,9 +207,7 @@ function ProductionTab() {
 function ProjectsTab({ isPrivileged }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.projects().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.projects().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -261,9 +251,7 @@ function ProjectsTab({ isPrivileged }) {
 
 function TasksTab() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.tasks().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.tasks().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -293,9 +281,7 @@ function TasksTab() {
 
 function PaymentsTab() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.payments(6).then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.payments(6).then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -325,9 +311,7 @@ function PaymentsTab() {
 
 function ExpensesTab() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.expenses(6).then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.expenses(6).then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -372,9 +356,7 @@ function ExpensesTab() {
 
 function WorkforceTab({ isPrivileged }) {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.workforce().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.workforce().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <>
@@ -405,9 +387,7 @@ function WorkforceTab({ isPrivileged }) {
 
 function OperationsTab({ isPrivileged }) {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.operations().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
-  if (loadError) return <div className="card-body" style={{ color: "var(--danger)" }}>Couldn't load this data. Please refresh the page.</div>;
+  useEffect(() => { analyticsAPI.operations().then((r) => setData(r.data)); }, []);
   if (!data) return <div className="card-body">Loading...</div>;
   return (
     <div className="secondary-metrics">
@@ -426,8 +406,7 @@ function OperationsTab({ isPrivileged }) {
 
 function WhatsChanged() {
   const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
-  useEffect(() => { analyticsAPI.whatsChanged().then((r) => setData(r.data)).catch(() => setLoadError(true)); }, []);
+  useEffect(() => { analyticsAPI.whatsChanged().then((r) => setData(r.data)); }, []);
   if (!data) return null;
   return (
     <Card title="What Changed This Month">

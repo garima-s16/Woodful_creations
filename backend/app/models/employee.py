@@ -15,6 +15,7 @@ class Employee(BaseModel):
     designation = Column(String(100), nullable=True)
     department = Column(String(100), nullable=True, index=True)
     phone = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
     email = Column(String(255), nullable=True)
     manager = Column(String(255), nullable=True)  # supervisor's name - kept as free text (not an FK to
     # another Employee row) since not every org chart is a clean single-manager tree, and this avoids a
@@ -23,7 +24,6 @@ class Employee(BaseModel):
     monthly_salary = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String(20), nullable=False, default="Active")
     emergency_contact = Column(String(20), nullable=True)
-    address = Column(Text, nullable=True)
     remarks = Column(Text, nullable=True)
     # Payroll/statutory identifiers - needed for salary slip generation.
     # All nullable: not administrative data every employee record will

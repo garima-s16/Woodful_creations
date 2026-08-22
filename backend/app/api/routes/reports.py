@@ -327,12 +327,12 @@ def export_employees(
         "employee_id": e.business_id or "", "name": e.name, "designation": e.designation or "",
         "department": e.department or "", "phone": e.phone or "", "email": e.email or "",
         "joining_date": e.joining_date.strftime("%d-%m-%Y") if e.joining_date else "",
-        "status": e.status, "manager": e.manager or "", "address": e.address or "",
+        "status": e.status, "manager": e.manager or "",
     } for e in employees]
     columns = ["employee_id", "name", "designation", "department", "phone", "email",
-               "joining_date", "status", "manager", "address"]
+               "joining_date", "status", "manager"]
     headers = ["Employee ID", "Employee Name", "Designation", "Department", "Phone", "Email",
-               "Joining Date", "Employment Status", "Manager/Supervisor", "Address"]
+               "Joining Date", "Employment Status", "Manager/Supervisor"]
 
     subtitle = f"Generated on {datetime.utcnow().strftime('%d-%m-%Y %H:%M')}"
     if filters_applied:

@@ -99,7 +99,6 @@ function SuppliersPage() {
       validate: (value) => (value.length !== 15 ? 'GSTIN must contain 15 characters.' : null),
     },
     { name: 'payment_terms', label: 'Payment Terms', advanced: true },
-    { name: 'address', label: 'Address', type: 'textarea', advanced: true },
     { name: 'remarks', label: 'Remarks', type: 'textarea', advanced: true },
   ];
 

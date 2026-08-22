@@ -8,6 +8,7 @@ Create Date: 2026-08-22
 """
 from alembic import op
 import sqlalchemy as sa
+from app.core.migration_guards import add_column_if_missing
 
 revision = "0054"
 down_revision = "0053"
@@ -16,16 +17,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("suppliers") as batch_op:
-        batch_op.add_column(sa.Column("address", sa.Text(), nullable=True))
-
-    with op.batch_alter_table("employees") as batch_op:
-        batch_op.add_column(sa.Column("address", sa.Text(), nullable=True))
+    bind = op.get_bind()
+    add_column_if_missing(bind, "suppliers", sa.Column("address", sa.Text(), nullable=True))
+    add_column_if_missing(bind, "employees", sa.Column("address", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("employees") as batch_op:
-        batch_op.drop_column("address")
-
-    with op.batch_alter_table("suppliers") as batch_op:
-        batch_op.drop_column("address")
+    op.drop_column("employees", "address")
+    op.drop_column("suppliers", "address")

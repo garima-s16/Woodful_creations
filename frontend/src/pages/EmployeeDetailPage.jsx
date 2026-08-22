@@ -139,8 +139,6 @@ function EmployeeDetailPage() {
               <div className="detail-meta-item"><span className="detail-meta-label">Monthly Salary</span><span className="detail-meta-value">{employee.monthly_salary != null ? formatCurrency(employee.monthly_salary) : 'Restricted'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Daily Wage</span><span className="detail-meta-value">{employee.daily_wage != null ? formatCurrency(employee.daily_wage) : 'Restricted'}</span></div>
               <div className="detail-meta-item"><span className="detail-meta-label">Emergency Contact</span><span className="detail-meta-value">{employee.emergency_contact || '-'}</span></div>
-              <div className="detail-meta-item"><span className="detail-meta-label">Address</span><span className="detail-meta-value">{employee.address || '-'}</span></div>
-              {employee.remarks && <div className="detail-meta-item"><span className="detail-meta-label">Remarks</span><span className="detail-meta-value">{employee.remarks}</span></div>}
             </div>
           </div>
         </Card>

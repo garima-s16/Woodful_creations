@@ -57,8 +57,6 @@ function SupplierDetailPage() {
             <div className="detail-meta-item"><span className="detail-meta-label">Contact Person</span><span className="detail-meta-value">{supplier.contact_person || '-'}</span></div>
             <div className="detail-meta-item"><span className="detail-meta-label">Phone</span><span className="detail-meta-value">{supplier.phone || '-'}</span></div>
             <div className="detail-meta-item"><span className="detail-meta-label">GSTIN</span><span className="detail-meta-value">{supplier.gstin || '-'}</span></div>
-            <div className="detail-meta-item"><span className="detail-meta-label">Address</span><span className="detail-meta-value">{supplier.address || '-'}</span></div>
-            {supplier.remarks && <div className="detail-meta-item"><span className="detail-meta-label">Remarks</span><span className="detail-meta-value">{supplier.remarks}</span></div>}
           </div>
         </div>
       </Card>

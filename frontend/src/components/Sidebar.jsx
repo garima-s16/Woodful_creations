@@ -27,6 +27,7 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
           { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
+          { path: '/purchases/import', label: 'Import from Excel', icon: PurchaseIcon },
         ] : []),
         { path: '/issues', label: 'Material Issues', icon: IssueIcon },
         { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },
