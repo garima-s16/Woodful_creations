@@ -1,4 +1,4 @@
-"""Add milestones - a genuine gap against Family 4's explicit task
+"""Add milestones - a genuine gap against the explicit task
 list, lightweight by design (name/target_date/completed_date/remarks
 per order), distinct from Order.project_status which already tracks
 the detailed 11-stage production phase.
@@ -9,7 +9,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing
+from app.platform.database.migration_guards import create_table_if_missing
 
 revision = "0034"
 down_revision = "0033"

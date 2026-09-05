@@ -8,7 +8,7 @@
 .notification-bell-toggle:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
 
 .notification-badge {
-  position: absolute; top: 2px; right: 2px; background: var(--danger, #9c3d31); color: #fff;
+  position: absolute; top: 2px; right: 2px; background: var(--danger, #9c3d31); color: var(--danger-text, #0e0d0b);
   font-size: 0.62rem; font-weight: 700; min-width: 16px; height: 16px; border-radius: 100px;
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
@@ -16,7 +16,7 @@
 .notification-panel {
   position: absolute; top: 48px; right: 0; width: 360px; max-height: 480px;
   background: var(--surface); color: var(--text-primary); border-radius: var(--radius-md);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.4); border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg); border: 1px solid var(--border-color);
   z-index: 1300; display: flex; flex-direction: column; overflow: hidden;
 }
 
@@ -40,7 +40,7 @@
   display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left;
   padding: 10px 16px; border: none; background: none; cursor: pointer; border-bottom: 1px solid var(--border-color);
 }
-.notification-item:hover { background: var(--color-charcoal-elevated); }
+.notification-item:hover { background: var(--surface-elevated); }
 .notification-item-read { opacity: 0.55; }
 
 .notification-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }

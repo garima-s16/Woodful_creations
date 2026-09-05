@@ -1,7 +1,9 @@
 import React from 'react';
 import './Table.css';
 
-const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No records yet.', emptyAction }) => {
+const Table = ({ columns, data, loading, error, onRetry, onRowClick, emptyMessage = 'No records yet.', emptyAction }) => {
+  const alignStyle = (col) => (col.align ? { textAlign: col.align } : undefined);
+
   if (loading) {
     return (
       <div className="table-container">
@@ -9,7 +11,7 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col.key} scope="col">{col.label}</th>
+                <th key={col.key} scope="col" style={alignStyle(col)}>{col.label}</th>
               ))}
             </tr>
           </thead>
@@ -28,7 +30,14 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
   }
 
   if (error) {
-    return <div className="table-error">Unable to load this data. Please try again.</div>;
+    return (
+      <div className="table-error">
+        <p className="table-error-message">Unable to load this data. Please try again.</p>
+        {onRetry && (
+          <button type="button" className="btn-secondary table-error-retry" onClick={onRetry}>Retry</button>
+        )}
+      </div>
+    );
   }
 
   if (!data || data.length === 0) {
@@ -50,7 +59,7 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key} scope="col">{col.label}</th>
+              <th key={col.key} scope="col" style={alignStyle(col)}>{col.label}</th>
             ))}
           </tr>
         </thead>
@@ -70,7 +79,7 @@ const Table = ({ columns, data, loading, error, onRowClick, emptyMessage = 'No r
               role={onRowClick ? 'button' : undefined}
             >
               {columns.map((col) => (
-                <td key={`${row.id}-${col.key}`}>
+                <td key={`${row.id}-${col.key}`} style={alignStyle(col)}>
                   {col.render ? col.render(row[col.key], row) : row[col.key]}
                 </td>
               ))}

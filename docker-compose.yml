@@ -37,13 +37,46 @@ services:
       dockerfile: Dockerfile
     container_name: woodful_backend
     environment:
+      # This file brings up its OWN Postgres/Redis containers (the
+      # `database`/`redis` services above) for a local, full-stack,
+      # "closer to production settings" run - see SETUP.md. It is NOT
+      # the real production deployment: real production must point at
+      # the managed database (Neon) and a managed/shared Redis, never
+      # at these container-local instances. Use docker-compose.prod.yml
+      # for that - it has no local database/redis services at all, so
+      # there is nothing to unintentionally fall back to.
       DATABASE_URL: postgresql://woodful_user:${POSTGRES_PASSWORD}@database:5432/woodful_creations
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       ENVIRONMENT: production
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set - export it or put it in a .env file next to docker-compose.yml, never commit it}
       COOKIE_SECURE: "True"
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # No safe default here on purpose - app/platform/configuration/config.py now refuses to
+      # start with ENVIRONMENT=production and a localhost CORS origin (or
+      # none at all), so this must name the real origin this stack is
+      # actually served from.
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS must be set to the real origin(s) this is served from - a localhost default is rejected at startup when ENVIRONMENT=production}
+      # Redis is already running as a service in this same stack -
+      # using the in-memory rate limiter instead, and only trusting a
+      # single-process assumption, would silently under-enforce every
+      # rate limit the moment this ever runs with more than one worker.
+      RATE_LIMIT_BACKEND: redis
+      SENDER_EMAIL: ${SENDER_EMAIL:-}
+      SENDER_PASSWORD: ${SENDER_PASSWORD:-}
+      SENDER_NAME: ${SENDER_NAME:-Woodful Creations}
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      GEMINI_ENABLED: ${GEMINI_ENABLED:-False}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GOOGLE_DRIVE_ENABLED: ${GOOGLE_DRIVE_ENABLED:-False}
+      GOOGLE_DRIVE_CREDENTIALS_PATH: ${GOOGLE_DRIVE_CREDENTIALS_PATH:-}
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID:-}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      # See docker-compose.prod.yml for why this matters - required for
+      # per-IP rate limiting to see real client IPs once behind any proxy.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     ports:
       - "8000:8000"
     depends_on:
@@ -54,6 +87,10 @@ services:
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs
+      # Google Drive service-account credentials, if STORAGE_PROVIDER=drive -
+      # GOOGLE_DRIVE_CREDENTIALS_PATH must point at a file under
+      # /app/credentials/ for it to actually be visible in the container.
+      - ./backend/credentials:/app/credentials:ro
 
   frontend:
     build:

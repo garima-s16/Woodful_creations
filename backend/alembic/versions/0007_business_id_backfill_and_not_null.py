@@ -5,7 +5,7 @@ value to put in them). This migration:
 
   1. Finds every row where business_id IS NULL, across all 15 business
      entities, and assigns it a fresh random 10-character ID using the
-     same generator the application uses for new rows (app.utils.id_generator
+     same generator the application uses for new rows (app.platform.database.id_generator
      generate_short_id) - one reusable generator, not reimplemented here.
   2. Retries on collision, same as the application code does.
   3. Only after every row has a value, alters the column to NOT NULL, so the
@@ -24,8 +24,8 @@ Create Date: 2026-08-12
 from alembic import op
 import sqlalchemy as sa
 
-from app.utils.id_generator import generate_short_id
-from app.core.migration_guards import column_exists
+from app.platform.database.id_generator import generate_short_id
+from app.platform.database.migration_guards import column_exists
 
 revision = "0007"
 down_revision = "0006"

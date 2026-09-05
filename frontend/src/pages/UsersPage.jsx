@@ -6,7 +6,7 @@ import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
-import { statusClass } from '../utils/statusColors';
+import { statusClass } from '../utils/format';
 
 function UsersPage() {
   const { user } = useSelector((state) => state.auth);
@@ -17,10 +17,15 @@ function UsersPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const load = () => {
     setPageLoading(true);
-    usersAPI.list().then((res) => setUsers(res.data)).catch(() => setError('You do not have permission to manage users.')).finally(() => setPageLoading(false));
+    setLoadError(false);
+    usersAPI.list().then((res) => setUsers(res.data)).catch((err) => {
+      setLoadError(true);
+      setError(err.response?.status === 403 ? 'You do not have permission to manage users.' : 'Unable to load users. Please try again.');
+    }).finally(() => setPageLoading(false));
   };
   useEffect(() => {
     load();
@@ -58,9 +63,11 @@ function UsersPage() {
   };
 
   const [pendingDeactivate, setPendingDeactivate] = useState(null);
+  const [deactivating, setDeactivating] = useState(false);
   const handleDeactivate = (user) => setPendingDeactivate(user);
   const confirmDeactivate = async () => {
     setError('');
+    setDeactivating(true);
     try {
       await usersAPI.remove(pendingDeactivate.id);
       setPendingDeactivate(null);
@@ -68,6 +75,8 @@ function UsersPage() {
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to remove user');
       setPendingDeactivate(null);
+    } finally {
+      setDeactivating(false);
     }
   };
 
@@ -83,7 +92,7 @@ function UsersPage() {
     },
     {
       key: 'remove_action', label: '', render: (v, row) => (
-        !row.cannot_be_deleted && <button className="btn-link" onClick={() => handleDeactivate(row)} style={{ color: 'var(--danger)' }}>Remove</button>
+        !row.cannot_be_deleted && row.role !== 'master' && <button className="btn-link" onClick={() => handleDeactivate(row)} style={{ color: 'var(--danger)' }}>Remove</button>
       ),
     },
   ];
@@ -120,7 +129,7 @@ function UsersPage() {
         {isStrictlyMaster && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add User</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <Table columns={columns} data={users} loading={pageLoading} emptyMessage="No users found." />
+      <Table columns={columns} data={users} loading={pageLoading} error={loadError} onRetry={load} emptyMessage="No users found." />
 
       <Modal isOpen={showAdd} title="Add User" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Create User" />
@@ -145,6 +154,7 @@ function UsersPage() {
         confirmLabel="Remove Access"
         onConfirm={confirmDeactivate}
         onCancel={() => setPendingDeactivate(null)}
+        loading={deactivating}
       />
     </div>
   );

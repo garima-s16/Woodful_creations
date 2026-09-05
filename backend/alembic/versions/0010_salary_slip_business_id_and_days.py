@@ -13,8 +13,8 @@ Create Date: 2026-08-12
 from alembic import op
 import sqlalchemy as sa
 
-from app.utils.id_generator import generate_short_id
-from app.core.migration_guards import add_column_if_missing, create_index_if_missing
+from app.platform.database.id_generator import generate_short_id
+from app.platform.database.migration_guards import add_column_if_missing, create_index_if_missing
 
 revision = "0010"
 down_revision = "0009"

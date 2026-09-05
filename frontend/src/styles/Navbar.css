@@ -65,6 +65,16 @@
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
 
+.theme-toggle {
+  position: relative; background: none; border: none; color: var(--color-ivory);
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: var(--radius-sm); opacity: 0.9; cursor: pointer;
+  transition: background var(--transition), opacity var(--transition);
+}
+.theme-toggle:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+.theme-toggle:active { background: rgba(255, 255, 255, 0.18); }
+.theme-toggle:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
 .user-menu { position: relative; }
 
 .profile-button {
@@ -110,7 +120,7 @@
 .logout-button {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; padding: 10px; margin-top: var(--space-3);
-  background: var(--danger); color: white; border: none;
+  background: var(--danger); color: var(--danger-text); border: none;
   border-radius: var(--radius-sm); cursor: pointer; font-weight: 600;
   transition: opacity var(--transition);
 }

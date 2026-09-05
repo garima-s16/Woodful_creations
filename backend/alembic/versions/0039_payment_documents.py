@@ -1,4 +1,4 @@
-"""Add payment_documents - genuine gap against Family 8's explicit
+"""Add payment_documents - genuine gap against the explicit
 "protect transaction documents" security item, which implies such
 documents should exist. Proof of payment (cheque scan, UPI
 screenshot, bank transfer receipt), reusing the exact same
@@ -11,7 +11,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing
+from app.platform.database.migration_guards import create_table_if_missing
 
 revision = "0039"
 down_revision = "0038"

@@ -10,9 +10,9 @@ const Alert = ({ type = 'info', message, onClose }) => {
   }, [type, onClose]);
 
   return (
-    <div className={`alert alert-${type}`}>
+    <div className={`alert alert-${type}`} role={type === 'error' ? 'alert' : 'status'}>
       <div className="alert-content">{message}</div>
-      <button className="alert-close" onClick={onClose}>&times;</button>
+      <button className="alert-close" onClick={onClose} aria-label="Dismiss">&times;</button>
     </div>
   );
 };

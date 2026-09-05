@@ -1,4 +1,4 @@
-"""Add gst_percent to products (Family 104 Product Master) - a default/
+"""Add gst_percent to products (Product Master) - a default/
 reference GST value only; historical Estimate/Order line items already
 store their own tax_percent independently and are never affected by
 changes to this.
@@ -9,7 +9,7 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import add_column_if_missing
+from app.platform.database.migration_guards import add_column_if_missing
 
 revision = "0051"
 down_revision = "0050"

@@ -1,4 +1,4 @@
-"""Add the Product Master (Family 21): products, product_materials
+"""Add the Product Master: products, product_materials
 (bill-of-materials link to the existing Material Stock Master), and
 optional product_id references on order_items / estimate_line_items so
 an order/estimate can identify exactly what was ordered/quoted.
@@ -9,7 +9,7 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing, column_exists, index_exists
+from app.platform.database.migration_guards import create_table_if_missing, column_exists, index_exists
 
 revision = "0048"
 down_revision = "0047"

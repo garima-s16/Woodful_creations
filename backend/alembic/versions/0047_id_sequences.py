@@ -1,5 +1,5 @@
 """Add id_sequences - backs the centralized, incremental business_id
-generator (Family 21). Replaces the previous random-generation scheme
+generator. Replaces the previous random-generation scheme
 (generate_short_id) for all new records going forward; existing
 business_id values are untouched (the column is populated the same way
 as before, just with values drawn from this new sequence instead of
@@ -17,10 +17,10 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing
+from app.platform.database.migration_guards import create_table_if_missing
 
 revision = "0047"
-down_revision = "0046"
+down_revision = "0045"
 branch_labels = None
 depends_on = None
 

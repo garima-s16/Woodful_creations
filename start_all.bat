@@ -9,14 +9,19 @@ echo ======================================
 echo.
 
 REM Run setup if not already done
-if not exist "backend\venv" (
-    echo Running initial setup...
-    call setup.bat
-    if errorlevel 1 (
-        echo Setup failed!
-        exit /b 1
-    )
+if not exist "backend\venv" goto :run_setup
+if not exist "frontend\node_modules" goto :run_setup
+goto :setup_done
+
+:run_setup
+echo Running initial setup...
+call setup.bat
+if errorlevel 1 (
+    echo Setup failed!
+    exit /b 1
 )
+
+:setup_done
 
 echo.
 echo Starting Woodful Creations in development mode...

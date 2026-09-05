@@ -21,6 +21,7 @@ function FieldInput({ field, value, error, onChange, onBlur, formData }) {
       <textarea
         id={field.name} name={field.name} value={value || ''} onChange={onChange} onBlur={onBlur}
         placeholder={field.placeholder} rows={field.rows || 4}
+        aria-required={field.required || undefined}
         className={`form-input ${error ? 'error' : ''}`}
       />
     );
@@ -29,6 +30,7 @@ function FieldInput({ field, value, error, onChange, onBlur, formData }) {
     return (
       <select
         id={field.name} name={field.name} value={value || ''} onChange={onChange} onBlur={onBlur}
+        aria-required={field.required || undefined}
         className={`form-input ${error ? 'error' : ''}`}
       >
         <option value="">Select {field.label}</option>
@@ -49,6 +51,7 @@ function FieldInput({ field, value, error, onChange, onBlur, formData }) {
       // reaches the API at all. step="any" removes that restriction;
       // whole numbers remain just as valid as before.
       step={field.type === 'number' ? 'any' : undefined}
+      aria-required={field.required || undefined}
       className={`form-input ${error ? 'error' : ''}`}
     />
   );
@@ -91,7 +94,7 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
   // Lets a parent push a value into the form programmatically - e.g. the
-  // material creation form's "intelligent defaults" suggestion (Family 5)
+  // material creation form's "intelligent defaults" suggestion
   // filling in thickness_size when the user clicks Apply - without turning
   // every field into a parent-controlled input. Only ever invoked from an
   // explicit user action, never automatically, so it can't fight the user
@@ -224,7 +227,7 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
             </AnimatePresence>
           </>
         )}
-        <button type="submit" className="btn-submit" disabled={loading}>
+        <button type="submit" className="btn-primary btn-submit" disabled={loading}>
           {loading ? 'Please wait...' : submitText}
         </button>
       </form>
@@ -290,7 +293,7 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
         {step > 0 && <button type="button" className="btn-secondary" onClick={goBack}>Back</button>}
         {!isReview && <button type="button" className="btn-primary" onClick={goNext}>Continue</button>}
         {isReview && (
-          <button type="submit" className="btn-submit" disabled={loading}>
+          <button type="submit" className="btn-primary btn-submit" disabled={loading}>
             {loading ? 'Please wait...' : submitText}
           </button>
         )}

@@ -43,89 +43,83 @@ the correct dependency order, not a decision to defer arbitrarily.**
 
 ---
 
-## MEDIUM PRIORITY
-
-### 5. Material creation form has no "intelligent defaults" from typed text
-**Severity:** Medium
-**Component:** `MaterialsPage.jsx` create flow (`MaterialAttributesEditor` + `Form`)
-**Issue:** Section 8 of the UX brief wants typing "HDHMR 6mm" into the
-Name field to auto-infer Category/Subcategory/Thickness, pre-filling the
-rest of the form. Not implemented.
-**Why not attempted this turn:** `MaterialAttributesEditor` (renders the
-Category/Subcategory/Specifications pickers) and `Form` (renders Name/
-Unit/etc., including the Name field this feature would read from) are
-sibling components with no shared reactive state today -
-`MaterialAttributesEditor` only reports its OWN selections upward via
-`onChange`, it has no visibility into what's typed into `Form`'s
-internal `formData`. Building this properly means either lifting the
-Name field's value out of `Form` into the parent page (so both
-components can react to it), or moving name-based inference into
-`MaterialAttributesEditor` itself with its own text input feeding both
-the inference AND the eventual submitted name - a real architectural
-change, not a small addition. Attempting a rushed version risked a
-half-working feature that appears to work for the brief's own example
-("HDHMR 6mm") but breaks for anything slightly different, which is worse
-than being explicit that it doesn't exist yet.
-**Planned resolution:** Lift the material name into `MaterialsPage`'s own
-state, pass it to `MaterialAttributesEditor` as a prop, and reuse the
-same regex-extraction approach already built and tested for the chatbot's
-`parse_add_material_command` (backend) - or expose that logic via a
-small `/api/materials/interpret?text=...` endpoint the frontend can call
-as the user types, so the inference logic isn't duplicated between chat
-and the form. **Not started.**
-
----
-
-### 2. Chatbot's initial-greeting suggestion doesn't update on navigation
-**Severity:** Medium — cosmetic staleness, not a functional bug.
-**Component:** `ChatWidget.jsx`
-**Issue:** The contextual suggestion chip shown in the assistant's very
-first greeting message is computed once via a lazy `useState` initializer
-at mount time. If a user opens the widget on a Material page (sees "Tell
-me about this material"), then navigates to a Supplier page without
-closing the panel, that already-rendered greeting's suggestion chip still
-says "Tell me about this material" instead of updating to "Compare this
-supplier".
-**Important distinction:** this does NOT affect actual chatbot
-functionality - every message send already rebuilds `context` fresh from
-current route params (see `send()`), so the backend always understands
-the current page correctly. This only affects one already-rendered
-suggestion chip's label.
-**Expected behavior:** The suggestion chip in the greeting should reflect
-the page the user is CURRENTLY on, live, not just the page at first mount.
-**Planned resolution:** Either regenerate the greeting's suggestions
-reactively (a `useEffect` keyed on `location.pathname` that
-appends/replaces a "current page" suggestion chip without wiping chat
-history), or accept this as permanent minor polish given low user impact.
-**Not started.**
-
-### 3. "Why is this project over budget?" not offered as a context suggestion
-**Severity:** Medium
-**Component:** `ChatWidget.jsx` (order/project context)
-**Issue:** Requested example: on a Project (Order) page, offer "Why is
-this project over budget?" as a contextual suggestion, alongside Material
-→ "Tell me about this material" and Supplier → "Compare this supplier".
-**Why not implemented as literally requested:** showing "Why is this
-project over budget?" unconditionally on every order - including ones
-that are on-budget or under-budget - would be presumptuous and
-potentially misleading, which conflicts with this project's standing
-principle against fabricating or implying information not backed by real
-data. A order that's actually under budget being asked "why is it over
-budget" is a real, avoidable UX flaw.
-**Expected behavior:** Only offer this specific suggestion when the
-order's actual profitability data (`OrderService.profitability()`,
-already computed backend-side) shows a real variance - i.e., check
-`current_projected_cost > estimated_cost` (or the equivalent real field)
-before offering the suggestion, and phrase it neutrally ("How is this
-project's budget tracking?") when there's no variance.
-**Planned resolution:** Fetch profitability data on the order detail page
-(already available via existing `OrderService`), pass a computed
-`isOverBudget` flag into `ChatWidget` context, and make the suggestion
-conditional on that flag rather than universal. **Not started.**
-
----
-
 ## RESOLVED
+
+### R7. Material creation form's "intelligent defaults" from typed text
+**Component:** `app/utils/material_interpreter.py` (new), `GET
+/api/materials/interpret-name` (new route), `MaterialsPage.jsx`
+**Issue:** Section 8 of the UX brief wanted typing "HDHMR 6mm" into the
+Name field to auto-infer Category/Subcategory/Thickness. The blocker
+noted when this was first deferred - `MaterialAttributesEditor` and
+`Form` had no shared reactive state to build this on - was real at the
+time.
+**What was fixed:** Built exactly the planned resolution: a shared
+backend `interpret_material_name()` matches the typed name against
+Subcategories/Materials the business has already created (two-tier
+confidence - "high" for a direct existing-Subcategory-name match,
+"medium" for a similar existing Material's own subcategory), never
+hard-coding a category (Category/Subcategory names are entirely
+user-defined per this project's standing principle) and never returning
+a guess dressed up as a fact (confidence "none" means show nothing).
+Exposed via `GET /api/materials/interpret-name`, called from
+`MaterialsPage.jsx`'s create form with a 400ms debounce and a
+request-id guard against a stale, out-of-order response overwriting a
+newer one. The suggestion is never auto-applied - `applyNameSuggestion`
+only runs on an explicit user click, matching this project's standing
+"never silently mutate/decide for the user" principle.
+**A real gap found and fixed in this pass:** the new backend component
+had zero test coverage anywhere - genuinely different from other
+recently-resolved chat items, which were pure frontend logic layered on
+an already-tested endpoint. Added coverage in
+`tests/modules/inventory/test_inventory.py`'s material-interpreter section
+(6 tests: no-match returns "none" not a guess, thickness extraction is
+independent of category matching, high-confidence via a real
+Subcategory match, medium-confidence via a real similar Material -
+deliberately using a shared word that is NOT the subcategory name
+itself, to prove it's genuinely exercising the medium path and not
+accidentally hitting the high one - the confidence field's presence,
+and the required `name` param's validation). Also directly executed
+the pure, DB-independent `extract_thickness`/`_base_tokens` functions
+(10 assertions, all passing) as a faster, additional check on the
+matching logic itself. A first draft of the test file used a guessed
+material-creation field name (`current_stock`) that didn't match this
+project's actual schema (`opening_stock`, confirmed against
+`test_inventory.py`'s own working example) - caught and fixed
+before treating the test as correct.
+
+### R6. Chatbot's initial-greeting suggestion didn't update on navigation, and the budget/profitability suggestion was missing
+**Component:** `ChatWidget.jsx`
+**Issue (two related, previously-tracked gaps):** (1) The contextual
+suggestion chip in the assistant's first greeting was computed once at
+mount via a `useState` lazy initializer, so navigating to a different
+page without closing the panel left it showing the old page's
+suggestion. (2) No suggestion existed for asking about a project's
+budget/profitability on an order page - the brief's requested "Why is
+this project over budget?" was never offered.
+**What was fixed:** A `useEffect` keyed on `location.pathname`/`params`/
+`cartOpen`/`budgetSuggestion` now regenerates the greeting's suggestions
+reactively, guarded to only touch the still-untouched initial greeting
+(`prev.length !== 1 || prev[0].role !== 'assistant'` bails out) so an
+actual in-progress conversation is never rewritten. For the budget
+suggestion specifically: rather than showing "over budget" unconditionally
+(which would be misleading for an on-budget or under-budget order,
+against this project's standing principle against implying information
+not backed by real data), it fetches the same `OrderService.profitability()`
+figures the order detail page's own panel already displays - never a
+separately re-derived calculation - and only offers a suggestion once that
+real data resolves, phrased in terms of profitability rather than "budget"
+(`estimated_gross_profit < 0` → "Why is this project running at a loss?",
+otherwise the neutral "How is this project's profitability tracking?").
+A 403 (non-master viewer, matching the endpoint's existing permission) or
+any other failure just omits the suggestion, leaving the underlying
+financial data exactly as restricted as it already was.
+**Verified via:** careful reading of the full implementation (both
+`useEffect`s and `buildContextualSuggestions`) confirming the guard
+against overwriting a real conversation is correct, and that the
+profitability determination never happens client-side or duplicates the
+backend calculation. No dedicated test exists for this specific feature -
+it's frontend-only logic layered on an already-tested backend endpoint,
+so nothing new needed backend-side coverage.
 
 ### R4. Purchase Cart leaked between different users on the same browser
 **Component:** `cartSlice.js`, `App.jsx`
@@ -194,8 +188,8 @@ genuine savings (cheapest total vs. worst-case total) - a material with
 only one price source contributes zero to the savings figure rather
 than a fabricated one.
 **A real bug caught mid-implementation:** the initial-greeting
-suggestion chip is still only computed once at mount (see item 2 below -
-this pre-existing limitation wasn't fixed here), so simply passing
+suggestion chip was still only computed once at mount at the time (see
+R6, resolved later - this pre-existing limitation wasn't fixed here), so simply passing
 `cartOpen` to that function alone wouldn't make "optimize this purchase"
 actually work if the cart is opened after the widget is already mounted
 (the common case). The suggestion greeting was extended as a minor

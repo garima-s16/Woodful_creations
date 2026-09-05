@@ -8,8 +8,8 @@ from sqlalchemy import engine_from_config, pool
 # Make `app` importable when alembic is run from backend/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.config import settings
-from app.core.database import Base
+from app.platform.configuration.config import settings
+from app.platform.database.database import Base
 from app import models  # noqa: F401 - registers every model on Base.metadata
 
 config = context.config
@@ -17,7 +17,7 @@ if config.config_file_name is not None:
     # disable_existing_loggers=False matters here specifically because
     # this env.py can now be triggered two ways: the standalone `alembic`
     # CLI (where wiping other loggers is harmless - nothing else is
-    # running) and app.core.auto_migrate, called from inside the live
+    # running) and app.platform.database.auto_migrate, called from inside the live
     # FastAPI app on every startup. Without this, fileConfig()'s default
     # behavior silently disables uvicorn's own logger as a side effect,
     # making the app look hung - it keeps running, it just stops

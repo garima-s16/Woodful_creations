@@ -1,4 +1,4 @@
-"""Add discount/tax_percent/tax_amount to orders (Family 102 critical
+"""Add discount/tax_percent/tax_amount to orders (a critical
 test gap: Order had no way to apply discount or GST at all -
 order_value was just a raw sum of line items). Existing rows get
 discount=0, tax_percent=18 (matching Estimate's own default), tax_amount
@@ -11,7 +11,7 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import column_exists
+from app.platform.database.migration_guards import column_exists
 
 revision = "0050"
 down_revision = "0049"

@@ -10,15 +10,17 @@ import Alert from './common/Alert';
 function DocumentsPanel({ title = 'Documents', api, canUpload = true }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [description, setDescription] = useState('');
 
   const load = () => {
     setLoading(true);
+    setLoadError(false);
     api.list()
       .then((res) => setDocuments(res.data))
-      .catch(() => setDocuments([]))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -67,6 +69,11 @@ function DocumentsPanel({ title = 'Documents', api, canUpload = true }) {
       )}
       {loading ? (
         <div className="card-body" style={{ color: 'var(--text-secondary)' }}>Loading...</div>
+      ) : loadError ? (
+        <div className="card-body" style={{ color: 'var(--text-secondary)' }}>
+          Unable to load documents.{' '}
+          <button type="button" className="btn-link" onClick={load}>Retry</button>
+        </div>
       ) : documents.length === 0 ? (
         <div className="card-body" style={{ color: 'var(--text-secondary)' }}>No documents yet.</div>
       ) : (

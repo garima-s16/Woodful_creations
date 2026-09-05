@@ -17,6 +17,11 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   padding: 8px;
+  /* Intentionally fixed white, not a theme token - a QR code needs
+     reliable high contrast to scan correctly, so this stays white
+     regardless of theme (the QR image itself is generated on a white
+     background; this padding just avoids a hard edge against it in
+     dark mode). Every other surface in this file uses theme tokens. */
   background: #fff;
   margin: 8px 0 16px;
 }

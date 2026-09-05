@@ -69,7 +69,7 @@ function LoginPage() {
           </div>
           <div className="login-brand-content">
             <p className="login-brand-statement">Precision crafted, order by order.</p>
-            <p className="login-brand-descriptor">Furniture &middot; Materials &middot; Production &middot; Projects</p>
+            <p className="login-brand-descriptor">From the first estimate to the finished piece, every order lives here.</p>
           </div>
         </div>
 
@@ -81,7 +81,7 @@ function LoginPage() {
             transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
             <h1>Sign in to Woodful</h1>
-            <p className="login-form-subtitle">Welcome back — let's get to work.</p>
+            <p className="login-form-subtitle">Good to see you. Sign in to continue.</p>
 
             <form onSubmit={handleLogin} className="login-form">
               <div className="form-group">

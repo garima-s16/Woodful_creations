@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { chatAPI, paymentsAPI, materialsAPI, employeesAPI, reportsAPI, ordersAPI, productsAPI } from '../utils/api';
+import { chatAPI, paymentsAPI, materialsAPI, employeesAPI, reportsAPI, ordersAPI, productsAPI, estimatesAPI, dailyTasksAPI, issuesAPI, stockAPI, purchasesAPI, leavesAPI } from '../utils/api';
 import AssistantMascot from './AssistantMascot';
+import SendEmailModal from './common/SendEmailModal';
 import { clearPendingMessage } from '../redux/slices/chatUiSlice';
 import { addToCart } from '../redux/slices/cartSlice';
 import '../styles/components/ChatWidget.css';
@@ -24,7 +25,7 @@ function contextualGreetingSuggestion(params, pathname, cartOpen) {
   return null;
 }
 
-// Family 4 - budget-aware suggestion for a project (order) page, layered
+// Budget-aware suggestion for a project (order) page, layered
 // on top of contextualGreetingSuggestion above rather than replacing it
 // (that function's existing behavior - e.g. "Summarize this order" -
 // is left untouched). budgetSuggestion is only ever a value the caller
@@ -47,7 +48,7 @@ function ChatWidget() {
   const cartItems = useSelector((state) => state.cart.items);
   const pendingCommand = useSelector((state) => state.chatUi.pendingMessage);
   const [open, setOpen] = useState(false);
-  // Family 4 - resolved from the EXISTING master-only profitability
+  // Resolved from the EXISTING master-only profitability
   // endpoint (same one the order detail page's own profitability panel
   // already calls), never recomputed here. null means "not known yet /
   // not applicable" (still loading, no order in context, or a non-master
@@ -66,6 +67,7 @@ function ChatWidget() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailReview, setEmailReview] = useState(null); // { messageIndex, actionType, payload } | null
   const [completedSteps, setCompletedSteps] = useState(0);
   const LOADING_STEPS = ['Understanding request', 'Checking permissions', 'Fetching from Woodful'];
   useEffect(() => {
@@ -127,6 +129,7 @@ function ChatWidget() {
   }, [location.pathname, params, cartOpen, budgetSuggestion]);
   const [pending, setPending] = useState(null);
   const [lastEntity, setLastEntity] = useState(null);
+  const [lastExchange, setLastExchange] = useState(null); // { user, assistant } - for conversational context
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -163,6 +166,8 @@ function ChatWidget() {
       record_id: activeParam ? Number(params[activeParam[0]]) : undefined,
       pending: pending || undefined,
       last_entity: lastEntity || undefined,
+      last_user_message: lastExchange?.user || undefined,
+      last_assistant_message: lastExchange?.assistant || undefined,
       cart_items: (cartOpen && cartItems.length > 0)
         ? cartItems.map((i) => ({ material_id: i.materialId, quantity: i.quantity }))
         : undefined,
@@ -173,6 +178,7 @@ function ChatWidget() {
       const res = await chatAPI.send(message, hasContext ? context : undefined);
       setPending(res.data.clarification || null);
       setLastEntity(res.data.last_entity || null);
+      setLastExchange({ user: message, assistant: res.data.response });
       setMessages((prev) => [...prev, {
         role: 'assistant', text: res.data.response, suggestions: res.data.suggestions,
         proposedAction: res.data.proposed_action || null, records: res.data.records || [],
@@ -195,15 +201,45 @@ function ChatWidget() {
     record_payment: { execute: (payload) => paymentsAPI.create(payload), successText: 'recorded.' },
     create_material: { execute: (payload) => materialsAPI.create(payload), successText: 'added to Material Master.' },
     create_employee: { execute: (payload) => employeesAPI.create(payload), successText: 'added as an employee.' },
+    create_leave: { execute: (payload) => leavesAPI.create(payload), successText: 'recorded in the Leave Tracker.' },
     create_product: { execute: (payload) => productsAPI.create(payload), successText: 'added to Product Master.' },
     delete_product: { execute: (payload) => productsAPI.remove(payload.productId), successText: 'deleted.' },
+    issue_stock: { execute: (payload) => issuesAPI.create(payload), successText: 'issued from stock.' },
+    transfer_stock: { execute: (payload) => stockAPI.transfer(payload), successText: 'transferred.' },
+    adjust_stock: { execute: (payload) => stockAPI.adjust(payload), successText: 'adjusted.' },
+    receive_purchase: { execute: (payload) => purchasesAPI.receive(payload.purchaseId), successText: 'marked as received.' },
     add_to_cart: {
       execute: (payload) => dispatch(addToCart(payload)).unwrap(),
       successText: 'added to your cart.',
     },
+    send_task_email: {
+      execute: (payload) => dailyTasksAPI.sendEmail(payload.task_id),
+      successText: 'emailed to the employee.',
+    },
+    create_daily_task: {
+      execute: (payload) => dailyTasksAPI.create(payload),
+      successText: 'assigned.',
+    },
+    update_daily_task: {
+      execute: (payload) => {
+        const { task_id, ...updateData } = payload;
+        return dailyTasksAPI.update(task_id, updateData);
+      },
+      successText: 'updated.',
+    },
   };
 
+  const EMAIL_REVIEW_TYPES = new Set(['send_estimate_email', 'send_order_email', 'send_invoice_email', 'send_payment_receipt_email']);
+
   const confirmAction = async (messageIndex, action) => {
+    if (EMAIL_REVIEW_TYPES.has(action.action_type)) {
+      // Open the real review UI instead of sending immediately - the
+      // proposal itself is left in place (not dismissed) until the
+      // modal is closed or the email is actually sent, so "Confirm"
+      // here means "let me review this," not "send it now."
+      setEmailReview({ messageIndex, actionType: action.action_type, payload: action.payload });
+      return;
+    }
     setLoading(true);
     try {
       const executor = ACTION_EXECUTORS[action.action_type];
@@ -211,7 +247,7 @@ function ChatWidget() {
       await executor.execute(action.payload);
       setMessages((prev) => prev.map((msg, i) => (
         i === messageIndex
-          ? { ...msg, proposedAction: null, text: `${msg.text}\n\nDone - ${executor.successText}` }
+          ? { ...msg, proposedAction: null, resultText: executor.successText }
           : msg
       )));
     } catch (err) {
@@ -220,6 +256,39 @@ function ChatWidget() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Maps each email-review action type to its real preview/send API
+  // calls, given the payload the backend already resolved (a real
+  // estimate_id/order_id/payment_id, never trusted client-side).
+  const EMAIL_REVIEW_CONFIG = {
+    send_estimate_email: {
+      previewFn: (payload) => estimatesAPI.emailPreview(payload.estimate_id),
+      sendFn: (payload, data) => estimatesAPI.sendEmail(payload.estimate_id, data),
+    },
+    send_order_email: {
+      previewFn: (payload) => ordersAPI.emailPreview(payload.order_id, 'order'),
+      sendFn: (payload, data) => ordersAPI.sendEmail(payload.order_id, 'order', data),
+    },
+    send_invoice_email: {
+      previewFn: (payload) => ordersAPI.emailPreview(payload.order_id, 'invoice'),
+      sendFn: (payload, data) => ordersAPI.sendEmail(payload.order_id, 'invoice', data),
+    },
+    send_payment_receipt_email: {
+      previewFn: (payload) => paymentsAPI.emailPreview(payload.payment_id),
+      sendFn: (payload, data) => paymentsAPI.sendEmail(payload.payment_id, data),
+    },
+  };
+
+  const handleEmailReviewSent = () => {
+    if (emailReview) {
+      setMessages((prev) => prev.map((msg, i) => (
+        i === emailReview.messageIndex
+          ? { ...msg, proposedAction: null, text: `${msg.text}\n\nDone - emailed to the client.` }
+          : msg
+      )));
+    }
+    setEmailReview(null);
   };
 
   const dismissAction = (messageIndex) => {
@@ -251,6 +320,12 @@ function ChatWidget() {
                 {m.role === 'assistant' && <AssistantMascot size={26} />}
                 <div className={`chat-bubble chat-${m.role}`}>
                   <div className="chat-text">{m.text}</div>
+                  {m.resultText && (
+                    <div className="chat-action-result">
+                      <span className="chat-action-result-mark">&#10003;</span>
+                      <span>{m.resultText}</span>
+                    </div>
+                  )}
                   {m.proposedAction && (
                     <div className="chat-proposed-action">
                       <div className="chat-proposed-summary">{m.proposedAction.summary}</div>
@@ -270,6 +345,13 @@ function ChatWidget() {
                           transition={{ duration: 0.18, delay: ri * 0.04 }}
                           onClick={r.actions ? undefined : () => navigate(r.path)}
                           role={r.actions ? undefined : 'button'}
+                          tabIndex={r.actions ? undefined : 0}
+                          onKeyDown={r.actions ? undefined : (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigate(r.path);
+                            }
+                          }}
                           style={r.actions ? {} : { cursor: 'pointer' }}
                         >
                           <span className="chat-record-type">{r.type}</span>
@@ -339,6 +421,14 @@ function ChatWidget() {
           </form>
         </div>
       )}
+      <SendEmailModal
+        isOpen={!!emailReview}
+        title="Review Email"
+        previewFn={() => EMAIL_REVIEW_CONFIG[emailReview.actionType].previewFn(emailReview.payload)}
+        sendFn={(data) => EMAIL_REVIEW_CONFIG[emailReview.actionType].sendFn(emailReview.payload, data)}
+        onClose={() => setEmailReview(null)}
+        onSent={handleEmailReviewSent}
+      />
       <button className="chat-fab" onClick={() => setOpen((v) => !v)} aria-label="Open Woodful Assistant">
         {open ? (
           <span className="chat-fab-close">&times;</span>

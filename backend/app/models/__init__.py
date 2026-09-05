@@ -1,8 +1,8 @@
-from app.models.base import Base, BaseModel
-from app.models.id_sequence import IdSequence
-from app.models.user import User
-from app.models.notification import Notification
-from app.models.personal_cart_item import PersonalCartItem
+from app.platform.database.base import Base, BaseModel
+from app.platform.database.id_sequence import IdSequence
+from app.modules.auth.models import User, PasswordResetToken
+from app.modules.communications.models import Notification
+from app.modules.procurement.models import PersonalCartItem
 
 from app.models.setting import (
     Unit, StockStatus, StockPaymentStatus, SupplierTerm,
@@ -10,51 +10,26 @@ from app.models.setting import (
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory, ProductionStage,
 )
 
-from app.models.supplier import Supplier
-from app.models.location import Location
-from app.models.material_category import MaterialCategory, MaterialSubcategory
-from app.models.material_attribute import MaterialAttributeDefinition, MaterialAttributeValue
-from app.models.material import Material
-from app.models.supplier_material import SupplierMaterial
-from app.models.product import Product, ProductMaterial
-from app.models.rate_card import RateCard
-from app.models.client_product_rate import ClientProductRate
-from app.models.purchase import Purchase
-from app.models.stock_transaction import StockTransfer, StockAdjustment
-from app.models.issue import Issue
+from app.modules.inventory.models import Supplier, Location, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition, MaterialAttributeValue, Material, SupplierMaterial
+from app.modules.catalog.models import Product, ProductMaterial, RateCard
+from app.modules.inventory.models import Purchase, StockTransfer, StockAdjustment
+from app.modules.operations.models import Issue, Milestone, DailyTask, TaskComment, ProductionJob
 
-from app.models.client import Client
-from app.models.client_activity import ClientActivity
-from app.models.order import Order
-from app.models.order_item import OrderItem
-from app.models.payment import Payment
-from app.models.project_expense import ProjectExpense
-from app.models.estimate import Estimate
-from app.models.estimate_line_item import EstimateLineItem
+from app.modules.clients.models import Client, ClientActivity, ClientDocument, ClientProductRate
+from app.modules.sales.models import Order, OrderItem, OrderComment, Payment, PaymentDocument, Estimate, EstimateLineItem
+from app.modules.operations.models import ProjectExpense
 
-from app.models.employee import Employee
-from app.models.attendance import Attendance
-from app.models.leave import Leave
-from app.models.daily_task import DailyTask
-from app.models.task_comment import TaskComment
-from app.models.order_comment import OrderComment
-from app.models.ai_workspace_report import AIWorkspaceReport
-from app.models.working_calendar import WorkingCalendarSettings, CompanyHoliday
-from app.models.password_reset_token import PasswordResetToken
-from app.models.milestone import Milestone
-from app.models.client_document import ClientDocument
-from app.models.payment_document import PaymentDocument
-from app.models.generic_document import GenericDocument
-from app.models.stock_ledger_entry import StockLedgerEntry
-from app.models.integration_sync_log import IntegrationSyncLog
-from app.models.production_job import ProductionJob
-from app.models.salary_slip import SalarySlip
+from app.modules.hr.models import Employee, Attendance, Leave, SalarySlip, WorkingCalendarSettings, CompanyHoliday
+from app.modules.reporting.models import AIWorkspaceReport
+from app.modules.documents.models import GenericDocument
+from app.modules.ai.models import ChatLearningCandidate
+from app.modules.reporting.models import ReportHistory
+from app.modules.inventory.models import StockLedgerEntry
 
-from app.models.candidate import Candidate
-from app.models.interview import Interview
+from app.modules.recruitment.models import Candidate, Interview
 
-from app.models.audit import AuditLog
-from app.models.automation_log import AutomationLog
+from app.platform.audit.audit import AuditLog
+from app.modules.communications.models import AutomationLog
 
 __all__ = [
     "Base", "BaseModel", "IdSequence", "User", "Notification", "PersonalCartItem",
@@ -69,7 +44,7 @@ __all__ = [
     "Client", "ClientActivity", "Order", "OrderItem", "Payment", "ProjectExpense", "Estimate", "EstimateLineItem",
     "Employee", "Attendance", "Leave", "DailyTask", "TaskComment", "OrderComment", "AIWorkspaceReport", "ProductionJob", "SalarySlip",
     "WorkingCalendarSettings", "CompanyHoliday", "PasswordResetToken", "Milestone", "ClientDocument", "PaymentDocument",
-    "GenericDocument", "StockLedgerEntry", "IntegrationSyncLog",
+    "GenericDocument", "StockLedgerEntry",
     "Candidate", "Interview",
     "AuditLog", "AutomationLog",
 ]

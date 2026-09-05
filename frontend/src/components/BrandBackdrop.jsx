@@ -41,7 +41,7 @@ function BrandBackdrop() {
             <g key={i}>
               <rect x={gap} y={y} width={320 - gap * 2} height={h} rx="1.5"
                 fill="var(--color-wood)" opacity={0.1 + i * 0.03}
-                stroke="var(--border-color)" strokeWidth="1" />
+                stroke="rgba(243, 237, 225, 0.10)" strokeWidth="1" />
               {/* pull */}
               <circle cx={320 - gap * 2 - 22} cy={y + h / 2} r="4.5" fill="var(--color-gold-soft)" opacity="0.55" />
               {/* faint grain lines for material texture */}

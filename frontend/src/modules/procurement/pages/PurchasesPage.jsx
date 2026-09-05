@@ -1,0 +1,135 @@
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { purchasesAPI, suppliersAPI, materialsAPI, reportsAPI, locationsAPI, purchaseImportAPI } from '../../../utils/api';
+import Table from '../../../components/common/Table';
+import Modal from '../../../components/common/Modal';
+import Form from '../../../components/common/Form';
+import Alert from '../../../components/common/Alert';
+import { formatCurrency, today, statusClass } from '../../../utils/format';
+
+function PurchasesPage() {
+  const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
+  const [purchases, setPurchases] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const load = () => {
+    setPageLoading(true);
+    setLoadError(false);
+    purchasesAPI.list().then((res) => setPurchases(res.data)).catch((err) => {
+      setLoadError(true);
+      setError(err.response?.status === 403 ? 'You do not have permission to view purchases.' : 'Unable to load purchases. Please try again.');
+    }).finally(() => setPageLoading(false));
+    suppliersAPI.list().then((res) => setSuppliers(res.data));
+    materialsAPI.list().then((res) => setMaterials(res.data));
+    locationsAPI.list().then((res) => setLocations(res.data)).catch(() => setLocations([]));
+  };
+  useEffect(load, []);
+
+  const handleReceive = async (purchaseId) => {
+    setError('');
+    try {
+      await purchasesAPI.receive(purchaseId);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to mark this purchase as received');
+    }
+  };
+
+  const handleCreate = async (formData) => {
+    setLoading(true);
+    setError('');
+    try {
+      await purchasesAPI.create({
+        ...formData,
+        supplier_id: Number(formData.supplier_id),
+        material_id: Number(formData.material_id),
+        quantity: formData.quantity, rate: formData.rate,
+        gst_percent: formData.gst_percent || '18',
+        location_id: formData.location_id ? Number(formData.location_id) : null,
+        date: new Date(formData.date).toISOString(),
+      });
+      setShowAdd(false);
+      setSuccess('Purchase saved.');
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to record purchase');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const columns = [
+    { key: 'purchase_code', label: 'Purchase ID' },
+    { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+    { key: 'supplier_id', label: 'Supplier', render: (v) => suppliers.find((s) => s.id === v)?.name || v },
+    { key: 'material_id', label: 'Material', render: (v) => materials.find((m) => m.id === v)?.name || v },
+    { key: 'quantity', label: 'Quantity' }, { key: 'unit', label: 'Unit' }, { key: 'rate', label: 'Rate' },
+    { key: 'invoice_total', label: 'Invoice Total', render: (v) => formatCurrency(v) },
+    { key: 'payment_status', label: 'Payment Status' },
+    { key: 'receipt_status', label: 'Receipt Status', render: (v) => (
+      <span className={`status-badge ${statusClass(v)}`}>{v}</span>
+    ) },
+    { key: 'actions', label: '', render: (_, row) => (
+      row.receipt_status === 'Ordered'
+        ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleReceive(row.id); }}>Mark Received</button>
+        : null
+    ) },
+  ];
+
+  const fields = [
+    { name: 'supplier_id', label: 'Supplier', type: 'select', required: true, section: 'Supplier & Invoice', options: suppliers.map((s) => ({ value: s.id, label: s.name })) },
+    { name: 'date', label: 'Date', type: 'date', required: true, section: 'Supplier & Invoice' },
+    { name: 'material_id', label: 'Material', type: 'select', required: true, section: 'Material', options: materials.map((m) => ({ value: m.id, label: m.name })) },
+    { name: 'quantity', label: 'Quantity', type: 'number', required: true, section: 'Quantity & Cost' },
+    { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets', section: 'Quantity & Cost' },
+    { name: 'rate', label: 'Rate', type: 'number', required: true, section: 'Quantity & Cost' },
+    { name: 'location_id', label: 'Receiving Location', type: 'select', section: 'Quantity & Cost',
+      options: locations.map((l) => ({ value: l.id, label: l.full_path })), placeholder: "Material's primary location" },
+    { name: 'gst_percent', label: 'GST %', type: 'number', placeholder: '18', section: 'Tax' },
+    { name: 'payment_status', label: 'Payment Status', type: 'select', section: 'Payment', options: [
+      { value: 'Paid', label: 'Paid' }, { value: 'Part Paid', label: 'Part Paid' }, { value: 'Credit', label: 'Credit' },
+    ] },
+    { name: 'receipt_status', label: 'Receipt Status', type: 'select', section: 'Payment', options: [
+      { value: 'Received', label: 'Received - stock updates immediately' },
+      { value: 'Ordered', label: 'Ordered - not yet arrived, stock stays unchanged until received' },
+    ] },
+  ];
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>Purchases (Stock In)</h1>
+          <p className="page-summary">Record material receipts from suppliers and keep purchase history in one place.</p>
+        </div>
+        <div className="page-actions">
+          <a className="btn-secondary" href={reportsAPI.downloadUrl('purchases.xlsx')} target="_blank" rel="noreferrer">Export</a>
+          {isPrivileged && <a className="btn-secondary" href={purchaseImportAPI.templateUrl}>Download Template</a>}
+          {isPrivileged && <button className="btn-secondary" onClick={() => navigate('/purchases/import')}>Import Excel</button>}
+          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Record Purchase</button>}
+        </div>
+      </div>
+      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
+      <Table columns={columns} data={purchases} loading={pageLoading} error={loadError} onRetry={load} onRowClick={(row) => navigate(`/purchases/${row.id}`)} emptyMessage="No purchases recorded yet. Record your first purchase to start tracking inventory." emptyAction={isPrivileged ? { label: 'Record Purchase', onClick: () => setShowAdd(true) } : undefined} />
+      <Modal isOpen={showAdd} title="Record Purchase" onClose={() => setShowAdd(false)}>
+        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Record Purchase"
+          initialValues={{ date: today(), ...(location.state?.prefill || {}) }} />
+      </Modal>
+    </div>
+  );
+}
+
+export default PurchasesPage;

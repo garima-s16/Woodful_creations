@@ -1,53 +1,58 @@
-from app.api.routes import auth
+from app.modules.auth.api import auth as auth
 from app.api.routes import settings
-from app.api.routes import suppliers
-from app.api.routes import materials
-from app.api.routes import material_categories
-from app.api.routes import products
-from app.api.routes import product_imports
-from app.api.routes import material_imports
-from app.api.routes import client_imports
-from app.api.routes import rate_cards
-from app.api.routes import rate_card_imports
-from app.api.routes import client_product_rates
-from app.api.routes import supplier_materials
-from app.api.routes import locations
-from app.api.routes import notifications
-from app.api.routes import stock_transactions
-from app.api.routes import purchase_imports
-from app.api.routes import personal_cart
-from app.api.routes import purchases
-from app.api.routes import issues
-from app.api.routes import clients
-from app.api.routes import client_activities
-from app.api.routes import search
-from app.api.routes import orders
-from app.api.routes import order_imports
-from app.api.routes import payments
-from app.api.routes import project_expenses
-from app.api.routes import employees
-from app.api.routes import attendance
-from app.api.routes import leaves
-from app.api.routes import daily_tasks
-from app.api.routes import production_jobs
-from app.api.routes import dashboard
-from app.api.routes import reports
-from app.api.routes import estimates
-from app.api.routes import estimate_imports
-from app.api.routes import candidates
-from app.api.routes import interviews
-from app.api.routes import salary_slips
-from app.api.routes import chat
-from app.api.routes import users
+from app.modules.procurement.api import suppliers
+from app.modules.inventory.api import materials
+from app.modules.inventory.api import material_categories
+from app.modules.catalog.api import products
+from app.modules.catalog.api import product_imports
+from app.modules.inventory.api import material_imports
+from app.modules.hr.api import holiday_imports
+from app.modules.clients.api import import_routes as client_imports
+from app.modules.catalog.api import rate_cards
+from app.modules.catalog.api import rate_card_imports
+from app.modules.clients.api import product_rate_routes as client_product_rates
+from app.modules.procurement.api import supplier_materials
+from app.modules.inventory.api import locations
+from app.modules.communications.api import notifications
+from app.modules.inventory.api import stock_transactions
+from app.modules.procurement.api import purchase_imports
+from app.modules.procurement.api import personal_cart
+from app.modules.procurement.api import purchases
+from app.modules.operations.api import issues
+from app.modules.clients.api import routes as clients
+from app.modules.clients.api import activity_routes as client_activities
+from app.modules.reporting.api import search
+from app.modules.sales.api import orders
+from app.modules.sales.api import order_imports
+from app.modules.sales.api import payments
+from app.modules.operations.api import project_expenses
+from app.modules.hr.api import employees
+from app.modules.hr.api import attendance
+from app.modules.hr.api import leaves
+from app.modules.operations.api import daily_tasks
+from app.modules.operations.api import production_jobs
+from app.modules.reporting.api import dashboard
+from app.modules.inventory.api import reports as reports_inventory
+from app.modules.sales.api import reports as reports_sales
+from app.modules.hr.api import reports as reports_hr
+from app.modules.operations.api import reports as reports_operations
+from app.modules.clients.api import reports as reports_clients
+from app.modules.catalog.api import reports as reports_catalog
+from app.modules.sales.api import estimates
+from app.modules.sales.api import estimate_imports
+from app.modules.recruitment.api import candidates
+from app.modules.recruitment.api import interviews
+from app.modules.hr.api import salary_slips
+from app.modules.ai.api import chat
+from app.modules.auth.api import users as users
 from app.api.routes import audit_logs
-from app.api.routes import working_calendar
-from app.api.routes import milestones
-from app.api.routes import documents
-from app.api.routes import agents
-from app.api.routes import integrations
-from app.api.routes import automation
-from app.api.routes import communication
-from app.api.routes import analytics
+from app.modules.hr.api import working_calendar
+from app.modules.operations.api import milestones
+from app.modules.documents.api import routes as documents
+from app.modules.ai.api import agents
+from app.modules.communications.api import automation
+from app.modules.communications.api import communication
+from app.modules.reporting.api import analytics
 
 all_routers = [
     auth.router,
@@ -58,6 +63,7 @@ all_routers = [
     products.router,
     product_imports.router,
     material_imports.router,
+    holiday_imports.router,
     client_imports.router,
     rate_cards.router,
     rate_card_imports.router,
@@ -83,7 +89,12 @@ all_routers = [
     daily_tasks.router,
     production_jobs.router,
     dashboard.router,
-    reports.router,
+    reports_inventory.router,
+    reports_sales.router,
+    reports_hr.router,
+    reports_operations.router,
+    reports_clients.router,
+    reports_catalog.router,
     estimates.router,
     estimate_imports.router,
     candidates.router,
@@ -96,7 +107,6 @@ all_routers = [
     milestones.router,
     documents.router,
     agents.router,
-    integrations.router,
     automation.router,
     communication.router,
     analytics.router,

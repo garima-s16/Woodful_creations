@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { authAPI } from './utils/api';
+import { setDocumentTitle } from './utils/pageTitle';
 import { sessionCheckFinished, logout as logoutAction } from './redux/slices/authSlice';
 import { openCart, closeCart, fetchCart, resetCartView } from './redux/slices/cartSlice';
 
@@ -12,53 +13,60 @@ import MobileBottomNav from './components/MobileBottomNav';
 import ProtectedRoute from './components/ProtectedRoute';
 import ChatWidget from './components/ChatWidget';
 import Footer from './components/Footer';
-import CartDrawer from './components/CartDrawer';
+import CartDrawer from './modules/procurement/components/CartDrawer';
 
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import MaterialsPage from './pages/MaterialsPage';
-import LocationsPage from './pages/LocationsPage';
-import PurchaseImportPage from './pages/PurchaseImportPage';
-import ClientImportPage from './pages/ClientImportPage';
-import MobileAppPage from './pages/MobileAppPage';
-import MaterialDetailPage from './pages/MaterialDetailPage';
-import SuppliersPage from './pages/SuppliersPage';
-import ProductsPage from './pages/ProductsPage';
-import ProductDetailPage from './pages/ProductDetailPage';
-import ProductImportPage from './pages/ProductImportPage';
-import MaterialImportPage from './pages/MaterialImportPage';
-import RateCardsPage from './pages/RateCardsPage';
-import RateCardImportPage from './pages/RateCardImportPage';
-import SupplierDetailPage from './pages/SupplierDetailPage';
-import PurchasesPage from './pages/PurchasesPage';
-import PurchaseDetailPage from './pages/PurchaseDetailPage';
-import IssuesPage from './pages/IssuesPage';
-import ClientsPage from './pages/ClientsPage';
-import ClientDetailPage from './pages/ClientDetailPage';
-import OrdersPage from './pages/OrdersPage';
-import OrderDetailPage from './pages/OrderDetailPage';
-import PaymentsPage from './pages/PaymentsPage';
-import ProjectExpensesPage from './pages/ProjectExpensesPage';
-import EmployeesPage from './pages/EmployeesPage';
-import EmployeeDetailPage from './pages/EmployeeDetailPage';
-import AttendancePage from './pages/AttendancePage';
-import LeavesPage from './pages/LeavesPage';
-import DailyTasksPage from './pages/DailyTasksPage';
-import TaskDetailPage from './pages/TaskDetailPage';
-import ProductionJobsPage from './pages/ProductionJobsPage';
-import ProductionJobDetailPage from './pages/ProductionJobDetailPage';
-import SettingsPage from './pages/SettingsPage';
-import EstimatesPage from './pages/EstimatesPage';
-import EstimateDetailPage from './pages/EstimateDetailPage';
-import CandidatesPage from './pages/CandidatesPage';
-import CandidateDetailPage from './pages/CandidateDetailPage';
-import InterviewsPage from './pages/InterviewsPage';
-import SalarySlipsPage from './pages/SalarySlipsPage';
-import UsersPage from './pages/UsersPage';
-import AuditLogsPage from './pages/AuditLogsPage';
-import AnalyticsPage from './pages/AnalyticsPage';
+import NotFoundPage from './pages/NotFoundPage';
+const DashboardPage = React.lazy(() => import('./modules/reporting/pages/DashboardPage'));
+const InventoryPage = React.lazy(() => import('./modules/inventory/pages/InventoryPage'));
+const MaterialsPage = React.lazy(() => import('./modules/inventory/pages/MaterialsPage'));
+const LocationsPage = React.lazy(() => import('./modules/inventory/pages/LocationsPage'));
+const PurchaseImportPage = React.lazy(() => import('./modules/procurement/pages/PurchaseImportPage'));
+const ClientImportPage = React.lazy(() => import('./modules/clients/pages/ClientImportPage'));
+const MobileAppPage = React.lazy(() => import('./pages/MobileAppPage'));
+const MaterialDetailPage = React.lazy(() => import('./modules/inventory/pages/MaterialDetailPage'));
+const SuppliersPage = React.lazy(() => import('./modules/procurement/pages/SuppliersPage'));
+const ProductsPage = React.lazy(() => import('./modules/catalog/pages/ProductsPage'));
+const ProductDetailPage = React.lazy(() => import('./modules/catalog/pages/ProductDetailPage'));
+const ProductImportPage = React.lazy(() => import('./modules/catalog/pages/ProductImportPage'));
+const MaterialImportPage = React.lazy(() => import('./modules/inventory/pages/MaterialImportPage'));
+const CompanyHolidaysPage = React.lazy(() => import('./modules/hr/pages/CompanyHolidaysPage'));
+const HolidayImportPage = React.lazy(() => import('./modules/hr/pages/HolidayImportPage'));
+const EstimateImportPage = React.lazy(() => import('./modules/sales/pages/EstimateImportPage'));
+const OrderImportPage = React.lazy(() => import('./modules/sales/pages/OrderImportPage'));
+const RateCardsPage = React.lazy(() => import('./modules/catalog/pages/RateCardsPage'));
+const RateCardImportPage = React.lazy(() => import('./modules/catalog/pages/RateCardImportPage'));
+const SupplierDetailPage = React.lazy(() => import('./modules/procurement/pages/SupplierDetailPage'));
+const PurchasesPage = React.lazy(() => import('./modules/procurement/pages/PurchasesPage'));
+const PurchaseDetailPage = React.lazy(() => import('./modules/procurement/pages/PurchaseDetailPage'));
+const IssuesPage = React.lazy(() => import('./modules/operations/pages/IssuesPage'));
+const ClientsPage = React.lazy(() => import('./modules/clients/pages/ClientsPage'));
+const ClientDetailPage = React.lazy(() => import('./modules/clients/pages/ClientDetailPage'));
+const OrdersPage = React.lazy(() => import('./modules/sales/pages/OrdersPage'));
+const OrderDetailPage = React.lazy(() => import('./modules/sales/pages/OrderDetailPage'));
+const PaymentsPage = React.lazy(() => import('./modules/sales/pages/PaymentsPage'));
+const ProjectExpensesPage = React.lazy(() => import('./modules/operations/pages/ProjectExpensesPage'));
+const EmployeesPage = React.lazy(() => import('./modules/hr/pages/EmployeesPage'));
+const EmployeeDetailPage = React.lazy(() => import('./modules/hr/pages/EmployeeDetailPage'));
+const AttendancePage = React.lazy(() => import('./modules/hr/pages/AttendancePage'));
+const LeavesPage = React.lazy(() => import('./modules/hr/pages/LeavesPage'));
+const DailyTasksPage = React.lazy(() => import('./modules/operations/pages/DailyTasksPage'));
+const TaskDetailPage = React.lazy(() => import('./modules/operations/pages/TaskDetailPage'));
+const ProductionJobsPage = React.lazy(() => import('./modules/operations/pages/ProductionJobsPage'));
+const ProductionJobDetailPage = React.lazy(() => import('./modules/operations/pages/ProductionJobDetailPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const EstimatesPage = React.lazy(() => import('./modules/sales/pages/EstimatesPage'));
+const EstimateDetailPage = React.lazy(() => import('./modules/sales/pages/EstimateDetailPage'));
+const CandidatesPage = React.lazy(() => import('./modules/recruitment/pages/CandidatesPage'));
+const CandidateDetailPage = React.lazy(() => import('./modules/recruitment/pages/CandidateDetailPage'));
+const InterviewsPage = React.lazy(() => import('./modules/recruitment/pages/InterviewsPage'));
+const SalarySlipsPage = React.lazy(() => import('./modules/hr/pages/SalarySlipsPage'));
+const UsersPage = React.lazy(() => import('./pages/UsersPage'));
+const AuditLogsPage = React.lazy(() => import('./pages/AuditLogsPage'));
+const AnalyticsPage = React.lazy(() => import('./modules/reporting/pages/AnalyticsPage'));
+const LearningCandidatesPage = React.lazy(() => import('./modules/ai/pages/LearningCandidatesPage'));
 
 function AppLayout({ children }) {
   const MOBILE_BREAKPOINT = 768;
@@ -147,6 +155,7 @@ function Protected({ children }) {
 
 function AppRoutes() {
   const dispatch = useDispatch();
+  const location = useLocation();
 
   useEffect(() => {
     authAPI
@@ -155,7 +164,14 @@ function AppRoutes() {
       .catch(() => dispatch(sessionCheckFinished(null)));
   }, [dispatch]);
 
+  // One place setting document.title for every route, rather than
+  // each page doing it individually.
+  useEffect(() => {
+    setDocumentTitle(location.pathname);
+  }, [location.pathname]);
+
   return (
+    <Suspense fallback={null}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -163,6 +179,7 @@ function AppRoutes() {
       <Route path="/" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
+      <Route path="/inventory" element={<Protected><InventoryPage /></Protected>} />
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
       <Route path="/materials/:materialId" element={<Protected><MaterialDetailPage /></Protected>} />
       <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />
@@ -173,6 +190,10 @@ function AppRoutes() {
       <Route path="/products" element={<Protected><ProductsPage /></Protected>} />
       <Route path="/products/import" element={<Protected><ProductImportPage /></Protected>} />
       <Route path="/materials/import" element={<Protected><MaterialImportPage /></Protected>} />
+      <Route path="/company-holidays" element={<Protected><CompanyHolidaysPage /></Protected>} />
+      <Route path="/company-holidays/import" element={<Protected><HolidayImportPage /></Protected>} />
+      <Route path="/estimates/import" element={<Protected><EstimateImportPage /></Protected>} />
+      <Route path="/orders/import" element={<Protected><OrderImportPage /></Protected>} />
       <Route path="/rate-master" element={<Protected><RateCardsPage /></Protected>} />
       <Route path="/rate-master/import" element={<Protected><RateCardImportPage /></Protected>} />
       <Route path="/products/:productId" element={<Protected><ProductDetailPage /></Protected>} />
@@ -195,6 +216,7 @@ function AppRoutes() {
       <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
       <Route path="/production-jobs/:jobId" element={<Protected><ProductionJobDetailPage /></Protected>} />
       <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
+      <Route path="/learning-candidates" element={<Protected><LearningCandidatesPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />
       <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
@@ -203,12 +225,30 @@ function AppRoutes() {
       <Route path="/candidates/:candidateId" element={<Protected><CandidateDetailPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
       <Route path="/salary-slips" element={<Protected><SalarySlipsPage /></Protected>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   );
 }
 
+// Keeps <html data-theme="..."> in sync with the theme slice so every
+// themed CSS variable in styles/index.css resolves correctly - runs at
+// the app root (not inside AppLayout) so the login/forgot-password
+// screens' own themed bits (form inputs, focus rings) pick it up too,
+// not just the authenticated app shell.
+function useThemeSync() {
+  const mode = useSelector((state) => state.theme.mode);
+  useEffect(() => {
+    if (mode === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }, [mode]);
+}
+
 function App() {
+  useThemeSync();
   return (
     <BrowserRouter>
       <AppRoutes />

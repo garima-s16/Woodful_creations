@@ -1,5 +1,5 @@
-"""Add quantity_received to purchases - genuine gap against Family
-6's explicit "partial receipts" task item. Backfills existing rows:
+"""Add quantity_received to purchases - genuine gap against the
+explicit "partial receipts" task item. Backfills existing rows:
 already-Received purchases get quantity_received = quantity (fully
 received, matching their existing state); Ordered purchases get 0
 (nothing received yet).
@@ -10,7 +10,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import add_column_if_missing
+from app.platform.database.migration_guards import add_column_if_missing
 
 revision = "0037"
 down_revision = "0036"

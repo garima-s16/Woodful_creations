@@ -1,32 +1,60 @@
-node_modules/
+# Secrets - never commit real credentials. .env.example is intentionally
+# NOT excluded below (it should be committed, since it documents the
+# required variables without real values).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+google-credentials*.json
+credentials*.json
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.env
-.env.local
-.env.*.local
-.venv
-venv/
-ENV/
-build/
-dist/
 *.egg-info/
-.DS_Store
-.idea/
-.vscode/
-*.swp
-*.swo
 .pytest_cache/
-.coverage
-htmlcov/
 .mypy_cache/
+venv/
+.venv/
+env/
+
+# Local databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Uploaded files (user content, never source-controlled)
+backend/uploads/
+# Any file dropped in here for local/prod Drive setup - .gitkeep is
+# the only thing meant to be tracked, real key files aren't
+# guaranteed to match the credentials*.json pattern above.
+backend/credentials/*
+!backend/credentials/.gitkeep
+backend/storage_data/
+
+# Logs
 *.log
 logs/
-uploads/
-postgres_data/
-.next/
-out/
-.cache/
-*.db
-*.sqlite3
-woodful.db
+
+# Verification harness output (generated, not source)
+verification-results/
+
+# Node / frontend
+node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env.local
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

@@ -9,7 +9,7 @@ Create Date: 2026-08-16
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import add_column_if_missing
+from app.platform.database.migration_guards import add_column_if_missing
 
 revision = "0024"
 down_revision = "0023"

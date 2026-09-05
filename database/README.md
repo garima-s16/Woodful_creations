@@ -4,9 +4,10 @@ This directory intentionally does not contain a raw SQL schema file.
 
 ## Where the schema actually lives
 
-- **`backend/app/models/`** - the SQLAlchemy models. This is the schema
-  definition itself: every table, column, type, constraint, and
-  relationship in the application.
+- **`backend/app/models/`** (platform-level entities) and
+  **`backend/app/modules/*/models.py`** (business domains) - the
+  SQLAlchemy models. This is the schema definition itself: every
+  table, column, type, constraint, and relationship in the application.
 - **`backend/alembic/versions/`** - the migration history. Running
   `alembic upgrade head` from `backend/` builds the actual database
   (SQLite locally, PostgreSQL in production) from these models.

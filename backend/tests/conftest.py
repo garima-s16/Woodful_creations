@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# A valid-looking SECRET_KEY must exist before app.core.config is imported.
+# A valid-looking SECRET_KEY must exist before app.platform.configuration.config is imported.
 # Must not contain any of the validator's placeholder markers (change,
 # secret-key, your-, woodful-secret) - a prior version of this line
 # literally contained "secret-key" and would fail its own check.
@@ -21,10 +21,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base, get_db
-from app.core.security import hash_password
+from app.platform.database.database import Base, get_db
+from app.platform.security.security import hash_password
 from app.main import app
-from app.models.user import User
+from app.modules.auth.models import User
 
 engine = create_engine(
     "sqlite:///:memory:",
@@ -50,6 +50,21 @@ def reset_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_rate_limiter():
+    """Test isolation. Without this, the
+    rate limiter's module-level singleton (app/platform/security/rate_limit.py)
+    persists across every test in a session, so a test late in the
+    suite that hits an already-exercised bucket (e.g. login, chat)
+    could be unexpectedly rejected with 429 purely from requests
+    earlier, unrelated tests already made - not a real bug in the
+    test itself. Sibling to reset_db above, same autouse/function-
+    scope pattern."""
+    from app.platform.security.rate_limit import reset_rate_limits
+    reset_rate_limits()
+    yield
 
 
 @pytest.fixture

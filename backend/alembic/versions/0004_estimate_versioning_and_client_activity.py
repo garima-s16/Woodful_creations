@@ -7,7 +7,7 @@ Create Date: 2026-08-11
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing, column_exists
+from app.platform.database.migration_guards import create_table_if_missing, column_exists
 
 revision = "0004"
 down_revision = "0003"

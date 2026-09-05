@@ -6,6 +6,7 @@ import Modal from '../components/common/Modal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Form from '../components/common/Form';
 import Alert from '../components/common/Alert';
+import { classifyLoadError } from '../utils/loadError';
 
 const LABELS = {
   'units': 'Units', 'material-categories': 'Material Categories', 'stock-statuses': 'Stock Statuses',
@@ -19,24 +20,29 @@ const LABELS = {
 function SettingsPage() {
   const { user } = useSelector((state) => state.auth);
   const isPrivileged = user?.role === 'master';
-  const isStrictlyMaster = user?.role === 'master';
   const [lookupTypes, setLookupTypes] = useState([]);
   const [selected, setSelected] = useState('');
   const [values, setValues] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [typesError, setTypesError] = useState(null);
+  const [valuesError, setValuesError] = useState(null);
 
-  useEffect(() => {
+  const loadTypes = () => {
+    setTypesError(null);
     settingsAPI.types().then((res) => {
       setLookupTypes(res.data.lookup_types);
       setSelected(res.data.lookup_types[0]);
-    });
-  }, []);
+    }).catch((err) => setTypesError(classifyLoadError(err, 'settings')));
+  };
+
+  useEffect(loadTypes, []);
 
   const loadValues = (type) => {
     if (!type) return;
-    settingsAPI.list(type).then((res) => setValues(res.data));
+    setValuesError(null);
+    settingsAPI.list(type).then((res) => setValues(res.data)).catch((err) => setValuesError(classifyLoadError(err, 'these values')));
   };
 
   useEffect(() => loadValues(selected), [selected]);
@@ -56,8 +62,10 @@ function SettingsPage() {
   };
 
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const handleDelete = (row) => setPendingDelete(row);
   const confirmDelete = async () => {
+    setDeleting(true);
     try {
       await settingsAPI.remove(selected, pendingDelete.id);
       setPendingDelete(null);
@@ -65,12 +73,14 @@ function SettingsPage() {
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete value');
       setPendingDelete(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
   const columns = [
     { key: 'name', label: 'Name' }, { key: 'description', label: 'Description' },
-    { key: 'id', label: '', render: (v, row) => (isStrictlyMaster ? <button className="btn-link" onClick={() => handleDelete(row)}>Delete</button> : null) },
+    { key: 'id', label: '', render: (v, row) => (isPrivileged ? <button className="btn-link" onClick={() => handleDelete(row)}>Delete</button> : null) },
   ];
 
   const fields = [
@@ -88,22 +98,37 @@ function SettingsPage() {
         {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)} disabled={!selected}>Add Value</button>}
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <div className="settings-layout">
-        <div className="settings-list">
-          {lookupTypes.map((type) => (
-            <button
-              key={type}
-              className={type === selected ? 'settings-nav-item active' : 'settings-nav-item'}
-              onClick={() => setSelected(type)}
-            >
-              {LABELS[type] || type}
-            </button>
-          ))}
+      {typesError && (
+        <div>
+          <Alert type="error" message={typesError.message} />
+          <button type="button" className="btn-secondary" style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-4)' }} onClick={loadTypes}>Retry</button>
         </div>
-        <div className="settings-content">
-          <Table columns={columns} data={values} emptyMessage="No values configured for this list yet." />
+      )}
+      {!typesError && (
+        <div className="settings-layout">
+          <div className="settings-list">
+            {lookupTypes.map((type) => (
+              <button
+                key={type}
+                className={type === selected ? 'settings-nav-item active' : 'settings-nav-item'}
+                onClick={() => setSelected(type)}
+              >
+                {LABELS[type] || type}
+              </button>
+            ))}
+          </div>
+          <div className="settings-content">
+            {valuesError ? (
+              <div>
+                <Alert type="error" message={valuesError.message} />
+                <button type="button" className="btn-secondary" style={{ marginTop: 'var(--space-4)' }} onClick={() => loadValues(selected)}>Retry</button>
+              </div>
+            ) : (
+              <Table columns={columns} data={values} emptyMessage="No values configured for this list yet." />
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <Modal isOpen={showAdd} title={`Add ${LABELS[selected] || selected}`} onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Add" />
       </Modal>
@@ -113,6 +138,7 @@ function SettingsPage() {
         message={pendingDelete ? `Delete "${pendingDelete.name}"? This cannot be undone.` : ''}
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
+        loading={deleting}
       />
     </div>
   );

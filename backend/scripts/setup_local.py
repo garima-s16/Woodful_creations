@@ -1,7 +1,7 @@
 """
 One-step local setup: applies all database migrations (self-healing even
 against a database created by an older version of this script - see
-app/core/auto_migrate.py for how), then checks whether any master user
+app/platform/database/auto_migrate.py for how), then checks whether any master user
 exists yet - if not, walks you through creating one interactively right
 here (no hardcoded credentials, ever).
 
@@ -18,10 +18,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.database import SessionLocal
-from app.core.auto_migrate import run_startup_migrations
+from app.platform.database.database import SessionLocal
+from app.platform.database.auto_migrate import run_startup_migrations
 from app import models  # noqa: F401
-from app.models.user import User
+from app.modules.auth.models import User
 from scripts.create_master_user import create_master_user
 
 logging.basicConfig(level=logging.INFO)

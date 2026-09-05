@@ -11,17 +11,22 @@ import Modal from './Modal';
  *
  * Usage: keep the "thing pending deletion" in state, render this with
  * isOpen={!!pendingDelete}, and call the real delete API only from
- * onConfirm.
+ * onConfirm. Also track an in-flight boolean around that same delete
+ * call and pass it as loading, so a rapid double-tap can't fire
+ * onConfirm twice before the first request completes - the same
+ * pattern Form's own loading prop already follows.
  */
 const ConfirmDialog = ({
   isOpen, title = 'Confirm', message = 'Are you sure you want to delete this?',
-  confirmLabel = 'Delete', onConfirm, onCancel,
+  confirmLabel = 'Delete', onConfirm, onCancel, loading = false,
 }) => (
   <Modal isOpen={isOpen} title={title} onClose={onCancel}>
     <p className="confirm-dialog-message">{message}</p>
     <div className="confirm-dialog-actions">
-      <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
-      <button type="button" className="btn-danger" onClick={onConfirm}>{confirmLabel}</button>
+      <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>Cancel</button>
+      <button type="button" className="btn-danger" onClick={onConfirm} disabled={loading}>
+        {loading ? 'Please wait...' : confirmLabel}
+      </button>
     </div>
   </Modal>
 );

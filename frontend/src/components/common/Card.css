@@ -13,7 +13,7 @@
   align-items: center;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--color-charcoal-elevated);
+  background-color: var(--surface-elevated);
 }
 
 .card-header h3 {

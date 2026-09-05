@@ -1,4 +1,4 @@
-"""Client Master (Family 21 section): add contact_person/site_address/
+"""Client Master: add contact_person/site_address/
 gstin (matching the real Woodful Client Master reference sheet's
 columns), and make phone + business_id genuinely mandatory at the
 database level, not just in the API schema.
@@ -17,9 +17,9 @@ Create Date: 2026-08-21
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import column_exists
+from app.platform.database.migration_guards import column_exists
 
-from app.utils.id_generator import generate_short_id
+from app.platform.database.id_generator import generate_short_id
 
 revision = "0049"
 down_revision = "0048"

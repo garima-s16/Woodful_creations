@@ -51,3 +51,7 @@ export const ListIcon = (p) => <svg {...base} {...p}><path d="M8 6h13M8 12h13M8 
 export const PlusIcon = (p) => <svg {...base} {...p}><path d="M12 5v14M5 12h14" /></svg>;
 export const ChatIcon = (p) => <svg {...base} {...p}><path d="M21 12a8 8 0 01-8 8H5l3-3.3A7.9 7.9 0 013 12a8 8 0 018-8h2a8 8 0 018 8z" /></svg>;
 export const SlidersIcon = (p) => <svg {...base} {...p}><path d="M4 6h10M17 6h3M4 18h3M10 18h10M4 12h16" /><circle cx="16" cy="6" r="2" /><circle cx="7" cy="18" r="2" /></svg>;
+export const InventoryIcon = (p) => <svg {...base} {...p}><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v10l9 4 9-4V7" /><path d="M12 11v10" /></svg>;
+
+export const SunIcon = (p) => <svg {...base} {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></svg>;
+export const MoonIcon = (p) => <svg {...base} {...p}><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" /></svg>;

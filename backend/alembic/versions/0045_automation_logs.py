@@ -1,4 +1,4 @@
-"""Add AutomationLog - Family 13's traceable audit trail for
+"""Add AutomationLog - a traceable audit trail for
 automation-generated actions (what triggered it, when, what action
 occurred, whether it succeeded, the related business record).
 
@@ -12,7 +12,7 @@ Create Date: 2026-08-20
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing, create_index_if_missing
+from app.platform.database.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0045"
 down_revision = "0044"

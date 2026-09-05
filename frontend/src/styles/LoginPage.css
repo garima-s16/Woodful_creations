@@ -2,7 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-ink);
+  background: var(--background);
 }
 
 .login-container {
@@ -12,7 +12,9 @@
   flex: 1;
 }
 
-/* Left panel: brand */
+/* Left panel: brand - deliberately fixed dark chrome, matching the
+   same permanent brand identity treatment already used for
+   Navbar/Sidebar/Footer, independent of the overall page theme. */
 .login-brand-panel {
   position: relative;
   overflow: hidden;
@@ -61,16 +63,17 @@
 }
 
 .login-brand-descriptor {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: rgba(247, 243, 236, 0.55);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: rgba(247, 243, 236, 0.62);
   margin: var(--space-3) 0 0;
+  max-width: 320px;
 }
 
-/* Right panel: form */
+/* Right panel: form - functional page content, genuinely theme-adaptive
+   (unlike the brand panel opposite it, which is deliberately fixed). */
 .login-form-panel {
-  background: var(--color-ivory);
+  background: var(--background);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -85,11 +88,11 @@
 .login-form-wrap h1 {
   font-size: 2rem;
   margin-bottom: 6px;
-  color: var(--color-ink);
+  color: var(--text-primary);
 }
 
 .login-form-subtitle {
-  color: rgba(14, 13, 11, 0.65);
+  color: var(--text-secondary);
   font-size: 0.9rem;
   margin-bottom: var(--space-6);
 }
@@ -100,21 +103,21 @@
   gap: var(--space-5);
 }
 
-.form-group {
+.login-form .form-group {
   display: flex;
   flex-direction: column;
 }
 
-.form-group label {
+.login-form .form-group label {
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--text-primary);
   margin-bottom: 8px;
   font-size: 0.85rem;
 }
 
-.form-group input {
+.login-form .form-group input {
   padding: 12px 14px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   font-size: 0.92rem;
   font-family: var(--font-body);
@@ -124,18 +127,18 @@
   transition: border-color var(--transition), background var(--transition);
 }
 
-.form-group input::placeholder {
+.login-form .form-group input::placeholder {
   color: var(--text-secondary);
-  opacity: 1;
+  opacity: 0.8;
 }
 
-.form-group input:focus {
+.login-form .form-group input:focus {
   outline: none;
   border-color: var(--color-gold);
-  box-shadow: 0 0 0 3px rgba(184, 135, 74, 0.15);
+  box-shadow: var(--focus-ring);
 }
 
-.form-group input:disabled {
+.login-form .form-group input:disabled {
   background: var(--surface-elevated);
   color: var(--text-secondary);
   cursor: not-allowed;
@@ -159,14 +162,15 @@
   background: none;
   border: none;
   color: var(--text-secondary);
+  opacity: 0.85;
   cursor: pointer;
   display: flex;
   align-items: center;
   padding: 4px;
-  transition: color var(--transition);
+  transition: color var(--transition), opacity var(--transition);
 }
 
-.password-toggle:hover { color: var(--color-gold-soft); }
+.password-toggle:hover { color: var(--color-gold-soft); opacity: 1; }
 
 .password-toggle:focus-visible {
   outline: 2px solid var(--color-gold);
@@ -174,9 +178,9 @@
   border-radius: var(--radius-sm);
 }
 
-.error-message {
-  background: rgba(217, 131, 118, 0.14);
-  color: #a8402e; /* darker shade of the --danger hue, sized for AA contrast on the light login panel (--danger itself is tuned for dark surfaces) */
+.login-form .error-message {
+  background: var(--danger-bg);
+  color: var(--danger);
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
@@ -186,8 +190,8 @@
 
 .login-button {
   padding: 13px 20px;
-  background: var(--color-ink);
-  color: var(--color-ivory);
+  background: var(--color-gold);
+  color: var(--color-ink);
   border: none;
   border-radius: var(--radius-sm);
   font-weight: 600;
@@ -197,7 +201,7 @@
 }
 
 .login-button:hover:not(:disabled) {
-  background: var(--color-charcoal);
+  background: var(--color-gold-soft);
 }
 
 .login-button:disabled {
@@ -223,12 +227,16 @@
 
 @media (max-width: 560px) {
   .login-brand-panel {
-    min-height: 140px;
+    min-height: 170px;
     padding: var(--space-5) var(--space-4);
   }
 
   .login-brand-statement {
     font-size: 1rem;
+  }
+
+  .login-brand-descriptor {
+    font-size: 0.85rem;
   }
 
   .login-form-panel {

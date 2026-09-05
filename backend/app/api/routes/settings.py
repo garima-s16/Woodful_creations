@@ -4,11 +4,11 @@ lookup type: /api/settings/{lookup_type}."""
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.core.audit import log_action
+from app.platform.audit.audit import log_action
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.platform.database.database import get_db
+from app.platform.security.security import get_current_user, require_role
 from app.schemas.setting import LookupCreate, LookupUpdate, LookupResponse
 from app.models.setting import (
     Unit, StockStatus, StockPaymentStatus, SupplierTerm,

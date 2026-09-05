@@ -94,7 +94,7 @@
   position: absolute; top: 100%; left: 0; z-index: 20;
   width: max(260px, 100%); max-width: min(320px, 90vw); margin-top: 4px; padding: 8px;
   background: var(--surface-elevated); border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
 }
 /* Portal variant (see LineItemEditor.jsx) - rendered into document.body
    instead of here, positioned in viewport coordinates via inline style
@@ -146,7 +146,7 @@
   transition: background-color var(--transition), border-color var(--transition);
 }
 .line-item-row-actions button:hover:not(:disabled) {
-  background: var(--color-charcoal-elevated);
+  background: var(--surface-elevated);
   border-color: var(--border-strong);
 }
 .line-item-row-actions button:disabled { opacity: 0.3; cursor: not-allowed; }

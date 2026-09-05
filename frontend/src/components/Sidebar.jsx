@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   HomeIcon, MaterialIcon, ProductIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon, MobileAppIcon,
   OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
-  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, AnalyticsIcon,
+  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, AnalyticsIcon, InventoryIcon,
 } from './icons';
 import '../styles/components/Sidebar.css';
 
@@ -23,6 +23,11 @@ function Sidebar({ isOpen, user, onClose }) {
     {
       name: 'Inventory',
       items: [
+        // The single operational home for inventory. The
+        // existing Materials/Locations/Purchases/Issues pages stay put
+        // for direct navigation; this is just the new
+        // unified entry point that sits above them.
+        { path: '/inventory', label: 'Inventory', icon: InventoryIcon },
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
@@ -57,6 +62,7 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/employees', label: 'Employees', icon: EmployeeIcon },
         { path: '/attendance', label: 'Attendance', icon: AttendanceIcon },
         { path: '/leaves', label: 'Leave', icon: LeaveIcon },
+        { path: '/company-holidays', label: 'Company Holidays', icon: LeaveIcon },
         { path: '/salary-slips', label: 'Salary', icon: SalaryIcon },
         ...(isTrueMaster ? [
           { path: '/candidates', label: 'Candidates', icon: CandidateIcon },
@@ -68,6 +74,7 @@ function Sidebar({ isOpen, user, onClose }) {
       name: 'Administration',
       items: [
         { path: '/settings', label: 'Settings', icon: SettingsIcon },
+        { path: '/learning-candidates', label: 'Chatbot Learning', icon: AuditIcon },
         ...(isTrueMaster ? [
           { path: '/users', label: 'Users', icon: UserIcon },
           { path: '/audit-logs', label: 'Audit Logs', icon: AuditIcon },

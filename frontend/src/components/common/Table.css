@@ -14,7 +14,7 @@
 }
 
 .data-table thead {
-  background-color: var(--color-charcoal-elevated);
+  background-color: var(--surface-elevated);
   border-bottom: 1px solid var(--border-strong);
 }
 
@@ -40,7 +40,7 @@
 }
 
 .data-table tbody tr:hover {
-  background-color: var(--color-charcoal-elevated);
+  background-color: var(--surface-elevated);
 }
 
 .data-table tbody tr.clickable {
@@ -66,6 +66,8 @@
 
 .table-empty-message { margin: 0; }
 .table-empty-action { margin-top: var(--space-4); }
+.table-error-message { margin: 0; }
+.table-error-retry { margin-top: var(--space-4); }
 
 .skeleton-row td { padding: 14px 16px; }
 
@@ -73,7 +75,7 @@
   display: block;
   height: 14px;
   border-radius: 4px;
-  background: linear-gradient(90deg, var(--border-color) 25%, var(--color-charcoal-elevated) 50%, var(--border-color) 75%);
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--surface-elevated) 50%, var(--border-color) 75%);
   background-size: 200% 100%;
   animation: skeletonShimmer 1.4s ease-in-out infinite;
 }

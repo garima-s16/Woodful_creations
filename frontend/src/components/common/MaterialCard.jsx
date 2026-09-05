@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { statusClass } from '../../utils/statusColors';
-import { formatCurrency } from '../../utils/currency';
+import { statusClass, formatCurrency } from '../../utils/format';
 import { CartIcon, PlusIcon } from '../icons';
 import './MaterialCard.css';
 
@@ -26,9 +25,17 @@ function MaterialCard({ material, onOpen, onAddToCart, view = 'grid' }) {
     setQty((q) => Math.max(1, q + delta));
   };
 
+  const handleCardKeyDown = (e) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen(material);
+    }
+  };
+
   if (view === 'list') {
     return (
-      <div className="material-row-card" onClick={() => onOpen(material)}>
+      <div className="material-row-card" onClick={() => onOpen(material)} onKeyDown={handleCardKeyDown} role="button" tabIndex={0}>
         <div className="material-row-swatch" aria-hidden="true">{(material.category || material.name || '?')[0]}</div>
         <div className="material-row-main">
           <div className="material-row-name">{material.name}</div>
@@ -48,7 +55,7 @@ function MaterialCard({ material, onOpen, onAddToCart, view = 'grid' }) {
   }
 
   return (
-    <div className="material-card" onClick={() => onOpen(material)}>
+    <div className="material-card" onClick={() => onOpen(material)} onKeyDown={handleCardKeyDown} role="button" tabIndex={0}>
       <div className="material-card-media" aria-hidden="true">
         <span className="material-card-initial">{(material.category || material.name || '?')[0]}</span>
         <span className={`status-badge material-card-status ${statusClass(material.stock_status)}`}>{material.stock_status}</span>
@@ -69,7 +76,7 @@ function MaterialCard({ material, onOpen, onAddToCart, view = 'grid' }) {
       <div className="material-card-footer">
         <div className="material-card-qty" onClick={(e) => e.stopPropagation()}>
           <button type="button" onClick={(e) => stepQty(e, -1)} aria-label="Decrease quantity">{'\u2212'}</button>
-          <span>{qty}</span>
+          <span aria-live="polite">{qty}</span>
           <button type="button" onClick={(e) => stepQty(e, 1)} aria-label="Increase quantity">
             <PlusIcon width={12} height={12} />
           </button>

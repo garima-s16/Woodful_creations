@@ -18,9 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.exc import IntegrityError
 
-from app.core.database import SessionLocal
-from app.core.security import hash_password
-from app.models.user import User
+from app.platform.database.database import SessionLocal
+from app.platform.security.security import hash_password
+from app.modules.auth.models import User
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

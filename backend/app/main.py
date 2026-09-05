@@ -1,11 +1,15 @@
 import logging
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
-from app.core.config import settings
-from app.core.middleware import SecurityHeadersMiddleware, GlobalRateLimitMiddleware
-from app.core.auto_migrate import run_startup_migrations
+from app.platform.configuration.config import settings
+from app.platform.database.database import engine
+from app.platform.middleware.middleware import SecurityHeadersMiddleware, GlobalRateLimitMiddleware
+from app.platform.database.auto_migrate import run_startup_migrations
+from app.platform.monitoring.monitoring import capture_exception
 from app.api.routes import all_routers
 
 # Ensure every model is registered on the shared Base before migrations run.
@@ -43,6 +47,13 @@ for router in all_routers:
     app.include_router(router)
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    capture_exception(exc, method=request.method, path=request.url.path)
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred. Please try again."})
+
+
 _migration_state = {"healthy": True, "error": None}
 
 
@@ -67,7 +78,23 @@ def on_startup():
 
 @app.get("/health")
 def health_check(response: Response):
+    """Readiness check: (a) did startup migrations succeed, and (b) is the
+    database actually reachable right now via a lightweight query. Startup
+    success alone does NOT mean the DB is still reachable later (network
+    blip, DB restart, connection pool exhaustion) - so this re-checks live,
+    on every call, rather than only trusting the one-time startup flag."""
     if not _migration_state["healthy"]:
         response.status_code = 503
         return {"status": "degraded", "environment": settings.ENVIRONMENT, "reason": "database migrations failed on startup"}
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Health check failed: database is not reachable.")
+        response.status_code = 503
+        # No exception detail in the response - that could leak connection
+        # info (host, driver internals) to an unauthenticated caller.
+        return {"status": "degraded", "environment": settings.ENVIRONMENT, "reason": "database not reachable"}
+
     return {"status": "ok", "environment": settings.ENVIRONMENT}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon, SearchIcon } from './icons';
+import { useSelector, useDispatch } from 'react-redux';
+import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon, SearchIcon, SunIcon, MoonIcon } from './icons';
+import { toggleTheme } from '../redux/slices/themeSlice';
 import GlobalSearch from './GlobalSearch';
 import NotificationBell from './NotificationBell';
 import '../styles/Navbar.css';
@@ -19,6 +20,8 @@ const ROLE_LABELS = { master: 'Master Admin', user: 'Team Member' };
 
 function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
   const cartCount = useSelector((state) => state.cart.items.reduce((sum, i) => sum + i.quantity, 0));
+  const themeMode = useSelector((state) => state.theme.mode);
+  const dispatch = useDispatch();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -72,6 +75,14 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
           <button className="cart-toggle" onClick={onOpenCart} title="Purchase cart" aria-label="Open purchase cart">
             <CartIcon width={19} height={19} />
             {cartCount > 0 && <span className="cart-toggle-badge">{cartCount}</span>}
+          </button>
+          <button
+            className="theme-toggle"
+            onClick={() => dispatch(toggleTheme())}
+            title={themeMode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label={themeMode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {themeMode === 'dark' ? <SunIcon width={18} height={18} /> : <MoonIcon width={18} height={18} />}
           </button>
           <NotificationBell />
           <div className="user-menu" ref={menuRef}>

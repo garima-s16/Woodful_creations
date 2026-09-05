@@ -63,7 +63,7 @@ export const materialsAPI = {
   create: (data) => client.post('/api/materials/', data),
   update: (id, data) => client.put(`/api/materials/${id}`, data),
   remove: (id) => client.delete(`/api/materials/${id}`),
-  // Family 5 "intelligent defaults" - existing backend interpreter,
+  // "Intelligent defaults" - existing backend interpreter,
   // just exposed to the material creation form.
   interpretName: (name) => client.get('/api/materials/interpret-name', { params: { name } }),
 };
@@ -86,6 +86,13 @@ export const productImportAPI = {
     });
   },
   commit: (rows) => client.post('/api/product-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/product-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
 };
 
 export const materialImportAPI = {
@@ -98,6 +105,51 @@ export const materialImportAPI = {
     });
   },
   commit: (rows) => client.post('/api/material-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/material-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
+};
+
+export const estimateImportAPI = {
+  templateUrl: `${API_URL}/api/estimate-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/estimate-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (estimates) => client.post('/api/estimate-imports/commit', { estimates }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/estimate-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
+};
+
+export const orderImportAPI = {
+  templateUrl: `${API_URL}/api/order-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/order-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (orders) => client.post('/api/order-imports/commit', { orders }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/order-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
 };
 
 export const ratesAPI = {
@@ -120,6 +172,13 @@ export const rateImportAPI = {
     });
   },
   commit: (rows) => client.post('/api/rate-card-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/rate-card-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
 };
 
 export const clientProductRateAPI = {
@@ -150,6 +209,37 @@ export const stockAPI = {
   transfer: (data) => client.post('/api/stock/transfers', data),
   adjust: (data) => client.post('/api/stock/adjustments', data),
   locationStock: (materialId) => client.get(`/api/stock/locations/${materialId}`),
+  // These two already existed on the
+  // backend (app/api/routes/stock_transactions.py) with zero frontend
+  // callers. Wiring them up here, not adding new endpoints.
+  ledger: (materialId) => client.get('/api/stock/ledger', { params: { material_id: materialId } }),
+  verify: (materialId) => client.get(`/api/stock/verify/${materialId}`),
+};
+
+export const holidaysAPI = {
+  list: () => client.get('/api/working-calendar/holidays'),
+  create: (data) => client.post('/api/working-calendar/holidays', data),
+  update: (id, data) => client.put(`/api/working-calendar/holidays/${id}`, data),
+  remove: (id) => client.delete(`/api/working-calendar/holidays/${id}`),
+};
+
+export const holidayImportAPI = {
+  templateUrl: `${API_URL}/api/holiday-imports/template`,
+  preview: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/holiday-imports/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  commit: (rows) => client.post('/api/holiday-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/holiday-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
 };
 
 export const purchaseImportAPI = {
@@ -162,6 +252,13 @@ export const purchaseImportAPI = {
     });
   },
   commit: (rows) => client.post('/api/purchase-imports/commit', { rows }),
+  errorReport: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return client.post('/api/purchase-imports/error-report', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }, responseType: 'blob',
+    });
+  },
 };
 
 export const clientImportAPI = {
@@ -235,16 +332,18 @@ export const ordersAPI = {
   update: (id, data) => client.put(`/api/orders/${id}`, data),
   profitability: (id) => client.get(`/api/orders/${id}/profitability`),
   aiReports: (id) => client.get(`/api/orders/${id}/ai-reports`),
-  // Family 11 - project communication: comments tied to this order,
+  // Project communication: comments tied to this order,
   // and the merged chronological activity timeline (comments + task
   // comments for its tasks + milestones + relevant notifications).
   listComments: (id) => client.get(`/api/orders/${id}/comments`),
   addComment: (id, data) => client.post(`/api/orders/${id}/comments`, data),
   activity: (id, params) => client.get(`/api/orders/${id}/activity`, { params }),
+  emailPreview: (id, kind) => client.get(`/api/orders/${id}/email-preview`, { params: { kind } }),
+  sendEmail: (id, kind, data) => client.post(`/api/orders/${id}/send-email`, data, { params: { kind } }),
 };
 
 export const communicationAPI = {
-  // Family 11 - searches actual communication content (task/order
+  // Searches actual communication content (task/order
   // comments, client activity, notifications), not just master-record
   // names/codes like /api/search.
   search: (q) => client.get('/api/communication/search', { params: { q } }),
@@ -263,9 +362,12 @@ export const communicationAPI = {
 
 export const paymentsAPI = {
   list: (params) => client.get('/api/payments/', { params }),
+  get: (id) => client.get(`/api/payments/${id}`),
   create: (data) => client.post('/api/payments/', data),
   update: (id, data) => client.put(`/api/payments/${id}`, data),
   remove: (id) => client.delete(`/api/payments/${id}`),
+  emailPreview: (id) => client.get(`/api/payments/${id}/email-preview`),
+  sendEmail: (id, data) => client.post(`/api/payments/${id}/send-email`, data),
 };
 
 export const projectExpensesAPI = {
@@ -302,6 +404,7 @@ export const dailyTasksAPI = {
   completeAndAssignNext: (id, data) => client.post(`/api/daily-tasks/${id}/complete-and-assign-next`, data),
   listComments: (id) => client.get(`/api/daily-tasks/${id}/comments`),
   addComment: (id, data) => client.post(`/api/daily-tasks/${id}/comments`, data),
+  sendEmail: (id) => client.post(`/api/daily-tasks/${id}/send-email`),
 };
 
 export const productionJobsAPI = {
@@ -326,6 +429,8 @@ export const estimatesAPI = {
   update: (id, data) => client.put(`/api/estimates/${id}`, data),
   revise: (id) => client.post(`/api/estimates/${id}/revise`),
   versions: (id) => client.get(`/api/estimates/${id}/versions`),
+  emailPreview: (id) => client.get(`/api/estimates/${id}/email-preview`),
+  sendEmail: (id, data) => client.post(`/api/estimates/${id}/send-email`, data),
 };
 
 export const clientActivitiesAPI = {
@@ -373,6 +478,9 @@ export const searchAPI = {
 
 export const chatAPI = {
   send: (message, context) => client.post('/api/chat/', { message, context }),
+  learningCandidates: (status = 'pending') => client.get('/api/chat/learning-candidates', { params: { status } }),
+  approveLearningCandidate: (id) => client.post(`/api/chat/learning-candidates/${id}/approve`),
+  rejectLearningCandidate: (id) => client.post(`/api/chat/learning-candidates/${id}/reject`),
 };
 
 export const usersAPI = {

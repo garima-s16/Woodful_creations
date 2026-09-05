@@ -1,7 +1,7 @@
 """
 Applies all database migrations. This used to call create_all() directly,
 which could not add new columns/tables to a database that already
-existed - see app/core/auto_migrate.py for the fix. Kept as a thin
+existed - see app/platform/database/auto_migrate.py for the fix. Kept as a thin
 wrapper for anyone with this command memorized; scripts/setup_local.py
 does the same thing plus the interactive admin-creation step.
 """
@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.auto_migrate import run_startup_migrations
+from app.platform.database.auto_migrate import run_startup_migrations
 from app import models  # noqa: F401 - registers every model on Base.metadata
 
 logging.basicConfig(level=logging.INFO)

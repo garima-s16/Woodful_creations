@@ -14,10 +14,15 @@
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
+.material-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--color-gold-soft);
+}
 
 .material-card-media {
   height: 92px;
-  background: linear-gradient(135deg, var(--color-charcoal-elevated), var(--color-charcoal));
+  background: linear-gradient(135deg, var(--surface-elevated), var(--surface));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -55,7 +60,7 @@
   gap: 6px; margin-top: 8px; font-size: 0.78rem; color: var(--text-secondary);
 }
 .material-card-location {
-  background: var(--color-charcoal-elevated); border-radius: 100px; padding: 2px 9px; font-size: 0.72rem;
+  background: var(--surface-elevated); border-radius: 100px; padding: 2px 9px; font-size: 0.72rem;
 }
 
 .material-card-footer {
@@ -67,7 +72,7 @@
   border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0;
 }
 .material-card-qty button {
-  background: var(--color-charcoal-elevated); border: none; width: 26px; height: 30px;
+  background: var(--surface-elevated); border: none; width: 26px; height: 30px;
   display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--text-primary);
 }
 .material-card-qty button:hover { background: var(--border-color); }
@@ -91,11 +96,12 @@
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .material-row-card:hover { border-color: var(--color-gold-soft); box-shadow: var(--shadow-sm); }
+.material-row-card:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-gold-soft); }
 .material-row-card + .material-row-card { margin-top: 8px; }
 
 .material-row-swatch {
   width: 40px; height: 40px; border-radius: var(--radius-sm);
-  background: var(--color-charcoal-elevated); color: var(--color-tan);
+  background: var(--surface-elevated); color: var(--color-tan);
   display: flex; align-items: center; justify-content: center;
   font-family: var(--font-display); font-weight: 600; font-size: 1.1rem;
 }

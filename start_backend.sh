@@ -19,4 +19,19 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
 
-exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# --reload is a development convenience (it re-imports the app on every file
+# change) and must never be used in production - it adds overhead, can mask
+# startup errors, and this same reasoning is why docker-entrypoint.sh (the
+# production/Docker launch path) never passes it either. Read ENVIRONMENT
+# from .env the same way app/platform/configuration/config.py does, and default to
+# "development" only when it's genuinely absent - never default toward
+# reload=True if ENVIRONMENT is set to anything else.
+ENVIRONMENT_VALUE="$(grep -E '^ENVIRONMENT=' .env | tail -1 | cut -d '=' -f2- | tr -d '[:space:]')"
+ENVIRONMENT_VALUE="${ENVIRONMENT_VALUE:-development}"
+
+if [ "$ENVIRONMENT_VALUE" = "development" ]; then
+    exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+else
+    echo "ENVIRONMENT=$ENVIRONMENT_VALUE - starting without --reload (reload is development-only)."
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+fi

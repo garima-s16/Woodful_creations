@@ -1,4 +1,4 @@
-"""Add client_documents - a genuine gap against Family 2's explicit
+"""Add client_documents - a genuine gap against the explicit
 task list and its "protect unauthorized documents" security item.
 Multiple documents per client (unlike the candidate resume's 1:1
 pattern), reusing the same stored-filename/path-traversal protection
@@ -10,7 +10,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing
+from app.platform.database.migration_guards import create_table_if_missing
 
 revision = "0035"
 down_revision = "0034"

@@ -1,6 +1,6 @@
 """Add generic_documents - covers order/supplier/purchase/employee
 documents in one polymorphic table, rather than a near-identical
-dedicated table for each (matching Family 10's explicit "project
+dedicated table for each (matching the explicit "project
 documents", "supplier documents", "purchase documents", "employee
 documents" task items). Client and payment documents already have
 their own established, tested tables and are deliberately left
@@ -12,7 +12,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing, create_index_if_missing
+from app.platform.database.migration_guards import create_table_if_missing, create_index_if_missing
 
 revision = "0040"
 down_revision = "0039"

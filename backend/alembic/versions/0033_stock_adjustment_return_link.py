@@ -17,7 +17,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import column_exists, index_exists
+from app.platform.database.migration_guards import column_exists, index_exists
 
 revision = "0033"
 down_revision = "0032"

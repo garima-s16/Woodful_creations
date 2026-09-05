@@ -1,5 +1,5 @@
 """Add stock_ledger_entries - the real source-of-truth transaction
-log for Family 5's explicitly-flagged "major architectural priority".
+log for an explicitly-flagged "major architectural priority".
 Immutable, append-only. current_stock remains the single editable
 fast-path total (a full rewrite of every stock-read across the app
 to compute from the ledger is out of scope for what can be safely
@@ -13,7 +13,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import create_table_if_missing
+from app.platform.database.migration_guards import create_table_if_missing
 
 revision = "0042"
 down_revision = "0041"

@@ -27,15 +27,15 @@
    color so "primary" reads as obviously primary. */
 .btn-primary { background: var(--color-gold); color: var(--color-ink); border-color: var(--color-gold); }
 .btn-primary:hover { background: var(--color-gold-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.btn-danger { background: var(--danger); color: var(--color-ink); border: 1px solid transparent; }
-.btn-danger:hover { background: #e8998a; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-danger { background: var(--danger); color: var(--danger-text); border: 1px solid transparent; }
+.btn-danger:hover { background: var(--danger-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .btn-secondary { background: transparent; color: var(--text-primary); border-color: var(--border-strong); }
-.btn-secondary:hover { background: var(--color-charcoal-elevated); border-color: var(--color-gold); }
+.btn-secondary:hover { background: var(--surface-elevated); border-color: var(--color-gold); }
 /* Tertiary/ghost - the most recessive button, no border at all, for an
    action that must not visually compete with a primary or secondary
    action on the same surface (e.g. "Cancel" next to "Save"). */
 .btn-tertiary { background: transparent; color: var(--text-secondary); border-color: transparent; padding: 10px 14px; }
-.btn-tertiary:hover { background: var(--color-charcoal-elevated); color: var(--text-primary); }
+.btn-tertiary:hover { background: var(--surface-elevated); color: var(--text-primary); }
 .btn-link { background: none; border: none; color: var(--color-gold); cursor: pointer; text-decoration: none; padding: 0; font-size: 0.85rem; font-weight: 600; }
 
 .btn-primary:focus-visible, .btn-secondary:focus-visible,
@@ -57,7 +57,7 @@
   background: transparent; border: 1px solid transparent; color: var(--text-primary);
   cursor: pointer; transition: all var(--transition);
 }
-.btn-icon:hover { background: var(--color-charcoal-elevated); }
+.btn-icon:hover { background: var(--surface-elevated); }
 .btn-icon:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .btn-icon:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none; }
 .btn-link:hover { text-decoration: underline; }
@@ -86,7 +86,7 @@
   border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem; color: var(--text-primary);
   transition: all var(--transition);
 }
-.settings-nav-item.active { background: var(--color-ink); color: var(--color-ivory); }
+.settings-nav-item.active { background: var(--color-gold); color: var(--color-ink); }
 .settings-content { min-height: 200px; }
 
 .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
@@ -107,7 +107,7 @@
   font-size: 0.72rem;
   letter-spacing: 0.03em;
   color: var(--text-secondary);
-  background: var(--color-charcoal-elevated);
+  background: var(--surface-elevated);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 2px 7px;
@@ -163,7 +163,7 @@
 .status-warning, .status-pending, .status-in-progress { background: var(--warning-bg); color: var(--warning); }
 .status-neutral { background: var(--border-color); color: var(--text-secondary); }
 .status-danger, .status-overdue, .status-out-of-stock { background: var(--danger-bg); color: var(--danger); }
-.status-muted { background: var(--color-charcoal-elevated); color: var(--text-secondary); opacity: 0.75; }
+.status-muted { background: var(--surface-elevated); color: var(--text-secondary); opacity: 0.75; }
 .status-info { background: var(--info-bg); color: var(--info); }
 
 @media (max-width: 900px) {
@@ -181,6 +181,7 @@
   font-size: 0.83rem; color: var(--text-primary);
 }
 .attention-item:hover { color: var(--color-gold); }
+.attention-item:focus-visible { outline: 2px solid var(--color-gold); outline-offset: -2px; color: var(--color-gold); }
 
 .page-search { display: flex; gap: var(--space-3); margin-bottom: var(--space-4); max-width: 420px; }
 .page-search input { flex: 1; }
@@ -190,6 +191,12 @@
 .dashboard-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-gold); font-weight: 700; }
 .dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
 .dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
+
+.dashboard-error-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4);
+  padding: var(--space-6); color: var(--text-secondary);
+}
+.dashboard-error-state p { margin: 0; font-size: 0.95rem; }
 
 .founder-attention-list { display: flex; flex-direction: column; gap: 12px; }
 .founder-attention-row {

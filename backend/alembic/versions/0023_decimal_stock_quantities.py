@@ -19,7 +19,7 @@ Create Date: 2026-08-15
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import column_is_integer_type
+from app.platform.database.migration_guards import column_is_integer_type
 
 revision = "0023"
 down_revision = "0022"

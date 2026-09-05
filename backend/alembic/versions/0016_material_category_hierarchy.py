@@ -33,7 +33,7 @@ Create Date: 2026-08-13
 from alembic import op
 import sqlalchemy as sa
 from datetime import datetime
-from app.core.migration_guards import create_table_if_missing, create_index_if_missing, column_exists
+from app.platform.database.migration_guards import create_table_if_missing, create_index_if_missing, column_exists
 
 revision = "0016"
 down_revision = "0015"

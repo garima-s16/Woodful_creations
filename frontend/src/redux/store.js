@@ -3,6 +3,7 @@ import authReducer from './slices/authSlice';
 import cartReducer from './slices/cartSlice';
 import chatUiReducer from './slices/chatUiSlice';
 import notificationUiReducer from './slices/notificationUiSlice';
+import themeReducer from './slices/themeSlice';
 
 const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ const store = configureStore({
     cart: cartReducer,
     chatUi: chatUiReducer,
     notificationUi: notificationUiReducer,
+    theme: themeReducer,
   },
 });
 

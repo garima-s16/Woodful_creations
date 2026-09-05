@@ -19,15 +19,20 @@
   transition: all var(--transition);
 }
 
+/* color paired explicitly with the ivory-dim fill (same reasoning as
+   .cart-drawer-item-qty button) - .page-btn's own color is
+   --text-primary, which is light-on-dark in dark theme and would be
+   invisible on this light ivory-dim hover background otherwise. */
 .page-btn:hover:not(:disabled) {
   border-color: var(--color-gold);
   background-color: var(--color-ivory-dim);
+  color: var(--color-ink);
 }
 
 .page-btn.active {
-  background-color: var(--color-ink);
-  color: var(--color-ivory);
-  border-color: var(--color-ink);
+  background-color: var(--color-gold);
+  color: var(--color-ink);
+  border-color: var(--color-gold);
 }
 
 .page-btn:disabled {

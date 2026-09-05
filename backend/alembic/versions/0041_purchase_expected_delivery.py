@@ -1,5 +1,5 @@
 """Add expected_delivery_date to purchases - explicitly named in
-Family 6's task list ("expected delivery"), needed to honestly
+the task list ("expected delivery"), needed to honestly
 identify delayed deliveries rather than invent an arbitrary
 threshold.
 
@@ -9,7 +9,7 @@ Create Date: 2026-08-19
 """
 from alembic import op
 import sqlalchemy as sa
-from app.core.migration_guards import add_column_if_missing
+from app.platform.database.migration_guards import add_column_if_missing
 
 revision = "0041"
 down_revision = "0040"
