@@ -1,7 +1,7 @@
 """Excel import for Orders - the first
 Order import implementation; none existed before this.
 
-Deliberately mirrors app/utils/estimate_import.py line for line wherever
+Deliberately mirrors app/modules/sales/imports/estimate_import.py line for line wherever
 the two entities share the same rule, rather than inventing a second
 way to express "blank row skipped", "ID blank/valid/unknown", "Product
 ID authoritative", etc. - see that module's docstring for the shared

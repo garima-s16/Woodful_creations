@@ -24,7 +24,7 @@ class Product(BaseModel):
 
     product_code = Column(String(20), unique=True, nullable=False, index=True)  # PRD-001, human-scannable reference
     # Centralized, incremental, system-generated 10-character external ID -
-    # see app/utils/id_generator.generate_business_id. Never client-supplied.
+    # see app/platform/database/id_generator.generate_business_id. Never client-supplied.
     business_id = Column(String(10), unique=True, index=True, nullable=False)
 
     name = Column(String(255), nullable=False, index=True)

@@ -1,5 +1,5 @@
 """Excel import for the Product Master - same discipline as
-app/utils/purchase_import.py (one fixed template shared by the download
+app/modules/procurement/imports/purchase_import.py (one fixed template shared by the download
 and the parser, never writes a parsed row directly to the database,
 preview/commit are two separate steps). Kept as a distinct module
 rather than folded into purchase_import.py since products and purchases

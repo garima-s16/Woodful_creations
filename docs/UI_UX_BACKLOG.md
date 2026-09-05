@@ -46,7 +46,7 @@ the correct dependency order, not a decision to defer arbitrarily.**
 ## RESOLVED
 
 ### R7. Material creation form's "intelligent defaults" from typed text
-**Component:** `app/utils/material_interpreter.py` (new), `GET
+**Component:** `app/modules/inventory/imports/material_interpreter.py` (new), `GET
 /api/materials/interpret-name` (new route), `MaterialsPage.jsx`
 **Issue:** Section 8 of the UX brief wanted typing "HDHMR 6mm" into the
 Name field to auto-infer Category/Subcategory/Thickness. The blocker

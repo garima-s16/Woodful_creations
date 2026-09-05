@@ -1,5 +1,5 @@
 """Excel import for the Material Master. Same
-discipline as app/utils/product_import.py: one fixed template shared by
+discipline as app/modules/catalog/imports/product_import.py: one fixed template shared by
 the download and the parser, never writes a parsed row directly to the
 database (preview/commit are two separate steps), and reuses the same
 shared fuzzy-match logic as every other importer (see

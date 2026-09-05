@@ -1,7 +1,7 @@
 """Countable-unit quantity validation - genuinely shared logic, not
 duplicated. Used by app/modules/sales/schemas.py (re-exported from there for
-existing importers) and directly by both app/utils/estimate_import.py
-and app/utils/order_import.py - kept as its own module so all three
+existing importers) and directly by both app/modules/sales/imports/estimate_import.py
+and app/modules/sales/imports/order_import.py - kept as its own module so all three
 genuinely share one function rather than risk copies quietly drifting
 apart.
 """

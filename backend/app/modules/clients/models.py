@@ -28,7 +28,7 @@ class Client(BaseModel):
 
     client_code = Column(String(20), unique=True, nullable=False, index=True)  # CL-001
     # Centralized, incremental, system-generated 10-character external ID -
-    # see app/utils/id_generator.generate_business_id. Never client-supplied.
+    # see app/platform/database/id_generator.generate_business_id. Never client-supplied.
     # NOT NULL: every client must have one, matching the database-level
     # constraint enforced by migration 0007's backfill.
     business_id = Column(String(10), unique=True, index=True, nullable=False)

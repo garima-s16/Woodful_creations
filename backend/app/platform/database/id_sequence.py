@@ -5,7 +5,7 @@ from app.platform.database.database import Base
 
 class IdSequence(Base):
     """Backs the centralized, incremental business_id generator (see
-    app/utils/id_generator.generate_business_id). Deliberately minimal -
+    app/platform/database/id_generator.generate_business_id). Deliberately minimal -
     this table has no meaning of its own; each row's autoincrement
     primary key is the only thing used, as the single monotonically
     increasing counter every entity's business_id is derived from.

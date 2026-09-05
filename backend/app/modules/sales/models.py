@@ -128,7 +128,7 @@ class Order(BaseModel):
     delivery_date = Column(DateTime, nullable=True)
     order_value = Column(Numeric(12, 2), nullable=False, default=0)
     # discount is an absolute amount (same meaning as Estimate.discount,
-    # not a percentage) - see app/utils/calculations.py, the same
+    # not a percentage) - see app/modules/sales/calculations.py, the same
     # formula both entities now share. order_value itself IS the grand
     # total (what the client actually owes), computed server-side as
     # items_subtotal - discount + tax_amount.

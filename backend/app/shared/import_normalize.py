@@ -1,7 +1,7 @@
 """Shared normalization helpers for the Excel import modules.
 
 Consolidates logic that was genuinely, byte-for-byte duplicated across
-5-6 separate app/utils/*_import.py files (confirmed identical before
+5-6 separate app/modules/*/imports/*_import.py files (confirmed identical before
 consolidating, not assumed) - normalize_match_key (used by purchase/
 order/material/product/estimate imports), normalize_number (used by
 all 6, including rate_card), and normalize_date (used by purchase/

@@ -32,7 +32,7 @@ def upgrade() -> None:
     # start at 0/0 for pre-existing rows, since there's no way to
     # retroactively know what portion of a historical order_value was
     # "tax" versus "price". Only new orders and edits going forward
-    # compute these fields properly via app/utils/calculations.py.
+    # compute these fields properly via app/modules/sales/calculations.py.
 
 
 def downgrade() -> None:

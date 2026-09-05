@@ -1,7 +1,7 @@
 """Excel import for Estimates - the
 first Estimate import implementation; none existed before this.
 
-Same discipline as app/utils/purchase_import.py / product_import.py /
+Same discipline as app/modules/procurement/imports/purchase_import.py / product_import.py /
 client_import.py: one fixed template shared by the download and the
 parser, never writes a parsed row directly to the database - preview()
 validates/matches everything and commit() only applies rows the caller

@@ -1,6 +1,6 @@
 """Excel robustness verification.
 
-Genuinely calls the real importer functions in app/utils/*_import.py
+Genuinely calls the real importer functions in app/modules/*/imports/*_import.py
 with real, in-memory openpyxl workbooks (no files written to disk,
 nothing persisted to any database). Every result here is
 PASS/FAIL - EXECUTED, not a source-inspection claim.

@@ -29,10 +29,3 @@ if exist "package-lock.json" (
 ) else (
     echo No frontend\package-lock.json found - run "npm install" first.
 )
-
-echo.
-echo === Root workspace (npm), if applicable ===
-cd /d "%~dp0"
-if exist "package-lock.json" (
-    npm audit
-)

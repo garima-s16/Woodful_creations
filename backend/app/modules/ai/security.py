@@ -83,7 +83,7 @@ AI_CAPABILITIES = [
         "detail": "The chatbot can locate and list documents (filename, description, upload date) "
                    "after a permission check, but never opens or parses file content. Purchase-import "
                    "Excel parsing is a separate, non-AI, deterministic column-mapped parser "
-                   "(app/utils/purchase_import.py) - it is not part of the chatbot and does not "
+                   "(app/modules/procurement/imports/purchase_import.py) - it is not part of the chatbot and does not "
                    "'understand' spreadsheets in any general sense.",
     },
     {

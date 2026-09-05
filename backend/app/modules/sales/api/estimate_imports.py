@@ -63,7 +63,7 @@ def preview_import(file: UploadFile = File(...), db: Session = Depends(get_db),
     """Parses and validates both sheets, matches Estimate ID / Client /
     Product ID against real records, and groups item rows under their
     header row by Estimate Row #. Never writes to the database - see
-    module docstring in app/utils/estimate_import.py."""
+    module docstring in app/modules/sales/imports/estimate_import.py."""
     try:
         file_bytes = _read_upload(file)
         raw_headers, raw_items = parse_uploaded_workbook(file_bytes)

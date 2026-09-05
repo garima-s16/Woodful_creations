@@ -58,12 +58,21 @@ def main():
         all_failures.append(("Migration chain integrity", chain_result["detail"]))
 
     excel_results = _run_section("verify_excel", verify_excel.run_all)
-    excel_failed = [r for r in excel_results if not r[1]]
-    print(f"{'Excel importer robustness':<45}{'PASS' if not excel_failed else 'FAIL'} ({len(excel_results) - len(excel_failed)}/{len(excel_results)})")
-    for name, passed, detail in excel_results:
-        if not passed:
-            print(f"    FAIL: {name}: {detail}")
-            all_failures.append((name, detail))
+    # Module-load guards inside verify_excel.py report a missing
+    # dependency (fastapi/sqlalchemy not installed here) as a False
+    # result with a "BLOCKED - ..." detail string - genuinely distinct
+    # from a check that ran and found a real problem, so it must not
+    # be counted as a FAILURE below (this environment has neither
+    # dependency installed, so previously every run of this script
+    # miscounted 3 environment-blocked checks as real failures).
+    excel_blocked = [r for r in excel_results if not r[1] and r[2].startswith("BLOCKED")]
+    excel_failed = [r for r in excel_results if not r[1] and not r[2].startswith("BLOCKED")]
+    print(f"{'Excel importer robustness':<45}{'PASS' if not excel_failed else 'FAIL'} ({len(excel_results) - len(excel_failed) - len(excel_blocked)}/{len(excel_results)}, {len(excel_blocked)} blocked)")
+    for name, passed, detail in excel_failed:
+        print(f"    FAIL: {name}: {detail}")
+        all_failures.append((name, detail))
+    for name, passed, detail in excel_blocked:
+        print(f"    BLOCKED: {name}: {detail}")
 
     safety_results = _run_section("verify_runtime_safety", verify_runtime_safety.run_all)
     safety_failed = [r for r in safety_results if not r[1]]

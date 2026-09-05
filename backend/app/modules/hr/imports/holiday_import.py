@@ -1,4 +1,4 @@
-"""Excel import for Company Holidays. Same discipline as app/utils/material_import.py: one
+"""Excel import for Company Holidays. Same discipline as app/modules/inventory/imports/material_import.py: one
 fixed template shared by the download and the parser, never writes a
 parsed row directly to the database (preview/commit are two separate
 steps). Simpler than the Material/Product importers since there's no

@@ -263,7 +263,7 @@ class OrderBase(BaseModel):
     delivery_date: Optional[datetime] = None
     order_value: Decimal = Decimal("0")
     # Discount is an absolute amount (same meaning as Estimate.discount,
-    # not a percentage - see app/utils/calculations.py). order_value is
+    # not a percentage - see app/modules/sales/calculations.py). order_value is
     # server-computed as items_subtotal - discount + tax_amount; a
     # caller-supplied order_value is only used as a fallback when there
     # are no line items at all (a bare order with just a total).

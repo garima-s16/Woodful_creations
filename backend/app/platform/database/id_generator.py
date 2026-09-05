@@ -49,7 +49,7 @@ SHORT_ID_LENGTH = 10
 
 # Base36: digits then uppercase letters, so every generated business_id
 # stays within the same [A-Z0-9]{10} shape already established (and
-# already asserted by tests/test_business_id.py) for the legacy random
+# already asserted by tests/platform/test_business_id.py) for the legacy random
 # IDs - callers and UI don't need to know which generator produced a
 # given value.
 _BASE36_ALPHABET = string.digits + string.ascii_uppercase

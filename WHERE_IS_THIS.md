@@ -195,9 +195,13 @@ Backend: modules/clients/ (models.py, schemas.py, api/routes.py, api/import_rout
 |---|---|
 | Excel building (shared by every report/export) | shared/exporters.py |
 | Import normalization (dates, numbers, match keys, row-count guard) | shared/import_normalize.py, import_common.py |
-| Document styling (PDF header/logo) | shared/document_style.py |
-| PDF generation | shared/pdf_generator.py |
+| Document styling (PDF header/logo, plus fmt_date/mask_value/mask_phone) | shared/document_style.py |
 | Cross-entity validators | shared/validators.py |
+
+Domain-specific PDF generation (order/estimate/invoice, client profile,
+product, salary slip) lives with its owning module's own pdf_generator.py
+(modules/sales, modules/clients, modules/catalog, modules/hr respectively) -
+not in shared/, since each one is business-specific, not neutral.
 
 ---
 

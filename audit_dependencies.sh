@@ -35,10 +35,3 @@ if [ -f "package-lock.json" ]; then
 else
     echo "No frontend/package-lock.json found - run 'npm install' first."
 fi
-
-echo ""
-echo "=== Root workspace (npm), if applicable ==="
-cd "$SCRIPT_DIR"
-if [ -f "package-lock.json" ]; then
-    npm audit || echo "npm audit reported findings above - review before deploying."
-fi

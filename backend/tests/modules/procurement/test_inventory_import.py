@@ -2,7 +2,7 @@
 matching (existing material/supplier), commit behavior, and
 authorization - plus the import's tolerance for real-world header/
 value variations (see HEADER_ALIASES/normalize_number/normalize_date/
-normalize_match_key in app/utils/purchase_import.py)."""
+normalize_match_key in app/modules/procurement/imports/purchase_import.py)."""
 import io
 from openpyxl import Workbook
 from tests.helpers import _login

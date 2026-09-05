@@ -50,7 +50,7 @@ character than typical business data (not excluded - just flagged
 here honestly rather than silently treated as identical to `clients`
 or `orders`):
   - id_sequences: backs the business_id counter (see
-    app/utils/id_generator.py). Its OWN docstring says the table "has
+    app/platform/database/id_generator.py). Its OWN docstring says the table "has
     no meaning of its own" beyond its current position - migrated
     anyway (harmless) and its sequence is resynced like every other
     table.
