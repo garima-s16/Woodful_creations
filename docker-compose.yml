@@ -39,7 +39,7 @@ services:
     environment:
       # This file brings up its OWN Postgres/Redis containers (the
       # `database`/`redis` services above) for a local, full-stack,
-      # "closer to production settings" run - see SETUP.md. It is NOT
+      # "closer to production settings" run - see docs/SETUP.md. It is NOT
       # the real production deployment: real production must point at
       # the managed database (Neon) and a managed/shared Redis, never
       # at these container-local instances. Use docker-compose.prod.yml

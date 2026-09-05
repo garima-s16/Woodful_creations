@@ -144,6 +144,46 @@ if [ -x "$BACKEND_VENV_PY" ] && "$BACKEND_VENV_PY" -c "import sqlalchemy, pydant
 fi
 
 # ----------------------------------------------------------------------
+section "DEPENDENCY SECURITY AUDIT (pip-audit / npm audit)"
+# ----------------------------------------------------------------------
+# Folded in from the former standalone audit_dependencies.sh/.bat -
+# one master verification entry point, not two competing ones. Never
+# runs an automatic fix command (npm audit fix --force, etc) - a fix
+# can introduce breaking changes and must be reviewed by a human.
+
+if [ -x "$BACKEND_VENV_PY" ]; then
+    if "$BACKEND_VENV_PY" -m pip_audit --version &>/dev/null; then
+        PIP_AUDIT_OUT=$(cd backend && ./venv/bin/python3 -m pip_audit -r requirements.txt 2>&1)
+        PIP_AUDIT_EXIT=$?
+        echo "$PIP_AUDIT_OUT" | redact
+        if [ "$PIP_AUDIT_EXIT" -eq 0 ]; then
+            record "Backend dependency vulnerability scan (pip-audit)" "PASS" "no known vulnerabilities found in requirements.txt"
+        else
+            record "Backend dependency vulnerability scan (pip-audit)" "FAIL" "pip-audit reported findings above - review before deploying"
+        fi
+    else
+        record "Backend dependency vulnerability scan (pip-audit)" "BLOCKED" "pip-audit not installed in backend/venv - install with: pip install pip-audit"
+    fi
+else
+    record "Backend dependency vulnerability scan (pip-audit)" "BLOCKED" "backend venv unavailable"
+fi
+
+if command -v npm &>/dev/null && [ -f "frontend/package-lock.json" ]; then
+    NPM_AUDIT_OUT=$(cd frontend && npm audit 2>&1)
+    NPM_AUDIT_EXIT=$?
+    echo "$NPM_AUDIT_OUT" | redact
+    if [ "$NPM_AUDIT_EXIT" -eq 0 ]; then
+        record "Frontend dependency vulnerability scan (npm audit)" "PASS" "no known vulnerabilities found"
+    elif echo "$NPM_AUDIT_OUT" | grep -qiE "ENOTFOUND|ETIMEDOUT|network|403|ECONNREFUSED"; then
+        record "Frontend dependency vulnerability scan (npm audit)" "BLOCKED" "network unavailable to the npm registry/audit endpoint"
+    else
+        record "Frontend dependency vulnerability scan (npm audit)" "FAIL" "npm audit reported findings above - review before deploying (never run npm audit fix --force blindly)"
+    fi
+else
+    record "Frontend dependency vulnerability scan (npm audit)" "BLOCKED" "npm unavailable or frontend/package-lock.json missing"
+fi
+
+# ----------------------------------------------------------------------
 section "BACKEND: STARTUP, MAPPER CONFIGURATION, IMPORTS"
 # ----------------------------------------------------------------------
 

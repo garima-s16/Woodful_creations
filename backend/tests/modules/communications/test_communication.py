@@ -6,7 +6,7 @@ draft), @mention notification delivery, and read/unread notification
 authorization. Cross-client/cross-project *record* isolation and
 attachment authorization are already covered by the existing
 domain test files (task/order/client reads are intentionally not
-role-gated in this app - see PROJECT_DOCUMENTATION.md - so the
+role-gated in this app - see docs/ARCHITECTURE.md's "Key behaviors to know" - so the
 isolation that matters here is the financial-content masking these
 tests exercise instead).
 
