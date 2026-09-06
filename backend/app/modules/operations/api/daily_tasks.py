@@ -36,7 +36,7 @@ def _validate_order_item(db: Session, order_id: Optional[int], order_item_id: Op
         raise HTTPException(status_code=400, detail="Order item does not belong to the selected order")
 
 
-def _serialize_task(db: Session, task: DailyTask) -> DailyTaskResponse:
+def _serialize_task(db: Session, task: DailyTask, at_risk_order_ids: set = None) -> DailyTaskResponse:
     """Attaches read-only client/order/product/employee context, always
     derived live from the existing relationships - never stored on
     DailyTask itself."""
@@ -49,11 +49,23 @@ def _serialize_task(db: Session, task: DailyTask) -> DailyTaskResponse:
             response.client_name = task.order.client.name
     if task.order_item:
         response.product_name = task.order_item.product_name or task.order_item.description
+    if at_risk_order_ids is not None and task.order_id in at_risk_order_ids:
+        response.material_at_risk = True
     return response
 
 
-def _serialize_tasks(db: Session, tasks) -> List[DailyTaskResponse]:
-    return [_serialize_task(db, t) for t in tasks]
+def _serialize_tasks(db: Session, tasks, include_material_risk: bool = False) -> List[DailyTaskResponse]:
+    """include_material_risk computes the at-risk order set once for
+    the whole page (StockService.calculate_at_risk_orders is already a
+    bounded, business-wide calculation regardless of how many orders
+    exist - see its own docstring) - opt-in, since most callers of this
+    list (e.g. the dashboard's small "my tasks" widget) have no use for
+    it and should not pay for the extra queries on every call."""
+    at_risk_order_ids = None
+    if include_material_risk:
+        from app.modules.inventory.stock_service import StockService
+        at_risk_order_ids = {row["order_id"] for row in StockService.calculate_at_risk_orders(db)}
+    return [_serialize_task(db, t, at_risk_order_ids) for t in tasks]
 
 
 def _build_task_assignment_email(task_response: DailyTaskResponse) -> tuple:
@@ -93,6 +105,7 @@ def list_daily_tasks(employee_id: Optional[int] = Query(None), order_id: Optiona
                       due_date_from: Optional[datetime] = Query(None), due_date_to: Optional[datetime] = Query(None),
                       overdue: bool = Query(False),
                       mine: bool = Query(False),
+                      include_material_risk: bool = Query(False),
                       limit: Optional[int] = Query(None, ge=1, le=500), offset: int = Query(0, ge=0),
                       db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(DailyTask).options(
@@ -142,7 +155,7 @@ def list_daily_tasks(employee_id: Optional[int] = Query(None), order_id: Optiona
         # ask (the dashboard) get a bounded result.
         tasks_query = tasks_query.offset(offset).limit(limit)
     tasks = tasks_query.all()
-    return _serialize_tasks(db, tasks)
+    return _serialize_tasks(db, tasks, include_material_risk=include_material_risk)
 
 
 @router.post("/", response_model=DailyTaskResponse, status_code=201)

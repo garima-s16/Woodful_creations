@@ -130,14 +130,257 @@ def test_master_full_attendance_access_unaffected(client, test_user):
 # Payroll attendance summary (from test_auth_and_chatbot_misc.py)
 # ===========================================================================
 # ===========================================================================
+def test_salary_days_matches_working_days_when_no_leave(client, test_user):
+    """Family P0.43: Salary Days = actual configured working days in
+    the month minus approved leave - with no leave, they're equal.
+    February 2026 has 24 Monday-Saturday working days (28 calendar
+    days, 4 Sundays) - deliberately not August's 26, to prove this is
+    genuinely computed per-month, not a fixed assumption."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Salary Days No Leave Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.get("/api/salary-slips/attendance-summary", params={
+        "employee_id": employee["id"], "month": "February", "year": "2026",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["calendar_days"] == 28
+    assert data["suggested_working_days"] == 24
+    assert data["leave_days"] == 0
+    assert data["salary_days"] == 24
+
+
+def test_salary_days_subtracts_approved_leave_on_working_dates(client, test_user):
+    """2026-02-05 and 2026-02-06 are a Thursday and Friday (real
+    working dates) - both must be subtracted."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Salary Days Leave Employee", "monthly_salary": "20800"}).json()
+    leave = client.post("/api/leaves/", json={
+        "employee_id": employee["id"], "leave_type": "CL",
+        "start_date": "2026-02-05T00:00:00", "end_date": "2026-02-06T00:00:00",
+    }).json()
+    client.put(f"/api/leaves/{leave['id']}", json={"status": "Approved"})
+
+    resp = client.get("/api/salary-slips/attendance-summary", params={
+        "employee_id": employee["id"], "month": "February", "year": "2026",
+    })
+    data = resp.json()
+    assert data["leave_days"] == 2
+    assert data["salary_days"] == 22  # 24 - 2
+
+
+def test_salary_days_ignores_pending_leave(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Salary Days Pending Leave Employee", "monthly_salary": "20800"}).json()
+    client.post("/api/leaves/", json={
+        "employee_id": employee["id"], "leave_type": "CL",
+        "start_date": "2026-02-05T00:00:00", "end_date": "2026-02-06T00:00:00",
+    })
+    # Left as "Pending" - never approved.
+
+    resp = client.get("/api/salary-slips/attendance-summary", params={
+        "employee_id": employee["id"], "month": "February", "year": "2026",
+    })
+    data = resp.json()
+    assert data["leave_days"] == 0
+    assert data["salary_days"] == 24
+
+
+def test_salary_days_does_not_double_subtract_leave_on_sunday(client, test_user):
+    """2026-02-01 is a Sunday - already not a working day, so an
+    approved leave covering it must not reduce salary_days further."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Salary Days Sunday Leave Employee", "monthly_salary": "20800"}).json()
+    leave = client.post("/api/leaves/", json={
+        "employee_id": employee["id"], "leave_type": "CL",
+        "start_date": "2026-02-01T00:00:00", "end_date": "2026-02-01T00:00:00",
+    }).json()
+    client.put(f"/api/leaves/{leave['id']}", json={"status": "Approved"})
+
+    resp = client.get("/api/salary-slips/attendance-summary", params={
+        "employee_id": employee["id"], "month": "February", "year": "2026",
+    })
+    data = resp.json()
+    assert data["leave_days"] == 0  # Sunday was never a working day to begin with
+    assert data["salary_days"] == 24
+
+
+def test_add_overtime_creates_record_when_none_exists(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime New Record Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "2", "mode": "add",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert float(body[0]["overtime_hours"]) == 2.0
+
+
+def test_add_overtime_is_additive_not_replace(client, test_user):
+    """The spec's own core rule: existing 2 + add 1 = 3, never a
+    silent replace to 1."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime Additive Employee", "monthly_salary": "20800"}).json()
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "2", "mode": "add",
+    })
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "1", "mode": "add",
+    })
+    assert float(resp.json()[0]["overtime_hours"]) == 3.0
+
+
+def test_set_overtime_replaces_existing_value(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Set Overtime Replace Employee", "monthly_salary": "20800"}).json()
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "3", "mode": "add",
+    })
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "1", "mode": "set",
+    })
+    assert float(resp.json()[0]["overtime_hours"]) == 1.0
+
+
+def test_add_overtime_multiple_dates_matches_spec_worked_example(client, test_user):
+    """Spec's own example: A=1, B=2, C=0, D=3. Select A, B, D. Add 2.
+    Result: A=3, B=4, C=0 (untouched), D=5."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime Multi Date Employee", "monthly_salary": "20800"}).json()
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "1", "mode": "set",  # A
+    })
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-11T00:00:00"], "hours": "2", "mode": "set",  # B
+    })
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-13T00:00:00"], "hours": "3", "mode": "set",  # D
+    })
+    # C (2026-08-12) is deliberately never touched here.
+
+    client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"],
+        "dates": ["2026-08-10T00:00:00", "2026-08-11T00:00:00", "2026-08-13T00:00:00"],
+        "hours": "2", "mode": "add",
+    })
+
+    resp = client.get("/api/attendance/", params={"employee_id": employee["id"]})
+    by_date = {r["date"][:10]: float(r["overtime_hours"]) for r in resp.json()}
+    assert by_date["2026-08-10"] == 3.0  # A: 1 + 2
+    assert by_date["2026-08-11"] == 4.0  # B: 2 + 2
+    assert "2026-08-12" not in by_date  # C: never created, untouched
+    assert by_date["2026-08-13"] == 5.0  # D: 3 + 2
+
+
+def test_add_overtime_requires_master(client, test_user, db_session):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime RBAC Employee", "monthly_salary": "20800"}).json()
+    from app.platform.security.security import hash_password
+    from app.modules.auth.models import User
+    user = User(
+        username="addovertimerbacuser", email="addovertimerbacuser@example.com", full_name="Add Overtime RBAC User",
+        password_hash=hash_password("EmpPass1!"), role="user", employee_id=employee["id"], is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    client.post("/api/auth/login", json={"identifier": "addovertimerbacuser@example.com", "password": "EmpPass1!"})
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "2", "mode": "add",
+    })
+    assert resp.status_code == 403
+
+
+def test_add_overtime_rejects_negative_hours(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime Negative Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-10T00:00:00"], "hours": "-1", "mode": "add",
+    })
+    assert resp.status_code == 422
+
+
+def test_add_overtime_rejects_empty_dates_list(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime Empty Dates Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": [], "hours": "2", "mode": "add",
+    })
+    assert resp.status_code == 422
+
+
+def test_add_overtime_rejects_unknown_employee(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": 999999, "dates": ["2026-08-10T00:00:00"], "hours": "2", "mode": "add",
+    })
+    assert resp.status_code == 404
+
+
+def test_add_overtime_on_sunday_still_requires_explicit_value(client, test_user):
+    """2026-08-02 is a Sunday - overtime still only comes from the
+    explicit hours given, never implied by the day itself."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Add Overtime Sunday Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/overtime", json={
+        "employee_id": employee["id"], "dates": ["2026-08-02T00:00:00"], "hours": "4", "mode": "add",
+    })
+    assert float(resp.json()[0]["overtime_hours"]) == 4.0
+
+
+def test_payroll_summary_reflects_real_slip_and_advance_data(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Payroll Summary Real Data Employee", "monthly_salary": "20800"}).json()
+    client.post("/api/salary-slips/", json={
+        "employee_id": employee["id"], "month": "September", "year": "2026", "basic": "20000",
+    })
+
+    resp = client.get("/api/salary-slips/payroll-summary", params={"month": "September", "year": "2026"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["month"] == "September"
+    assert body["employees_with_slip"] == 1
+    assert body["status_counts"]["draft"] == 1
+    assert "salary_advances" in body
+
+
+def test_payroll_summary_requires_master(client, test_user, db_session):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Payroll Summary RBAC Employee", "monthly_salary": "20800"}).json()
+    from app.platform.security.security import hash_password
+    from app.modules.auth.models import User
+    user = User(
+        username="payrollsummaryrbacuser", email="payrollsummaryrbacuser@example.com", full_name="Payroll Summary RBAC User",
+        password_hash=hash_password("EmpPass1!"), role="user", employee_id=employee["id"], is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    client.post("/api/auth/login", json={"identifier": "payrollsummaryrbacuser@example.com", "password": "EmpPass1!"})
+
+    resp = client.get("/api/salary-slips/payroll-summary", params={"month": "September", "year": "2026"})
+    assert resp.status_code == 403
+
+
 def test_attendance_summary_computes_paid_days_and_overtime(client, test_user):
+    """Family P0.43: overtime is a fact the Master explicitly records,
+    not derived from in_time/out_time - the first record below has a
+    10-hour clock span but overtime_hours is only counted because it
+    is explicitly set to 2, not because it was computed from the
+    clock times."""
     _login(client, test_user)
     employee = client.post("/api/employees/", json={"name": "Payroll Summary Test Employee", "monthly_salary": "20800"}).json()
 
     client.post("/api/attendance/", json={
         "date": "2026-08-03T00:00:00", "employee_id": employee["id"],
         "in_time": "2026-08-03T09:00:00", "out_time": "2026-08-03T19:00:00",
-        "standard_hours": "8", "attendance_status": "Present",
+        "standard_hours": "8", "attendance_status": "Present", "overtime_hours": "2",
     })
     client.post("/api/attendance/", json={
         "date": "2026-08-04T00:00:00", "employee_id": employee["id"],
@@ -152,8 +395,99 @@ def test_attendance_summary_computes_paid_days_and_overtime(client, test_user):
     data = resp.json()
     assert data["records_found"] == 2
     assert data["suggested_paid_days"] == 1.5  # 1 (Present) + 0.5 (Half Day)
-    assert data["total_overtime_hours"] == 2.0  # 10 worked - 8 standard on the first day
+    assert data["total_overtime_hours"] == 2.0  # explicitly recorded on the first day, not derived from clock times
     assert data["suggested_overtime_amount"] > 0
+
+
+def test_overtime_is_zero_by_default_even_with_long_clock_span(client, test_user):
+    """The core P0.43 correction: a long in/out span alone must never
+    imply overtime - only an explicit value does."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "No Auto Overtime Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-05T00:00:00", "employee_id": employee["id"],
+        "in_time": "2026-08-05T08:00:00", "out_time": "2026-08-05T22:00:00",
+        "standard_hours": "8", "attendance_status": "Present",
+    })
+    assert resp.status_code == 201
+    assert float(resp.json()["overtime_hours"]) == 0.0
+
+
+def test_sunday_work_does_not_imply_overtime_without_explicit_value(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Sunday No Auto Overtime Employee", "monthly_salary": "20800"}).json()
+
+    # 2026-08-02 is a Sunday.
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-02T00:00:00", "employee_id": employee["id"],
+        "in_time": "2026-08-02T09:00:00", "out_time": "2026-08-02T17:00:00",
+        "standard_hours": "8", "attendance_status": "Present",
+    })
+    assert resp.status_code == 201
+    assert float(resp.json()["overtime_hours"]) == 0.0
+
+
+def test_employee_cannot_set_overtime_hours_on_own_attendance(client, test_user, db_session):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Overtime RBAC Employee", "monthly_salary": "20800"}).json()
+    from app.platform.security.security import hash_password
+    from app.modules.auth.models import User
+    user = User(
+        username="overtimerbacuser", email="overtimerbacuser@example.com", full_name="Overtime RBAC User",
+        password_hash=hash_password("EmpPass1!"), role="user", employee_id=employee["id"], is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    client.post("/api/auth/login", json={"identifier": "overtimerbacuser@example.com", "password": "EmpPass1!"})
+
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-06T00:00:00", "employee_id": employee["id"],
+        "attendance_status": "Present", "overtime_hours": "3",
+    })
+    assert resp.status_code == 403
+
+
+def test_employee_can_mark_own_attendance_with_zero_overtime(client, test_user, db_session):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Overtime RBAC Zero Employee", "monthly_salary": "20800"}).json()
+    from app.platform.security.security import hash_password
+    from app.modules.auth.models import User
+    user = User(
+        username="overtimerbaczerouser", email="overtimerbaczerouser@example.com", full_name="Overtime RBAC Zero User",
+        password_hash=hash_password("EmpPass1!"), role="user", employee_id=employee["id"], is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    client.post("/api/auth/login", json={"identifier": "overtimerbaczerouser@example.com", "password": "EmpPass1!"})
+
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-06T00:00:00", "employee_id": employee["id"], "attendance_status": "Present",
+    })
+    assert resp.status_code == 201
+
+
+def test_master_can_set_overtime_hours(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Master Overtime Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-06T00:00:00", "employee_id": employee["id"],
+        "attendance_status": "Present", "overtime_hours": "3",
+    })
+    assert resp.status_code == 201
+    assert float(resp.json()["overtime_hours"]) == 3.0
+
+
+def test_negative_overtime_hours_rejected(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Negative Overtime Employee", "monthly_salary": "20800"}).json()
+
+    resp = client.post("/api/attendance/", json={
+        "date": "2026-08-06T00:00:00", "employee_id": employee["id"],
+        "attendance_status": "Present", "overtime_hours": "-1",
+    })
+    assert resp.status_code == 422
 
 
 def test_attendance_summary_requires_master(client, test_user, db_session):

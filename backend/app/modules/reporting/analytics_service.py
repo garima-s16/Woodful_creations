@@ -27,13 +27,14 @@ from sqlalchemy import func, case, and_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.sales.models import Order, Payment
-from app.modules.inventory.models import Purchase, Material
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import ProjectExpense
 from app.modules.operations.models import ProductionJob
 from app.modules.operations.models import DailyTask
 from app.modules.hr.models import Employee, Attendance
 from app.modules.clients.models import Client
-from app.modules.inventory.models import Supplier
+from app.modules.procurement.models import Supplier
 from app.modules.sales.order_service import OrderService
 
 

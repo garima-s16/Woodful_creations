@@ -38,7 +38,8 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.modules.inventory.models import Material, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Supplier
 from app.modules.sales.models import Order
 from app.modules.clients.models import Client
 from app.modules.hr.models import Employee, Attendance
@@ -48,7 +49,7 @@ from app.modules.ai.schemas import ChatContext, ProposedAction
 from app.modules.inventory.services import (
     _route_ambiguous_hindi_add, _route_material_action, _route_material_query,
     _out_of_stock, _pending_purchases, _replenishment_requirements, _summarize_supplier,
-    _recent_purchases, _stock_summary, _low_stock, _material_usage_summary,
+    _recent_purchases, _stock_summary, _low_stock, _material_usage_summary, _at_risk_orders,
 )
 from app.modules.sales.services import (
     _order_risk_workspace, _continue_payment, _propose_payment, _profitability_summary,
@@ -234,6 +235,10 @@ class ChatService:
         if salary_result:
             return salary_result
 
+        mentions_orders = any(w in m for w in ["order", "orders"])
+        mentions_risk = any(w in m for w in ["at risk", "blocked", "delayed", "material blocking"])
+        if mentions_orders and mentions_risk:
+            return _at_risk_orders(db)
         if any(w in m for w in ["needs reordering", "replenishment", "to replenish"]):
             return _replenishment_requirements(db, user_role)
         if any(w in m for w in ["low stock", "reorder", "alert", "kam hai", "kam h", "material low", "materials low", "materials are low"]):
@@ -342,9 +347,9 @@ class ChatService:
         if "help" in m:
             return (
                 "I can answer questions about stock/materials, orders, clients, payments "
-                "(master only), and staff. Try asking about low stock, pending orders, "
-                "or client count.",
-                ["Check low stock", "Show pending orders", "How many clients?"], [],
+                "(master only), and staff. Try asking about low stock, orders at risk, "
+                "pending orders, or client count.",
+                ["Check low stock", "Orders at risk", "Show pending orders"], [],
             )
         return (
             "I didn't quite catch that. Try asking about stock, orders, clients, payments, or staff.",

@@ -10,9 +10,11 @@ from app.models.setting import (
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory, ProductionStage,
 )
 
-from app.modules.inventory.models import Supplier, Location, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition, MaterialAttributeValue, Material, SupplierMaterial
+from app.modules.inventory.models import Location, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition, MaterialAttributeValue, Material
+from app.modules.procurement.models import Supplier, SupplierMaterial
 from app.modules.catalog.models import Product, ProductMaterial, RateCard
-from app.modules.inventory.models import Purchase, StockTransfer, StockAdjustment
+from app.modules.inventory.models import StockTransfer, StockAdjustment
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Issue, Milestone, DailyTask, TaskComment, ProductionJob
 
 from app.modules.clients.models import Client, ClientActivity, ClientDocument, ClientProductRate

@@ -182,6 +182,8 @@ class ProductResponse(ProductBase):
     business_id: Optional[str] = None
     suggested_cost_price: Optional[float] = None
     suggested_selling_price: Optional[float] = None
+    bom_cost: Optional[float] = None
+    bom_cost_variance: Optional[float] = None
     margin: Optional[float] = None
     actual_margin_percent: Optional[float] = None
     materials_used: List[ProductMaterialResponse] = []

@@ -6,17 +6,22 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.modules.inventory.models import Material, Purchase
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Issue
-from app.modules.inventory.models import Location, StockTransfer, StockAdjustment, StockLedgerEntry, SupplierMaterial
-from app.modules.communications.services.notification_service import NotificationService
-from app.modules.inventory.schemas import PurchaseCreate
+from app.modules.inventory.models import Location, StockTransfer, StockAdjustment, StockLedgerEntry
+from app.modules.procurement.models import SupplierMaterial
 from app.modules.operations.schemas import IssueCreate
 from app.modules.inventory.schemas import StockTransferCreate, StockAdjustmentCreate
 from app.platform.database.id_generator import generate_unique_code, generate_business_id
 
+# Cross-module: order/product/BOM live in sales/catalog, but shortage
+# calculation is authoritative here (inventory owns current_stock) -
+# same established pattern as the Issue import above (operations).
+from app.modules.sales.models import Order, OrderItem
+from app.modules.catalog.models import ProductMaterial
 
 class StockService:
 
@@ -64,45 +69,6 @@ class StockService:
             if link:
                 link.last_purchase_price = rate
                 db.add(link)
-
-    @staticmethod
-    def record_purchase(db: Session, data: PurchaseCreate) -> Purchase:
-        material = db.query(Material).filter(Material.id == data.material_id).with_for_update().first()
-        if not material:
-            raise HTTPException(status_code=404, detail="Material not found")
-
-        purchase_code = generate_unique_code(db, Purchase, "purchase_code", "PUR-")
-
-        taxable_value = (data.quantity * data.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        gst_amount = (taxable_value * data.gst_percent / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        invoice_total = taxable_value + gst_amount
-
-        purchase = Purchase(
-            purchase_code=purchase_code, business_id=generate_business_id(db), date=data.date,
-            expected_delivery_date=data.expected_delivery_date, supplier_id=data.supplier_id,
-            material_id=data.material_id, quantity=data.quantity, unit=data.unit, rate=data.rate,
-            taxable_value=taxable_value, gst_percent=data.gst_percent, gst_amount=gst_amount,
-            invoice_total=invoice_total, payment_status=data.payment_status,
-            receipt_status=data.receipt_status, location_id=data.location_id,
-            quantity_received=data.quantity if data.receipt_status != "Ordered" else Decimal("0"),
-        )
-        db.add(purchase)
-        db.flush()  # assigns purchase.id without committing, needed as the ledger entry's reference_id below
-
-        # "Ordered" means the supplier has been asked for stock that
-        # hasn't arrived yet - the material must stay completely
-        # untouched until it's explicitly marked received (see
-        # mark_purchase_received). "Received" (the default, and the
-        # only option that previously existed) increases stock now,
-        # exactly as before - existing callers that don't set
-        # receipt_status keep their current behavior unchanged.
-        if data.receipt_status != "Ordered":
-            StockService._apply_stock_receipt(db, material, data.quantity, data.rate, data.supplier_id, data.material_id, reference_id=purchase.id, location_id=data.location_id)
-        db.commit()
-        db.refresh(purchase)
-        if data.receipt_status != "Ordered":
-            NotificationService.notify_purchase_received(db, purchase)
-        return purchase
 
     @staticmethod
     def record_issue(db: Session, data: IssueCreate) -> Issue:
@@ -314,52 +280,6 @@ class StockService:
         return adjustment
 
     @staticmethod
-    def mark_purchase_received(db: Session, purchase_id: int, quantity_to_receive: Optional[Decimal] = None, location_id: Optional[int] = None) -> Purchase:
-        """Transitions a purchase toward Received - the point stock
-        actually increases. Supports genuine partial receipts:
-        quantity_to_receive defaults to everything still outstanding
-        (the original all-or-nothing behavior, unchanged for existing
-        callers), but a smaller amount can be passed to receive only
-        part of the order. Stock is applied only for the incremental
-        amount each call - never the full purchase.quantity again -
-        so receiving in two steps can never double-count. Rejects
-        anything already fully Received, and rejects receiving more
-        than genuinely remains outstanding (the quantity-integrity
-        check this feature exists for)."""
-        purchase = db.query(Purchase).filter(Purchase.id == purchase_id).with_for_update().first()
-        if not purchase:
-            raise HTTPException(status_code=404, detail="Purchase not found")
-        if purchase.receipt_status == "Received":
-            raise HTTPException(status_code=400, detail="This purchase has already been received.")
-
-        remaining = (purchase.quantity or Decimal("0")) - (purchase.quantity_received or Decimal("0"))
-        if quantity_to_receive is None:
-            quantity_to_receive = remaining
-        if quantity_to_receive <= 0:
-            raise HTTPException(status_code=400, detail="Quantity to receive must be positive.")
-        if quantity_to_receive > remaining:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot receive {quantity_to_receive} {purchase.unit} - only {remaining} {purchase.unit} remains outstanding on this purchase.",
-            )
-
-        material = db.query(Material).filter(Material.id == purchase.material_id).with_for_update().first()
-        if not material:
-            raise HTTPException(status_code=404, detail="Material not found")
-
-        receive_location_id = location_id or purchase.location_id
-        StockService._apply_stock_receipt(db, material, quantity_to_receive, purchase.rate, purchase.supplier_id, purchase.material_id, reference_id=purchase.id, location_id=receive_location_id)
-        purchase.quantity_received = (purchase.quantity_received or Decimal("0")) + quantity_to_receive
-        purchase.receipt_status = "Received" if purchase.quantity_received >= purchase.quantity else "Partially Received"
-        if receive_location_id and not purchase.location_id:
-            purchase.location_id = receive_location_id
-        db.add(purchase)
-        db.commit()
-        db.refresh(purchase)
-        NotificationService.notify_purchase_received(db, purchase)
-        return purchase
-
-    @staticmethod
     def verify_stock_matches_ledger(db: Session, material_id: int) -> dict:
         """Proves (or disproves) that Material.current_stock genuinely
         equals opening_stock + every ledger entry ever recorded for
@@ -467,3 +387,339 @@ class StockService:
             "material_id": material.id, "material_name": material.name, "unit": material.unit,
             "total": material.current_stock or Decimal("0"), "locations": rows,
         }
+
+    @staticmethod
+    def calculate_reserved_stock(db: Session, material_ids: list, exclude_order_id: int = None) -> dict:
+        """Reserved Qty (spec section 9.2/5.4): unfulfilled BOM demand
+        for the given materials across every still-open order
+        (project_status not in "Completed"/"Cancelled" - the two
+        terminal states where a material's demand no longer counts
+        against future planning). "Unfulfilled" means the order's own
+        BOM requirement for that material, minus whatever has already
+        actually been issued against that same order+material pair -
+        an order that's already had its materials issued no longer
+        reserves anything further for them.
+
+        Computed fresh every call, not a stored column - this can
+        never silently drift out of sync the way a stored reservation
+        record could (nothing to release on order cancellation/
+        completion; the exclusion above already handles that).
+
+        exclude_order_id: when checking "how much of this material is
+        reserved by OTHER orders" for a specific order's own shortage
+        calculation, that order's own demand must not double-count
+        against itself.
+
+        Returns {material_id: reserved_quantity}; a material with no
+        open-order demand is simply absent from the dict (treat a
+        missing key as zero).
+        """
+        if not material_ids:
+            return {}
+
+        orders_query = db.query(Order.id).filter(Order.project_status.notin_(["Completed", "Cancelled"]))
+        if exclude_order_id is not None:
+            orders_query = orders_query.filter(Order.id != exclude_order_id)
+        open_order_ids = [row[0] for row in orders_query.all()]
+        if not open_order_ids:
+            return {}
+
+        items = (
+            db.query(OrderItem)
+            .filter(OrderItem.order_id.in_(open_order_ids), OrderItem.product_id.isnot(None))
+            .all()
+        )
+        product_ids = list({item.product_id for item in items})
+        if not product_ids:
+            return {}
+
+        bom_rows = (
+            db.query(ProductMaterial)
+            .filter(ProductMaterial.product_id.in_(product_ids), ProductMaterial.material_id.in_(material_ids))
+            .all()
+        )
+        bom_by_product: dict = {}
+        for row in bom_rows:
+            bom_by_product.setdefault(row.product_id, []).append(row)
+        if not bom_by_product:
+            return {}
+
+        required_by_order_material: dict = {}
+        for item in items:
+            for bom_line in bom_by_product.get(item.product_id, []):
+                key = (item.order_id, bom_line.material_id)
+                needed = Decimal(str(item.quantity)) * bom_line.quantity_required
+                required_by_order_material[key] = required_by_order_material.get(key, Decimal("0")) + needed
+
+        issued_rows = (
+            db.query(Issue.order_id, Issue.material_id, Issue.quantity_issued)
+            .filter(Issue.order_id.in_(open_order_ids), Issue.material_id.in_(material_ids))
+            .all()
+        )
+        issued_by_order_material: dict = {}
+        for order_id, material_id, quantity_issued in issued_rows:
+            key = (order_id, material_id)
+            issued_by_order_material[key] = issued_by_order_material.get(key, Decimal("0")) + quantity_issued
+
+        reserved_by_material: dict = {}
+        for (order_id, material_id), required in required_by_order_material.items():
+            issued = issued_by_order_material.get((order_id, material_id), Decimal("0"))
+            unfulfilled = max(Decimal("0"), required - issued)
+            if unfulfilled > 0:
+                reserved_by_material[material_id] = reserved_by_material.get(material_id, Decimal("0")) + unfulfilled
+
+        return reserved_by_material
+
+    @staticmethod
+    def calculate_order_material_requirements(db: Session, order_id: int) -> dict:
+        """Material Requirement + Shortage Intelligence (Phase B, section
+        9.3): for every ordered Product with a BOM (ProductMaterial),
+        multiply quantity_required by the ordered quantity to get real
+        material demand, then compare against current_stock and any
+        purchase already placed but not yet received (Purchase rows
+        with receipt_status != "Received" for the same material).
+
+        Formula per spec: Shortage = max(0, Required - Available -
+        Relevant Pending Supply), where Available = Current Stock -
+        Reserved Qty (this order excluded from the reservation count -
+        see calculate_reserved_stock). Worked example: 5 sheets
+        required, 2 available, 1 already-pending purchase -> shortage
+        2 (not 3; the pending purchase is netted directly into the
+        shortage figure, not applied as a separate later adjustment).
+        gap_before_pending_supply (required - available, before netting
+        pending) is kept alongside it purely for explanation/
+        traceability, not as the number to act on.
+
+        Every number here traces to a real row - no estimate, no
+        forecast. Reserved Qty is computed fresh from every other open
+        order's own unfulfilled BOM demand (see
+        calculate_reserved_stock), not a stored field - matching the
+        client reference's Reserved Qty/Available Qty concept (see
+        docs/ARCHITECTURE.md) without the drift risk of a stored
+        reservation record.
+        """
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        items = (
+            db.query(OrderItem)
+            .filter(OrderItem.order_id == order_id, OrderItem.product_id.isnot(None))
+            .all()
+        )
+        product_ids = list({item.product_id for item in items})
+        if not product_ids:
+            return {"order_id": order_id, "materials": []}
+
+        bom_rows = db.query(ProductMaterial).filter(ProductMaterial.product_id.in_(product_ids)).all()
+        bom_by_product = {}
+        for row in bom_rows:
+            bom_by_product.setdefault(row.product_id, []).append(row)
+
+        required_by_material: dict = {}
+        for item in items:
+            for bom_line in bom_by_product.get(item.product_id, []):
+                needed = Decimal(str(item.quantity)) * bom_line.quantity_required
+                required_by_material[bom_line.material_id] = (
+                    required_by_material.get(bom_line.material_id, Decimal("0")) + needed
+                )
+
+        if not required_by_material:
+            return {"order_id": order_id, "materials": []}
+
+        material_ids = list(required_by_material.keys())
+        materials_by_id = {m.id: m for m in db.query(Material).filter(Material.id.in_(material_ids)).all()}
+
+        pending_purchases = (
+            db.query(Purchase)
+            .filter(Purchase.material_id.in_(material_ids), Purchase.receipt_status != "Received")
+            .all()
+        )
+        pending_by_material: dict = {}
+        for p in pending_purchases:
+            pending_by_material[p.material_id] = pending_by_material.get(p.material_id, Decimal("0")) + p.quantity
+
+        # What OTHER open orders have already claimed against this same
+        # stock - this order's own demand must not double-count against
+        # itself, hence exclude_order_id.
+        reserved_by_material = StockService.calculate_reserved_stock(db, material_ids, exclude_order_id=order_id)
+
+        results = []
+        for material_id, required in required_by_material.items():
+            material = materials_by_id.get(material_id)
+            if not material:
+                continue
+            reserved_by_others = reserved_by_material.get(material_id, Decimal("0"))
+            available = max(Decimal("0"), (material.current_stock or Decimal("0")) - reserved_by_others)
+            pending = pending_by_material.get(material_id, Decimal("0"))
+            # Formula per spec section 9.3: Shortage = max(0, Required -
+            # Available - Relevant Pending Supply). "Relevant" here means
+            # already scoped to this exact material_id (not a blind
+            # subtraction across unrelated purchases) and to receipt_status
+            # != "Received" (an already-received purchase is already
+            # inside current_stock, not still "pending").
+            shortage = max(Decimal("0"), required - available - pending)
+            # Kept for traceability/explanation (spec: "explain
+            # recommendation inputs") - the raw gap before pending supply
+            # is netted in, so a user can see *why* the shortage is lower
+            # than a naive required-minus-available would suggest.
+            gap_before_pending = max(Decimal("0"), required - available)
+            results.append({
+                "material_id": material.id, "material_name": material.name, "unit": material.unit,
+                "required": required, "available": available,
+                "reserved_by_other_orders": reserved_by_others,
+                "gap_before_pending_supply": gap_before_pending,
+                "pending_purchase_quantity": pending,
+                "shortage": shortage,
+                "recommended_purchase_quantity": shortage,
+            })
+        results.sort(key=lambda r: r["shortage"], reverse=True)
+
+        shortage_material_ids = [r["material_id"] for r in results if r["shortage"] > 0]
+        from app.modules.procurement.services import ProcurementService
+        supplier_options = ProcurementService._supplier_options_for_materials(db, shortage_material_ids)
+        for row in results:
+            row["supplier_options"] = supplier_options.get(row["material_id"], [])
+
+        return {"order_id": order_id, "materials": results}
+
+    @staticmethod
+    def calculate_at_risk_orders(db: Session) -> list:
+        """Business-wide version of calculate_order_material_requirements -
+        which open orders have a real, current material shortage, computed
+        once across the whole open-order book rather than by looping the
+        per-order function (which would be its own N+1 at this scale: ~9
+        queries per order). Same formula, same semantics, same source
+        data - this only changes where the reserved-by-other-orders
+        subtraction comes from (derived from a business-wide total
+        already in memory instead of a second per-order query); it is
+        not a second, independent way of computing a shortage that
+        could drift from the per-order figure used elsewhere.
+
+        Returns one entry per at-risk order (shortage > 0 on at least
+        one material), sorted so the most materially at-risk order
+        (highest total shortage across its materials) is first. Each
+        order's materials list uses the same field names
+        calculate_order_material_requirements returns, so a dashboard
+        card and the order detail page can share one frontend
+        rendering path.
+        """
+        open_orders = (
+            db.query(Order)
+            .options(selectinload(Order.client))
+            .filter(Order.project_status.notin_(["Completed", "Cancelled"]))
+            .all()
+        )
+        if not open_orders:
+            return []
+        orders_by_id = {o.id: o for o in open_orders}
+        open_order_ids = list(orders_by_id.keys())
+
+        items = (
+            db.query(OrderItem)
+            .filter(OrderItem.order_id.in_(open_order_ids), OrderItem.product_id.isnot(None))
+            .all()
+        )
+        product_ids = list({item.product_id for item in items})
+        if not product_ids:
+            return []
+
+        bom_rows = db.query(ProductMaterial).filter(ProductMaterial.product_id.in_(product_ids)).all()
+        bom_by_product: dict = {}
+        for row in bom_rows:
+            bom_by_product.setdefault(row.product_id, []).append(row)
+        if not bom_by_product:
+            return []
+
+        # required(order, material) - identical multiplication the
+        # per-order function uses, just keyed by order this time
+        # instead of scoped to a single order.
+        required_by_order_material: dict = {}
+        for item in items:
+            for bom_line in bom_by_product.get(item.product_id, []):
+                key = (item.order_id, bom_line.material_id)
+                needed = Decimal(str(item.quantity)) * bom_line.quantity_required
+                required_by_order_material[key] = required_by_order_material.get(key, Decimal("0")) + needed
+        if not required_by_order_material:
+            return []
+
+        material_ids = list({key[1] for key in required_by_order_material})
+
+        issued_rows = (
+            db.query(Issue.order_id, Issue.material_id, Issue.quantity_issued)
+            .filter(Issue.order_id.in_(open_order_ids), Issue.material_id.in_(material_ids))
+            .all()
+        )
+        issued_by_order_material: dict = {}
+        for order_id, material_id, quantity_issued in issued_rows:
+            key = (order_id, material_id)
+            issued_by_order_material[key] = issued_by_order_material.get(key, Decimal("0")) + quantity_issued
+
+        # unfulfilled(order, material) = max(0, required - issued) - this
+        # order's own still-outstanding claim. Summing it across every
+        # open order for one material, then subtracting one order's own
+        # share, gives exactly what calculate_reserved_stock computes
+        # per-order via a second query - derived here from rows already
+        # in memory instead of queried again.
+        unfulfilled_by_order_material: dict = {}
+        total_unfulfilled_by_material: dict = {}
+        for key, required in required_by_order_material.items():
+            issued = issued_by_order_material.get(key, Decimal("0"))
+            unfulfilled = max(Decimal("0"), required - issued)
+            unfulfilled_by_order_material[key] = unfulfilled
+            material_id = key[1]
+            total_unfulfilled_by_material[material_id] = (
+                total_unfulfilled_by_material.get(material_id, Decimal("0")) + unfulfilled
+            )
+
+        materials_by_id = {m.id: m for m in db.query(Material).filter(Material.id.in_(material_ids)).all()}
+
+        pending_purchases = (
+            db.query(Purchase)
+            .filter(Purchase.material_id.in_(material_ids), Purchase.receipt_status != "Received")
+            .all()
+        )
+        pending_by_material: dict = {}
+        for p in pending_purchases:
+            pending_by_material[p.material_id] = pending_by_material.get(p.material_id, Decimal("0")) + p.quantity
+
+        at_risk: dict = {}
+        for (order_id, material_id), required in required_by_order_material.items():
+            material = materials_by_id.get(material_id)
+            if not material:
+                continue
+            this_order_unfulfilled = unfulfilled_by_order_material.get((order_id, material_id), Decimal("0"))
+            reserved_by_others = total_unfulfilled_by_material.get(material_id, Decimal("0")) - this_order_unfulfilled
+            available = max(Decimal("0"), (material.current_stock or Decimal("0")) - reserved_by_others)
+            pending = pending_by_material.get(material_id, Decimal("0"))
+            shortage = max(Decimal("0"), required - available - pending)
+            if shortage <= 0:
+                continue
+            at_risk.setdefault(order_id, []).append({
+                "material_id": material.id, "material_name": material.name, "unit": material.unit,
+                "required": required, "available": available,
+                "shortage": shortage, "recommended_purchase_quantity": shortage,
+            })
+
+        all_shortage_material_ids = list({
+            m["material_id"] for materials in at_risk.values() for m in materials
+        })
+        from app.modules.procurement.services import ProcurementService
+        supplier_options = ProcurementService._supplier_options_for_materials(db, all_shortage_material_ids)
+
+        results = []
+        for order_id, materials in at_risk.items():
+            order = orders_by_id[order_id]
+            for m in materials:
+                m["supplier_options"] = supplier_options.get(m["material_id"], [])
+            materials.sort(key=lambda m: m["shortage"], reverse=True)
+            results.append({
+                "order_id": order.id, "order_code": order.order_code,
+                "client_name": order.client.name if order.client else None,
+                "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
+                "project_status": order.project_status,
+                "total_shortage_lines": len(materials),
+                "materials": materials,
+            })
+        results.sort(key=lambda r: sum(m["shortage"] for m in r["materials"]), reverse=True)
+        return results

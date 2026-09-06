@@ -14,6 +14,12 @@ os.environ.setdefault("SECRET_KEY", "pytest-fixture-a8f3k29dl0qm4x7bnv6t1rwzcy5h
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("COOKIE_SECURE", "False")
+# The test client never runs app/main.py's real background automation
+# scheduler thread - with the production default (True) left as-is here,
+# notifications.py's on-demand fallback would also skip itself (since it
+# only runs when the scheduler is disabled), and neither mechanism would
+# ever fire during a test. Tests need the on-demand path active.
+os.environ.setdefault("AUTOMATION_SCHEDULER_ENABLED", "False")
 
 import pytest
 from fastapi.testclient import TestClient

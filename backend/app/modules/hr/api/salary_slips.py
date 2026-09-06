@@ -11,7 +11,7 @@ from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user, require_role
 from app.platform.audit.audit import log_action
 from app.modules.hr.models import SalarySlip, Attendance, Employee
-from app.modules.hr.working_calendar_service import compute_working_days
+from app.modules.hr.working_calendar_service import compute_working_days, compute_salary_days
 from app.modules.hr.schemas import SalarySlipCreate, SalarySlipUpdate, SalarySlipResponse
 from app.platform.database.id_generator import generate_business_id
 
@@ -20,7 +20,15 @@ router = APIRouter(prefix="/api/salary-slips", tags=["salary-slips"])
 
 def _compute_net(data) -> None:
     gross = data.basic + data.da + data.hra + data.overtime_amount
-    deductions = data.pf_deduction + data.tds_deduction + data.other_deductions
+    # advance_deduction is never on SalarySlipCreate/Update - the only
+    # way it becomes non-zero is the salary-advance recovery action
+    # (Family P0.44), which sets it directly on the model and calls
+    # this same function to recompute net_salary rather than
+    # duplicating the arithmetic. getattr keeps this function safe to
+    # call with either a Create/Update schema (no such field, so 0)
+    # or the SQLAlchemy model itself (a real, possibly non-zero value).
+    advance_deduction = getattr(data, "advance_deduction", None) or Decimal("0")
+    deductions = data.pf_deduction + data.tds_deduction + data.other_deductions + advance_deduction
     return gross - deductions
 
 
@@ -53,6 +61,14 @@ def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session
     ).all()
 
     working_days_this_month = compute_working_days(db, period_start.year, period_start.month)
+    # Family P0.43's own explicit formula (Monday-Saturday working
+    # days minus APPROVED leave) - a theoretical full-pay day count,
+    # distinct from suggested_paid_days below (which reflects actual
+    # recorded attendance and can differ, e.g. an unmarked absence
+    # with no formal Leave record behind it). Both are given so the
+    # Master can see and reconcile the difference, not one silently
+    # replacing the other.
+    salary_days_breakdown = compute_salary_days(db, employee_id, period_start.year, period_start.month)
 
     day_value = {"Present": 1, "Half Day": 0.5, "Absent": 0, "Leave": 0}
     paid_days = sum(day_value.get(r.attendance_status, 0) for r in records)
@@ -69,7 +85,23 @@ def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session
         "suggested_paid_days": paid_days,
         "total_overtime_hours": round(total_overtime_hours, 2),
         "suggested_overtime_amount": overtime_amount,
+        "calendar_days": salary_days_breakdown["calendar_days"],
+        "leave_days": salary_days_breakdown["leave_days"],
+        "salary_days": salary_days_breakdown["salary_days"],
         "note": "Derived from Attendance records and the configured working calendar for this period - review before saving.",
+    }
+
+
+@router.get("/payroll-summary")
+def payroll_summary(month: str, year: str, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
+    """Family P0.43 - pure aggregation over SalarySlip.status and
+    SalaryAdvance (see hr/payroll_service.py) - not a second payroll
+    engine. Master-only: this is company-wide financial/payroll
+    information."""
+    from app.modules.hr.payroll_service import get_payroll_summary, get_salary_advance_summary
+    return {
+        **get_payroll_summary(db, month, year),
+        "salary_advances": get_salary_advance_summary(db),
     }
 
 
@@ -164,7 +196,7 @@ def update_salary_slip(slip_id: int, data: SalarySlipUpdate, request: Request, d
     old_value = {field: _serializable(field) for field in updates}
     for field, value in updates.items():
         setattr(slip, field, value)
-    slip.net_salary = slip.basic + slip.da + slip.hra + slip.overtime_amount - slip.pf_deduction - slip.tds_deduction - slip.other_deductions
+    slip.net_salary = _compute_net(slip)
     db.add(slip)
     db.commit()
     db.refresh(slip)

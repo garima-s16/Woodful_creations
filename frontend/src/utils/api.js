@@ -32,6 +32,12 @@ export const dashboardAPI = {
   stock: () => client.get('/api/dashboard/stock'),
   orders: () => client.get('/api/dashboard/orders'),
   staff: () => client.get('/api/dashboard/staff'),
+  atRiskOrders: () => client.get('/api/dashboard/at-risk-orders'),
+};
+
+export const businessDecisionsAPI = {
+  list: () => client.get('/api/business-decisions/'),
+  get: (entityType, entityId) => client.get(`/api/business-decisions/${entityType}/${entityId}`),
 };
 
 export const analyticsAPI = {
@@ -311,6 +317,16 @@ export const purchasesAPI = {
   receive: (id) => client.post(`/api/purchases/${id}/receive`),
 };
 
+export const procurementRequirementsAPI = {
+  list: (params) => client.get('/api/procurement-requirements/', { params }),
+  get: (id) => client.get(`/api/procurement-requirements/${id}`),
+  create: (data) => client.post('/api/procurement-requirements/', data),
+  update: (id, data) => client.put(`/api/procurement-requirements/${id}`, data),
+  supplierOptions: (id) => client.get(`/api/procurement-requirements/${id}/supplier-options`),
+  recordDecision: (id, data) => client.post(`/api/procurement-requirements/${id}/decision`, data),
+  createPurchase: (id, data) => client.post(`/api/procurement-requirements/${id}/purchase`, data),
+};
+
 export const issuesAPI = {
   list: (params) => client.get('/api/issues/', { params }),
   create: (data) => client.post('/api/issues/', data),
@@ -331,6 +347,12 @@ export const ordersAPI = {
   create: (data) => client.post('/api/orders/', data),
   update: (id, data) => client.put(`/api/orders/${id}`, data),
   profitability: (id) => client.get(`/api/orders/${id}/profitability`),
+  materialRequirements: (id) => client.get(`/api/orders/${id}/material-requirements`),
+  // Deterministic, explainable Order Health/Risk (Family 130 P0.1) -
+  // same authoritative computation the chatbot's "what is blocking
+  // this order" query uses, exposed directly for the Order Detail
+  // header - see OrderService.compute_order_health.
+  health: (id) => client.get(`/api/orders/${id}/health`),
   aiReports: (id) => client.get(`/api/orders/${id}/ai-reports`),
   // Project communication: comments tied to this order,
   // and the merged chronological activity timeline (comments + task
@@ -412,6 +434,33 @@ export const productionJobsAPI = {
   get: (id) => client.get(`/api/production-jobs/${id}`),
   create: (data) => client.post('/api/production-jobs/', data),
   update: (id, data) => client.put(`/api/production-jobs/${id}`, data),
+  readiness: (id) => client.get(`/api/production-jobs/${id}/readiness`),
+  materialStatus: (id) => client.get(`/api/production-jobs/${id}/material-status`),
+  variance: (id) => client.get(`/api/production-jobs/${id}/variance`),
+  risks: (id) => client.get(`/api/production-jobs/${id}/risks`),
+};
+
+export const productionOperationsAPI = {
+  list: (params) => client.get('/api/production-operations/', { params }),
+  get: (id) => client.get(`/api/production-operations/${id}`),
+  create: (data) => client.post('/api/production-operations/', data),
+  update: (id, data) => client.put(`/api/production-operations/${id}`, data),
+};
+
+export const cuttingRequirementsAPI = {
+  list: (params) => client.get('/api/cutting-requirements/', { params }),
+  get: (id) => client.get(`/api/cutting-requirements/${id}`),
+  create: (data) => client.post('/api/cutting-requirements/', data),
+  update: (id, data) => client.put(`/api/cutting-requirements/${id}`, data),
+  remove: (id) => client.delete(`/api/cutting-requirements/${id}`),
+};
+
+export const workCentresAPI = {
+  list: (params) => client.get('/api/work-centres/', { params }),
+  get: (id) => client.get(`/api/work-centres/${id}`),
+  create: (data) => client.post('/api/work-centres/', data),
+  update: (id, data) => client.put(`/api/work-centres/${id}`, data),
+  capacity: (id, date) => client.get(`/api/work-centres/${id}/capacity`, { params: date ? { date } : {} }),
 };
 
 export const settingsAPI = {
@@ -470,6 +519,16 @@ export const salarySlipsAPI = {
   update: (id, data) => client.put(`/api/salary-slips/${id}`, data),
   attendanceSummary: (employeeId, month, year) =>
     client.get('/api/salary-slips/attendance-summary', { params: { employee_id: employeeId, month, year } }),
+  payrollSummary: (month, year) => client.get('/api/salary-slips/payroll-summary', { params: { month, year } }),
+};
+
+export const salaryAdvancesAPI = {
+  list: (params) => client.get('/api/salary-advances/', { params }),
+  get: (id) => client.get(`/api/salary-advances/${id}`),
+  create: (data) => client.post('/api/salary-advances/', data),
+  approve: (id, data) => client.put(`/api/salary-advances/${id}/approve`, data),
+  reject: (id, data) => client.put(`/api/salary-advances/${id}/reject`, data),
+  recover: (id, data) => client.post(`/api/salary-advances/${id}/recover`, data),
 };
 
 export const searchAPI = {

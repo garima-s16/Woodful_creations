@@ -252,6 +252,54 @@ def test_low_stock_returns_clickable_records(client, test_user):
     assert match["path"] == f"/materials/{material['id']}"
 
 
+def test_orders_at_risk_returns_clickable_order_records(client, test_user):
+    """Family 130 section 15 - the chatbot must answer "which orders
+    are at risk" by reusing the exact same shortage calculation the
+    dashboard and daily-tasks list already use, not a separate
+    fabricated answer."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Chat At Risk Sheet", "unit": "Sheets", "opening_stock": "1", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Chat At Risk Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Chat At Risk Client", "phone": "9000010500"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    resp = client.post("/api/chat/", json={"message": "which orders are at risk"})
+    assert resp.status_code == 200
+    body = resp.json()
+    match = next((r for r in body["records"] if r["path"] == f"/orders/{order['id']}"), None)
+    assert match is not None
+    assert match["type"] == "Order"
+    assert "Chat At Risk Sheet" in match["sublabel"]
+
+
+def test_orders_at_risk_reports_none_when_all_orders_are_well_stocked(client, test_user):
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Chat No Risk Sheet", "unit": "Sheets", "opening_stock": "100", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Chat No Risk Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "2"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Chat No Risk Client", "phone": "9000010501"}).json()["id"]
+    client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    })
+
+    resp = client.post("/api/chat/", json={"message": "are any orders at risk"})
+    assert resp.status_code == 200
+    assert "No open orders are currently at risk" in resp.json()["response"]
+
+
 def test_outstanding_payments_returns_clickable_order_records(client, test_user):
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "Chat Records Payment Client", "phone": "9000010019"}).json()["id"]

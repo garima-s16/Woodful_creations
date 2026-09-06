@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.modules.sales.models import Order
 from app.modules.clients.models import Client, ClientActivity
 from app.modules.operations.models import ProductionJob, DailyTask
-from app.modules.inventory.models import Purchase
+from app.modules.procurement.models import Purchase
 from app.modules.hr.models import Employee
 from app.modules.documents.models import GenericDocument
 from app.modules.ai.security import sanitize_untrusted_text

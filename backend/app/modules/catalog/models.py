@@ -86,6 +86,53 @@ class Product(BaseModel):
     materials_used = relationship("ProductMaterial", back_populates="product", cascade="all, delete-orphan")
 
     @property
+    def bom_cost(self):
+        """Sum of quantity_required x the material's current
+        average_rate across this product's entire BOM - both raw
+        materials and hardware items (a hinge/handle/channel is just a
+        Material with category="Hardware" sharing the same
+        ProductMaterial BOM, not a separate hardware-BOM - see this
+        module's own architecture notes). What the whole bill of
+        materials actually costs right now, according to real purchase
+        history, as distinct from the manually-entered material_cost/
+        hardware_cost above (deliberately stable quoting inputs, not
+        re-derived automatically every time a purchase changes
+        average_rate). None only when there is no BOM at all to derive
+        this from; a material with no purchase history yet
+        (average_rate still 0, the column's own default) simply
+        contributes 0 to the sum, not a missing result."""
+        if not self.materials_used:
+            return None
+        total = sum(
+            float(line.quantity_required) * float(line.material.average_rate or 0)
+            for line in self.materials_used if line.material
+        )
+        return round(total, 2)
+
+    @property
+    def bom_cost_variance(self):
+        """How far the manually-entered material_cost + hardware_cost
+        has drifted from what the entire BOM says it should cost at
+        today's prices - the comparison P0.1 section 2 asks for
+        ("changing to B increases estimated material cost by X"),
+        applied to a single product's own configuration rather than
+        inventing a second product to compare against. Compared
+        against the combined material_cost + hardware_cost, not
+        material_cost alone, since bom_cost above includes both raw
+        materials and hardware from the same unified BOM - comparing
+        it to material_cost alone would misattribute hardware cost as
+        material-price drift. None whenever either side of the
+        comparison is unavailable, never a guessed value."""
+        bom = self.bom_cost
+        if bom is None:
+            return None
+        manual_components = [c for c in (self.material_cost, self.hardware_cost) if c is not None]
+        if not manual_components:
+            return None
+        manual_total = sum(float(c) for c in manual_components)
+        return round(bom - manual_total, 2)
+
+    @property
     def suggested_cost_price(self):
         """Sum of the itemized cost components plus overhead_percent -
         what the breakdown implies the product should cost to produce,

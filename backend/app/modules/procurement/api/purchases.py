@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app.platform.database.database import get_db
 from app.platform.security.security import require_role
 from app.platform.audit.audit import log_action, serializable_fields
-from app.modules.inventory.models import Purchase
+from app.modules.procurement.models import Purchase
 from app.modules.inventory.schemas import PurchaseCreate, PurchaseUpdate, PurchaseResponse, PurchaseReceiveRequest
-from app.modules.inventory.stock_service import StockService
+from app.modules.procurement.services import ProcurementService
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
 
@@ -36,7 +36,7 @@ def list_purchases(response: Response, supplier_id: Optional[int] = Query(None),
 @router.post("/", response_model=PurchaseResponse, status_code=201)
 def create_purchase(data: PurchaseCreate, request: Request, db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
-    purchase = StockService.record_purchase(db, data)
+    purchase = ProcurementService.record_purchase(db, data)
     log_action(db, request, user_id=auth.get("user_id"), action="create_purchase", module_name="purchases",
                record_id=purchase.id, new_value={
                    "supplier_id": purchase.supplier_id, "material_id": purchase.material_id,
@@ -84,7 +84,7 @@ def receive_purchase(purchase_id: int, data: Optional[PurchaseReceiveRequest] = 
     order, moving it to "Partially Received" until the rest arrives."""
     quantity_to_receive = data.quantity if data else None
     receive_location_id = data.location_id if data else None
-    purchase = StockService.mark_purchase_received(db, purchase_id, quantity_to_receive, receive_location_id)
+    purchase = ProcurementService.mark_purchase_received(db, purchase_id, quantity_to_receive, receive_location_id)
     log_action(db, request, user_id=auth.get("user_id"), action="receive_purchase", module_name="purchases",
                record_id=purchase.id, new_value={
                    "material_id": purchase.material_id, "receipt_status": purchase.receipt_status,

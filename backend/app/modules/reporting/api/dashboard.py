@@ -6,15 +6,37 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user
-from app.modules.inventory.models import Material, Purchase
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Issue
 from app.modules.sales.models import Order
 from app.modules.hr.models import Employee, Attendance
 from app.modules.operations.models import DailyTask
 from app.modules.operations.models import ProductionJob
 from app.modules.sales.order_service import OrderService
+from app.modules.inventory.stock_service import StockService
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+
+@router.get("/at-risk-orders")
+def at_risk_orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Which open orders currently have a real material shortage, and
+    why - the business-impact framing section 17 asks a dashboard to
+    provide, built on the shortage-intelligence calculation that
+    already existed for a single order at a time (see
+    StockService.calculate_order_material_requirements and its
+    business-wide sibling calculate_at_risk_orders) but was never
+    proactively surfaced anywhere before this. No financial figures
+    here - quantities and dates only, so this is visible to every
+    authenticated user, matching "EMPLOYEE/USER can view stock/
+    material and client/order status" rather than the Master-only
+    redaction the stock/orders dashboards apply to money figures."""
+    at_risk = StockService.calculate_at_risk_orders(db)
+    return {
+        "at_risk_order_count": len(at_risk),
+        "orders": at_risk,
+    }
 
 
 @router.get("/stock")
@@ -117,8 +139,23 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
     total_order_value = db.query(func.sum(Order.order_value)).scalar() or 0
     total_received = db.query(func.sum(Order.total_received)).scalar() or 0
     pending_payment = db.query(func.sum(Order.balance)).scalar() or 0
-    active_orders = db.query(func.count(Order.id)).filter(Order.project_status != "Completed").scalar() or 0
+    active_order_ids = [
+        r[0] for r in db.query(Order.id).filter(Order.project_status != "Completed").all()
+    ]
+    active_orders = len(active_order_ids)
     pipeline_rows = db.query(Order.project_status, func.count(Order.id)).group_by(Order.project_status).all()
+
+    # Delivery risk summary (P0.50 section 23) - counts ONLY active
+    # (not yet Completed) orders, since a completed order's historical
+    # delivery timing is not an actionable "needs attention today"
+    # signal. Reuses bulk_attention_flags exactly - the same
+    # calculation the Orders List's sort=risk and attention_risk_level
+    # already use, never a separately-derived count.
+    risk_counts = {"CRITICAL": 0, "AT_RISK": 0, "WATCH": 0, "ON_TRACK": 0}
+    if active_order_ids:
+        flags = OrderService.bulk_attention_flags(db, active_order_ids)
+        for flag in flags.values():
+            risk_counts[flag["risk_level"]] = risk_counts.get(flag["risk_level"], 0) + 1
 
     # "Top orders" is a bounded highlight list, not the full order
     # history - the previous version loaded and returned every order
@@ -141,6 +178,7 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
         "total_received": float(total_received) if is_privileged else None,
         "pending_payment": float(pending_payment) if is_privileged else None,
         "active_orders": active_orders,
+        "delivery_risk_summary": risk_counts,
         "order_pipeline": [{"status": s, "orders": c} for s, c in pipeline_rows],
         "top_orders": [
             {

@@ -48,7 +48,7 @@ function DailyTasksPage() {
   const load = () => {
     setPageLoading(true);
     setLoadError(false);
-    dailyTasksAPI.list().then((res) => setTasks(res.data)).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
+    dailyTasksAPI.list({ include_material_risk: true }).then((res) => setTasks(res.data)).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
     employeesAPI.list().then((res) => setEmployees(res.data));
     ordersAPI.list().then((res) => setOrders(res.data));
   };
@@ -118,7 +118,15 @@ function DailyTasksPage() {
   const columns = [
     { key: 'task_code', label: 'Task ID' },
     { key: 'employee_id', label: 'Employee', render: (v, row) => row.employee_name || employees.find((e) => e.id === v)?.name || v },
-    { key: 'order_id', label: 'Client / Order', render: (v, row) => (v ? `${row.client_name ? row.client_name + ' \u2013 ' : ''}${row.order_code || orders.find((o) => o.id === v)?.order_code || '-'}` : '-') },
+    {
+      key: 'order_id', label: 'Client / Order',
+      render: (v, row) => v ? (
+        <>
+          {row.client_name ? row.client_name + ' \u2013 ' : ''}{row.order_code || orders.find((o) => o.id === v)?.order_code || '-'}
+          {row.material_at_risk && <span className="status-badge status-danger" style={{ marginLeft: 6 }}>Material Short</span>}
+        </>
+      ) : '-',
+    },
     { key: 'product_name', label: 'Product', render: (v) => v || '-' },
     { key: 'task_description', label: 'Task' },
     { key: 'task_category', label: 'Category', render: (v) => v || '-' },

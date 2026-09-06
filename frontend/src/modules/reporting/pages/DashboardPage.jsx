@@ -9,15 +9,16 @@ import SimpleBarChart from '../../../components/common/SimpleBarChart';
 import { formatCurrency, today } from '../../../utils/format';
 
 
-function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pendingPurchases, delayedProduction }) {
+function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pendingPurchases, delayedProduction, atRiskOrders }) {
   const navigate = useNavigate();
   const lowStock = (stock?.low_stock_action_list || []).slice(0, 4);
   const onHoldOrders = (orders?.top_orders || []).filter((o) => o.status === 'On Hold').slice(0, 4);
   const outstandingOrders = (orders?.top_orders || []).filter((o) => o.pending > 0).slice(0, 4);
   const tasks = (pendingTasks || []).slice(0, 4);
+  const materialAtRisk = (atRiskOrders || []).slice(0, 4);
 
   const hasAny = lowStock.length || onHoldOrders.length || outstandingOrders.length || tasks.length
-    || upcomingDeliveries.length || pendingPurchases.length || delayedProduction.length;
+    || upcomingDeliveries.length || pendingPurchases.length || delayedProduction.length || materialAtRisk.length;
   if (!hasAny) {
     return (
       <Card title="Attention Required">
@@ -71,6 +72,31 @@ function AttentionRequired({ stock, orders, pendingTasks, upcomingDeliveries, pe
                 <span className="status-badge status-warning">{t.priority || 'Normal'}</span>
               </button>
             ))}
+          </div>
+        )}
+        {materialAtRisk.length > 0 && (
+          <div className="attention-column">
+            <h4>Orders At Risk - Material Shortage</h4>
+            {materialAtRisk.map((o) => {
+              const topMaterial = o.materials[0];
+              const topSupplier = topMaterial?.supplier_options?.[0];
+              return (
+                <button key={o.order_id} className="attention-item" onClick={() => navigate(`/orders/${o.order_id}`)}>
+                  <span>
+                    {o.order_code} - {o.client_name || 'Client'}
+                    {topSupplier && (
+                      <span className="attention-item-hint">
+                        {' '}Buy from {topSupplier.supplier_name}
+                        {topSupplier.lead_time_days != null ? ` (${topSupplier.lead_time_days}d lead time)` : ''}
+                      </span>
+                    )}
+                  </span>
+                  <span className="status-badge status-danger">
+                    Short on {topMaterial?.material_name}{o.total_shortage_lines > 1 ? ` +${o.total_shortage_lines - 1} more` : ''}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
         {upcomingDeliveries.length > 0 && (
@@ -176,6 +202,7 @@ function DashboardPage() {
   const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
   const [pendingPurchases, setPendingPurchases] = useState([]);
   const [delayedProduction, setDelayedProduction] = useState([]);
+  const [atRiskOrders, setAtRiskOrders] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [followUps, setFollowUps] = useState([]);
 
@@ -193,11 +220,12 @@ function DashboardPage() {
 
   const loadCriticalDashboardData = () => {
     setDashboardError('');
-    Promise.all([dashboardAPI.stock(), dashboardAPI.orders(), dashboardAPI.staff()])
-      .then(([stockRes, ordersRes, staffRes]) => {
+    Promise.all([dashboardAPI.stock(), dashboardAPI.orders(), dashboardAPI.staff(), dashboardAPI.atRiskOrders()])
+      .then(([stockRes, ordersRes, staffRes, atRiskRes]) => {
         setStock(stockRes.data);
         setOrders(ordersRes.data);
         setStaff(staffRes.data);
+        setAtRiskOrders(atRiskRes.data.orders || []);
       })
       .catch(() => {
         setDashboardError('Unable to load dashboard data. Please check your connection and try again.');
@@ -278,6 +306,11 @@ function DashboardPage() {
   // so this summary and the detailed sections can never show different
   // counts for the same underlying situation.
   const topAttentionItems = [
+    ...(atRiskOrders || []).slice(0, 4).map((o) => ({
+      severity: 'critical', title: `${o.order_code} - ${o.client_name || 'Client'}`,
+      detail: `Short on ${o.materials[0]?.material_name}${o.total_shortage_lines > 1 ? ` +${o.total_shortage_lines - 1} more` : ''}`,
+      path: `/orders/${o.order_id}`,
+    })),
     ...(stock?.low_stock_action_list || []).slice(0, 4).map((m) => ({
       severity: 'critical', title: m.material, detail: `${m.current}/${m.minimum} ${m.unit || ''} remaining`.trim(),
       path: `/materials/${m.id}`,
@@ -367,6 +400,20 @@ function DashboardPage() {
       <div className="secondary-metrics">
         {isPrivileged && <KpiCard label="Amount Received" value={formatCurrency(orders.total_received)} />}
         <KpiCard label="Active Orders" value={orders.active_orders} />
+        {orders.delivery_risk_summary && (
+          <>
+            <KpiCard
+              label="Critical Orders" value={orders.delivery_risk_summary.CRITICAL || 0}
+              tone={orders.delivery_risk_summary.CRITICAL > 0 ? 'danger' : 'success'}
+              onClick={() => navigate('/orders', { state: { sortByRisk: true } })}
+            />
+            <KpiCard
+              label="At Risk Orders" value={orders.delivery_risk_summary.AT_RISK || 0}
+              tone={orders.delivery_risk_summary.AT_RISK > 0 ? 'warning' : 'success'}
+              onClick={() => navigate('/orders', { state: { sortByRisk: true } })}
+            />
+          </>
+        )}
         <KpiCard label="Active Employees" value={staff.active_employees} />
         <KpiCard label="Pending Tasks" value={staff.pending_tasks} tone={staff.pending_tasks > 0 ? 'warning' : 'success'} />
         <KpiCard label="Completed Tasks" value={staff.completed_tasks} tone="success" />
@@ -379,6 +426,7 @@ function DashboardPage() {
         <AttentionRequired
           stock={stock} orders={orders} pendingTasks={pendingTasks}
           upcomingDeliveries={upcomingDeliveries} pendingPurchases={pendingPurchases} delayedProduction={delayedProduction}
+          atRiskOrders={atRiskOrders}
         />
       </section>
 

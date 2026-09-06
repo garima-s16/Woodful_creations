@@ -2,7 +2,7 @@ import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.platform.database.database import get_db
@@ -20,24 +20,35 @@ from app.modules.clients.schemas import ClientEmailPreview, ClientEmailSendReque
 from app.modules.sales.pdf_generator import generate_order_estimate_pdf, generate_invoice_pdf
 from app.modules.communications.services.email_service import EmailService
 from app.modules.sales.order_service import OrderService
+from app.modules.inventory.stock_service import StockService
 from app.modules.communications.services.notification_service import NotificationService
 from app.modules.communications.services.mention_service import notify_mentions
 from app.platform.database.id_generator import generate_unique_code, generate_business_id
-from app.modules.sales.status_rules import validate_order_status_value
+from app.modules.sales.status_rules import validate_order_status_value, validate_order_project_status_transition
 from app.modules.sales.calculations import compute_totals
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 
-def _serialize_orders(orders, role: str):
+def _serialize_orders(orders, role: str, db: Session = None, precomputed_attention_flags: dict = None):
     """Employees can see order status/progress/client/project info, but
     not money - order_value, discount, tax_percent, tax_amount, advance,
     other_received, total_received, balance, items_subtotal, and
     payment_status are genuinely nulled here, including each order
     item's rate/amount (redacting only the order-level total while
     leaving line-item pricing visible would let anyone just sum the
-    items back to the real total)."""
+    items back to the real total).
+
+    Also attaches the batched, non-material needs_attention flag (s.11)
+    when a db session is supplied - callers serializing a single
+    already-fetched order without one (e.g. after create/update) simply
+    don't get the flag rather than triggering an extra query for it.
+    precomputed_attention_flags lets a caller that already ran
+    bulk_attention_flags for a larger set (e.g. the risk-sort path,
+    which must classify every matching order before pagination) pass
+    those results straight through instead of this function silently
+    re-querying the same thing a second time for just this subset."""
     responses = [OrderResponse.model_validate(o) for o in orders]
     if role not in ("master",):
         for r in responses:
@@ -54,24 +65,45 @@ def _serialize_orders(orders, role: str):
             for item in r.items:
                 item.rate = None
                 item.amount = None
+    if precomputed_attention_flags is not None:
+        flags = precomputed_attention_flags
+    elif db is not None and responses:
+        flags = OrderService.bulk_attention_flags(db, [r.id for r in responses])
+    else:
+        flags = {}
+    for r in responses:
+        flag = flags.get(r.id)
+        if flag:
+            r.needs_attention = flag["needs_attention"]
+            r.attention_reason = flag["reason"]
+            r.attention_risk_level = flag["risk_level"]
     return responses
 
 
-def _serialize_order(order, role: str):
-    return _serialize_orders([order], role)[0]
+def _serialize_order(order, role: str, db: Session = None):
+    return _serialize_orders([order], role, db)[0]
 
 
 @router.get("/", response_model=List[OrderResponse])
 def list_orders(response: Response, status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
+                 priority: Optional[str] = Query(None),
                  overdue_only: bool = Query(False),
                  upcoming_delivery_within_days: Optional[int] = Query(None, ge=1, le=365),
                  limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                 sort: Optional[str] = Query(None, description="Set to 'risk' to sort by delivery-risk severity"),
                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    query = db.query(Order)
+    # Eager-loaded: OrderResponse serializes each order's items (and,
+    # via items_subtotal) and source_estimate_id/source_estimate_code
+    # (via the estimates relationship) for every row returned - without
+    # this, listing a page of orders was an N+1 (2 extra queries per
+    # order, not just per page).
+    query = db.query(Order).options(selectinload(Order.items), selectinload(Order.estimates))
     if status:
         query = query.filter(Order.project_status == status)
     if client_id:
         query = query.filter(Order.client_id == client_id)
+    if priority:
+        query = query.filter(Order.priority == priority)
     if overdue_only:
         # Same rule the frontend used to apply client-side: balance still
         # outstanding and the order was placed more than 30 days ago.
@@ -93,13 +125,34 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
             Order.project_status != "Completed",
         )
         query = query.order_by(Order.delivery_date.asc())
+    elif sort == "risk":
+        # Risk-priority sort (P0.50 s.19) needs every matching order's
+        # risk classified BEFORE pagination, not just the page - a
+        # CRITICAL order 200 rows in must still surface on page 1.
+        # bulk_attention_flags is still a fixed, small number of
+        # queries regardless of how many order_ids are passed in (see
+        # its own docstring) - this does not turn into a per-order N+1.
+        all_ids = [r[0] for r in query.with_entities(Order.id).all()]
+        total = len(all_ids)
+        response.headers["X-Total-Count"] = str(total)
+        flags = OrderService.bulk_attention_flags(db, all_ids) if all_ids else {}
+        priority = {"CRITICAL": 0, "AT_RISK": 1, "WATCH": 2, "ON_TRACK": 3}
+        sorted_ids = sorted(all_ids, key=lambda oid: priority.get(flags.get(oid, {}).get("risk_level"), 3))
+        page_ids = sorted_ids[offset:offset + limit]
+        if not page_ids:
+            return []
+        orders_by_id = {o.id: o for o in query.filter(Order.id.in_(page_ids)).all()}
+        # Re-apply the risk-priority order - the IN-query above does not
+        # preserve page_ids' order.
+        ordered_page = [orders_by_id[oid] for oid in page_ids if oid in orders_by_id]
+        return _serialize_orders(ordered_page, auth.get("role", "user"), db, precomputed_attention_flags=flags)
     else:
         query = query.order_by(Order.order_date.desc())
 
     total = query.count()
     response.headers["X-Total-Count"] = str(total)
 
-    return _serialize_orders(query.offset(offset).limit(limit).all(), auth.get("role", "user"))
+    return _serialize_orders(query.offset(offset).limit(limit).all(), auth.get("role", "user"), db)
 
 
 def _build_order_items(db, items_data, order_id: int = None):
@@ -344,6 +397,14 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
             if error:
                 raise HTTPException(status_code=400, detail=error)
 
+    if "project_status" in update_fields:
+        # Checked against order.project_status BEFORE the setattr loop
+        # below overwrites it - a cancelled order must not be silently
+        # reopened via this same generic field (see status_rules.py).
+        error = validate_order_project_status_transition(order.project_status, update_fields["project_status"])
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+
     # Captured before the setattr loop below overwrites them - needed
     # to safely recompute a bare order's subtotal (see the "else"
     # branch further down), and these are internally consistent with
@@ -370,7 +431,15 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         or "tax_percent" in update_fields or "order_value" in update_fields
     )
 
+    old_items_snapshot = None
     if data.items is not None:
+        old_items_snapshot = [
+            {
+                "description": i.description, "category": i.category, "quantity": float(i.quantity),
+                "unit": i.unit, "rate": float(i.rate), "amount": float(i.amount), "product_id": i.product_id,
+            }
+            for i in order.items
+        ]
         for existing in list(order.items):
             db.delete(existing)
         db.flush()
@@ -441,7 +510,14 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
     db.refresh(order)
     new_value = serializable_fields(order, update_fields.keys())
     if data.items is not None:
-        new_value["items_changed"] = True
+        old_value["items"] = old_items_snapshot
+        new_value["items"] = [
+            {
+                "description": i.description, "category": i.category, "quantity": float(i.quantity),
+                "unit": i.unit, "rate": float(i.rate), "amount": float(i.amount), "product_id": i.product_id,
+            }
+            for i in order.items
+        ]
     action = "cancel_order" if update_fields.get("project_status") == "Cancelled" else (
         "change_order_status" if "project_status" in update_fields else "update_order"
     )
@@ -527,6 +603,53 @@ def send_order_email(order_id: int, data: ClientEmailSendRequest, request: Reque
     return ClientEmailSendResult(sent=True, message=f"{'Invoice' if kind == 'invoice' else 'Order'} emailed to {data.recipient_email}.")
 
 
+@router.get("/{order_id}/health")
+def get_order_health(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Deterministic, explainable Order Health/Risk (Family 130 P0.1) -
+    the authoritative contract this order's frontend Command Centre,
+    the chatbot's "what is blocking this order" workspace, and any
+    future AI/agent should all read from, rather than each re-deriving
+    risk from raw tables. See OrderService.compute_order_health's own
+    docstring for exactly what is and isn't computed.
+
+    Open to any role, matching material-requirements/ai-reports above -
+    financial figures are the only thing gated, added here only for
+    master rather than baked into the shared computation."""
+    findings = OrderService.compute_order_health(db, order_id)
+    if findings is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if auth.get("role", "user") in ("master",):
+        order = db.query(Order).filter(Order.id == order_id).first()
+        findings["pending_payment"] = float(order.balance or 0)
+    return findings
+
+
+@router.get("/{order_id}/what-if")
+def get_order_what_if(order_id: int, new_delivery_date: datetime = Query(
+                           ..., description="ISO 8601 datetime - the hypothetical delivery date to simulate"),
+                       db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """What-If Scheduling (P0.50 section 11) - "what happens if this
+    order's delivery date changes to X". Reuses
+    OrderService.compute_order_health exactly via its
+    override_delivery_date parameter - never a second, simplified risk
+    calculation. A simulation only: nothing is written to the
+    database, the order's real, committed delivery_date is never
+    touched. Returns the simulated result alongside the current real
+    result so the caller can see the actual impact, not just the
+    hypothetical state in isolation."""
+    current = OrderService.compute_order_health(db, order_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    simulated = OrderService.compute_order_health(db, order_id, override_delivery_date=new_delivery_date)
+    return {
+        "order_id": order_id,
+        "current": {"risk_level": current["risk_level"], "delivery_timing": current["delivery_timing"]},
+        "simulated": {"risk_level": simulated["risk_level"], "delivery_timing": simulated["delivery_timing"],
+                      "reasons": simulated["reasons"], "business_impact": simulated["business_impact"]},
+        "risk_level_changed": current["risk_level"] != simulated["risk_level"],
+    }
+
+
 @router.get("/{order_id}/profitability")
 def get_order_profitability(order_id: int, db: Session = Depends(get_db),
                              auth=Depends(require_role("master"))):
@@ -534,6 +657,16 @@ def get_order_profitability(order_id: int, db: Session = Depends(get_db),
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return OrderService.profitability(db, order)
+
+
+@router.get("/{order_id}/material-requirements")
+def get_order_material_requirements(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    """Material Requirement + Shortage Intelligence: what this order's
+    products actually need (via each Product's BOM), against real
+    current stock and purchases already placed but not yet received.
+    Every figure traces to a real row - see
+    StockService.calculate_order_material_requirements's own docstring."""
+    return StockService.calculate_order_material_requirements(db, order_id)
 
 
 @router.get("/{order_id}/ai-reports")

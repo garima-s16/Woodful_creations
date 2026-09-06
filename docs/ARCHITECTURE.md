@@ -100,7 +100,7 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Layer | File |
 |---|---|
 | Route | modules/sales/api/orders.py, modules/sales/api/order_imports.py, modules/operations/api/milestones.py, modules/operations/api/project_expenses.py |
-| Service | modules/sales/order_service.py (advance validation, profitability/overall_gross_margin calc, cash payment reference generation) |
+| Service | modules/sales/order_service.py (advance validation, profitability/overall_gross_margin calc, cash payment reference generation); OrderService.compute_order_health - the single authoritative Order Health/Delivery Risk calculation (Family 130 P0.1, extended by P0.50): 4-level risk_level (ON_TRACK/WATCH/AT_RISK/CRITICAL), delivery_timing, evidence (each material shortage now carries procurement_status - no_purchase_placed/purchase_placed_insufficient/purchase_covers_gap - and blocks_production, P0.50 s.13), business_impact, next_action, readiness, production_summary (total/completed/pending/blocked job counts, P0.50 s.14) - consumed identically by GET /orders/{id}/health, the chatbot's _order_risk_workspace (services.py), and bulk_attention_flags' lighter per-list-row classification (Orders List). GET /orders/{id}/what-if (P0.50 s.11, What-If Scheduling) reuses this same function via its optional override_delivery_date parameter (default None - zero behavior change for every other caller) to simulate a hypothetical delivery date without writing anything to the database, returning current vs simulated risk side by side; modules/inventory/stock_service.py's calculate_order_material_requirements (per-order material shortage against BOM/current stock/pending purchases/reservations - GET /{order_id}/material-requirements) and calculate_reserved_stock (unfulfilled BOM demand across other open orders, computed fresh, not a stored field - no Reserved Qty column exists on Material); calculate_at_risk_orders (Family 130 - business-wide version of the same shortage formula across every open order in a bounded number of queries, not a loop over the per-order function, which would be its own N+1 at dashboard scale - GET /api/dashboard/at-risk-orders, surfaced on DashboardPage's "Attention Required" and top summary card); _supplier_options_for_materials (Family 130 - which supplier can actually resolve a shortage, price/lead-time/preferred first, reused by both the per-order and business-wide functions and by production_jobs.py's material-status endpoint, so a shortage never appears without the supplier options that could fix it) |
 | Schema | modules/sales/schemas.py (OrderItem/OrderComment), modules/sales/imports/order_schemas.py, modules/operations/schemas.py (Milestone, ProjectExpense) |
 | Model | modules/sales/models.py (OrderItem/OrderComment), modules/operations/models.py (Milestone, ProjectExpense) |
 | Excel import | modules/sales/imports/order_import.py |
@@ -122,6 +122,7 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Model | modules/catalog/models.py |
 | Excel import | modules/catalog/imports/product_import.py |
 | Frontend | modules/catalog/pages/ProductsPage.jsx, ProductDetailPage.jsx, ProductImportPage.jsx |
+| Hardware requirements | No separate hardware-BOM concept - a hinge/handle/channel is just a Material (category="Hardware") linked via the same ProductMaterial BOM used for raw materials, so it reuses modules/inventory/stock_service.py's shortage/reservation calculation unchanged (confirmed with a real test, not assumed - see tests/modules/inventory/test_shortage_intelligence.py). Product.hardware_cost is a separate, unconnected flat manual cost input, not a quantity/stock-tracked figure.
 
 ### Materials & Inventory
 | Layer | File |
@@ -129,7 +130,7 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Route | modules/inventory/api/materials.py, material_imports.py, material_categories.py, locations.py; modules/procurement/api/supplier_materials.py |
 | Service | modules/inventory/stock_service.py (all stock math: issue, purchase receipt, transfer, adjustment, concurrency locking) |
 | Schema | modules/inventory/schemas.py, modules/inventory/imports/material_schemas.py |
-| Model | modules/inventory/models.py (Material, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition/Value, Location, Supplier, SupplierMaterial, Purchase, StockLedgerEntry, StockTransfer, StockAdjustment - inventory and procurement share one data model, split only at API layer) |
+| Model | modules/inventory/models.py (Material, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition/Value, Location, StockLedgerEntry, StockTransfer, StockAdjustment). Supplier/SupplierMaterial/Purchase moved to modules/procurement/models.py (Family 130 P0.2 ownership correction) - inventory owns physical stock only, procurement owns suppliers and the purchase business record. |
 | Excel import | modules/inventory/imports/material_import.py |
 | Frontend | modules/inventory/pages/MaterialsPage.jsx, MaterialDetailPage.jsx, MaterialImportPage.jsx, LocationsPage.jsx, InventoryPage.jsx |
 
@@ -139,7 +140,7 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Route | modules/operations/api/issues.py, modules/procurement/api/purchases.py, purchase_imports.py; modules/inventory/api/stock_transactions.py |
 | Service | modules/inventory/stock_service.py - single source of truth for record_issue, record_purchase, mark_purchase_received, record_transfer, record_adjustment |
 | Schema | modules/operations/schemas.py (Issue), modules/inventory/schemas.py (purchases/transfers/adjustments), modules/procurement/imports/purchase_schemas.py |
-| Model | modules/operations/models.py (Issue - has rate_at_issue, frozen cost), modules/inventory/models.py (Purchase) |
+| Model | modules/operations/models.py (Issue - has rate_at_issue, frozen cost), modules/procurement/models.py (Purchase) |
 | Excel import | modules/procurement/imports/purchase_import.py |
 | Frontend | modules/operations/pages/IssuesPage.jsx; modules/procurement/pages/PurchasesPage.jsx, PurchaseDetailPage.jsx, PurchaseImportPage.jsx |
 
@@ -147,8 +148,29 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Layer | File |
 |---|---|
 | Route | modules/procurement/api/suppliers.py |
-| Schema/Model | modules/inventory/schemas.py / models.py (Supplier) |
+| Schema/Model | modules/inventory/schemas.py (SupplierResponse etc, not yet moved) / modules/procurement/models.py (Supplier, SupplierMaterial) |
 | Frontend | modules/procurement/pages/SuppliersPage.jsx, SupplierDetailPage.jsx |
+
+### Procurement Requirements & Supplier Decisions (P0.2)
+| Layer | File |
+|---|---|
+| Route | modules/procurement/api/procurement_requirements.py - includes POST /{id}/decision (validates the selected supplier actually has a SupplierMaterial link for the material - backend-enforced, never trusts a frontend dropdown) and POST /{id}/purchase (creates the Purchase from the requirement's own recorded decision, links requirement.purchase_id, marks the requirement Fulfilled only when receipt_status is actually "Received") |
+| Schema/Model | modules/procurement/schemas.py, models.py (ProcurementRequirement, SupplierDecision) |
+| Note | required_quantity/available/shortage on a requirement are a snapshot of modules/inventory/stock_service.py's calculate_order_material_requirements at creation time - never a second shortage engine |
+
+### Purchases & Suppliers - service ownership (P0.2 correction)
+modules/procurement/services.py's ProcurementService owns record_purchase,
+mark_purchase_received, and supplier-option recommendation
+(_supplier_options_for_materials) - moved out of
+modules/inventory/stock_service.py's StockService, which keeps only the
+physical stock mutation (_apply_stock_receipt) and inventory-owned
+calculations (reserved stock, order material requirements, at-risk
+orders). The two services call into each other with a local,
+function-level import each way (ProcurementService needs
+StockService._apply_stock_receipt; StockService needs
+ProcurementService._supplier_options_for_materials to enrich its own
+shortage output) - this is deliberate, not an oversight: a top-level
+import either direction would be circular.
 
 ### Rate Cards
 | Layer | File |
@@ -162,15 +184,19 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 ### Employees & HR
 | Layer | File |
 |---|---|
-| Route | modules/hr/api/employees.py, attendance.py, leaves.py, salary_slips.py; modules/recruitment/api/candidates.py, interviews.py |
-| Schema | modules/hr/schemas.py (employees/attendance/leave/salary/working calendar), modules/recruitment/schemas.py |
-| Model | modules/hr/models.py (Employee, Attendance - unique per employee/day, Leave, SalarySlip), modules/recruitment/models.py (Candidate, Interview) |
+| Route | modules/hr/api/employees.py, attendance.py, leaves.py, salary_slips.py, salary_advances.py; modules/recruitment/api/candidates.py, interviews.py |
+| Schema | modules/hr/schemas.py (employees/attendance/leave/salary/salary advance/working calendar), modules/recruitment/schemas.py |
+| Model | modules/hr/models.py (Employee, Attendance - unique per employee/day, Leave, SalarySlip, SalaryAdvance), modules/recruitment/models.py (Candidate, Interview) |
 | Frontend | modules/hr/pages/EmployeesPage.jsx, EmployeeDetailPage.jsx, AttendancePage.jsx, LeavesPage.jsx, SalarySlipsPage.jsx; modules/recruitment/pages/CandidatesPage.jsx, CandidateDetailPage.jsx, InterviewsPage.jsx |
+| Salary Advance (P0.44) | Full workflow: request (employee or Master-on-behalf) -> Master approve (optionally at a different amount than requested, which stays historical)/reject -> recovery against a real, existing SalarySlip only (never a bare number - 404 if no slip exists for that employee/month). Recovery sets SalarySlip.advance_deduction and recomputes net_salary via salary_slips.py's own _compute_net (imported, not reimplemented). Approve/reject notify the employee's own linked User account (in-app + email in one call, via the same NotificationService.notify() every other module uses - never a second notification path) - a missing linked account or email never blocks the decision itself. Migration 0072. Frontend: modules/hr/pages/SalaryAdvancesPage.jsx (adapts to role, same pattern as SalarySlipsPage.jsx). |
+| Overtime (P0.43) | Attendance.overtime_hours is a real, directly Master-settable column (migration 0073) - deliberately NOT derived from in_time/out_time (a long clock span alone implies nothing; only an explicit value counts), zero by default. Employees can mark their own attendance but cannot set a non-zero overtime_hours on it (403) - only Master can. working_hours remains a separate, purely informational clock-span property that never feeds overtime_hours. POST /api/attendance/overtime is the "Manage Overtime" action - one or more dates for one employee, mode="add" (genuinely additive per-date, never replaces) or mode="set" (explicit replacement); creates a bare Attendance record if none exists for a targeted date. |
+| Salary Days (P0.43) | working_calendar_service.py's compute_salary_days (Monday-Saturday/configured working days minus APPROVED leave overlapping the month, never double-subtracting a leave day that already falls on a non-working date) - surfaced as additive fields (calendar_days/leave_days/salary_days) on the existing GET /api/salary-slips/attendance-summary suggestion, alongside (not replacing) the actual-attendance-based suggested_paid_days. |
+| Payroll summary (P0.43) | modules/hr/payroll_service.py - get_payroll_summary (per month/year: status counts, employees with no slip yet, pending/paid net totals, advance recovery this month) and get_salary_advance_summary (business-wide outstanding advances) - pure aggregation over SalarySlip.status/SalaryAdvance, no new calculation. Not yet wired to an API route. |
 
 ### Daily Tasks (assignment, completion, handoff)
 | Layer | File |
 |---|---|
-| Route | modules/operations/api/daily_tasks.py - assignment, completion (apply_task_completion), handoff (complete_and_assign_next), status notifications |
+| Route | modules/operations/api/daily_tasks.py - assignment, completion (apply_task_completion), handoff (complete_and_assign_next), status notifications; list endpoint's include_material_risk=true opt-in flag (Family 130 section 12) annotates each task with material_at_risk, using StockService.calculate_at_risk_orders computed once for the whole page - opt-in because most callers of this list (e.g. the dashboard's small "my tasks" widget) have no use for it |
 | Schema/Model | modules/operations/schemas.py / models.py (DailyTask, TaskComment) |
 | Frontend | modules/operations/pages/DailyTasksPage.jsx, TaskDetailPage.jsx |
 | Also touches | modules/communications/services/notification_service.py (task notifications), modules/ai/orchestration.py (chatbot task completion - routes through the same apply_task_completion) |
@@ -181,6 +207,18 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Route | modules/operations/api/production_jobs.py |
 | Schema/Model | modules/operations/schemas.py / models.py (ProductionJob) |
 | Frontend | modules/operations/pages/ProductionJobsPage.jsx, ProductionJobDetailPage.jsx |
+| Dependency/shortage check | GET /{job_id}/material-status - reuses modules/inventory/stock_service.py's calculate_order_material_requirements for the job's own order_id, no separate calculation. There is no "Blocked" status value (confirmed against the real frontend dropdown; blocker_reason is freestanding and can accompany any status) - do not add one without also updating the frontend dropdown deliberately. |
+| Readiness (P0.3) | GET /{job_id}/readiness - READY/PARTIALLY_READY/BLOCKED, distinguishes "shortage covered by a pending purchase" (not READY - goods aren't physically in hand) from genuinely in-stock; employee-reported blocker_reason always overrides the material check. |
+| Variance (P0.3, planned vs actual) | GET /{job_id}/variance - quantity variance from ProductionJob.planned_qty/completed_qty; duration variance from ProductionOperation.estimated_duration_minutes/actual_duration_minutes, computed only across operations that actually have an actual duration recorded (duration_complete tells the caller whether that's all of them or only some - never a fabricated full-job variance from partial data). |
+| Risk (P0.3 section 29) | GET /{job_id}/risks - a list of individually-explained findings (type/what/why/impact/when), never a single opaque score. Covers material shortage (reuses readiness), dependency blockage (reuses is_blocked_by_dependency), work-centre capacity overload, and order delivery-date risk (already passed, or within 3 days). Deliberately does NOT check procurement-delay or "overdue operation" - no data link/field exists for either yet; an empty list means "nothing found from checkable data", not a safety guarantee. |
+
+### Cutting (P0.3 section 25)
+| Layer | File |
+|---|---|
+| Route | modules/operations/api/cutting_requirements.py |
+| Schema/Model | modules/operations/schemas.py / models.py (CuttingRequirement) |
+| Migration | alembic/versions/0071_cutting_requirements.py |
+| Note | One row per part - real length_mm/width_mm/thickness_mm/grain_direction/rotation_allowed/kerf_mm, never collapsed into a free-text description. Creating a row is planning only; it has no write path into Material.current_stock at all (confirmed by a real test) - actual consumption still goes only through Issue/StockService.record_issue. Exposed on ProductionJobDetailPage.jsx (add/list/delete). Nesting (arranging these parts onto sheets) is not built - would consume this table's data, not duplicate it. |
 
 ### Company Holidays / Working Calendar
 | Layer | File |
@@ -196,9 +234,10 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Layer | File |
 |---|---|
 | Route | modules/ai/api/chat.py, agents.py |
-| Service | modules/ai/orchestration.py (deterministic parsing), modules/ai/gateway.py (Gemini tool dispatch, kill switch, learning candidates), modules/ai/security.py (text sanitization), modules/ai/tools.py, agents.py |
+| Service | modules/ai/orchestration.py (deterministic parsing - includes _at_risk_orders, Family 130 section 15, matched by a combined "mentions an order" + "mentions risk/blocked/delayed" check rather than a fixed phrase list, since a fixed list missed natural phrasing like "which orders ARE at risk"; reuses StockService.calculate_at_risk_orders directly, the same calculation already surfacing on the dashboard and daily-tasks list), modules/ai/gateway.py (Gemini tool dispatch, kill switch, learning candidates), modules/ai/security.py (text sanitization), modules/ai/tools.py, agents.py |
 | Schema/Model | modules/ai/schemas.py / models.py (ChatLearningCandidate) |
 | Frontend | modules/ai/pages/LearningCandidatesPage.jsx; components/ChatWidget.jsx, AssistantMascot.jsx (the single, persistent AI entry point - bottom-right on every page) |
+| Family 131 tools | get_business_attention (reuses business_risk_service.get_business_risks - "what needs my attention"), get_salary_advance_status/get_overtime_status (master-only, reuse hr/payroll_service.get_salary_advance_summary/get_overtime_summary) - all registered in both READ_TOOL_DISPATCH (tools.py) and gateway.py's Gemini function-declaration list; reachable via Gemini's natural-language fallback today, not yet added to orchestration.py's deterministic keyword routing. |
 
 ### Notifications & Communication
 | Layer | File |
@@ -215,11 +254,18 @@ Frontend: modules/clients/pages/ClientsPage.jsx, ClientDetailPage.jsx, ClientImp
 | Model | modules/reporting/models.py (ReportHistory - 15-day retention metadata; AIWorkspaceReport) |
 | Frontend | modules/reporting/pages/AnalyticsPage.jsx, DashboardPage.jsx |
 
+### Cross-Module Business Risk + Business Decision Centre (P0.49/P0.51)
+| Layer | File |
+|---|---|
+| Route | modules/reporting/api/business_decisions.py - GET / (prioritized list + severity counts), GET /{entity_type}/{entity_id} (single item, for AI/chatbot "why is X at risk") |
+| Service | modules/reporting/business_risk_service.py - orchestrates OrderService.compute_order_health (DELIVERY risk, one item per open order not ON_TRACK - never a second risk calculation) and real SalarySlip/SalaryAdvance data (PAYROLL risk: finalized-unpaid slips, Pending advance requests only - not every outstanding-balance advance, since recovery can legitimately span months) |
+| Note | Master-only payroll/advance risk items (financial/HR confidentiality) - an employee gets a genuinely shorter list, not a redacted copy. A non-privileged entity lookup returns 404, identical to "doesn't exist" - never a distinguishable "exists but you can't see it". Frontend: modules/reporting/pages/BusinessDecisionCentrePage.jsx (severity KPI filters, decision cards, "Review" links to the entity's real list page - no per-entity detail routes exist for salary slips/advances, so this deliberately does not link to a nonexistent one). |
+
 ### Automation & Audit
 | Layer | File |
 |---|---|
 | Route | modules/communications/api/automation.py, api/routes/audit_logs.py, modules/reporting/api/search.py |
-| Service | modules/communications/services/automation_service.py |
+| Service | modules/communications/services/automation_service.py - 11 rules total; order_at_risk_material_shortage (Family 130) reuses StockService.calculate_at_risk_orders directly, complementing the older, material-only low_stock_purchase_recommendation rule with order-level context (which specific order is threatened, not just which material is low) |
 | Schema/Model | modules/communications/schemas.py / models.py (AutomationLog); platform/audit/audit.py (AuditLog, AuditLogResponse, log_action - the shared audit-logging call every route uses) |
 | Frontend | pages/AuditLogsPage.jsx |
 

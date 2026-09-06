@@ -20,6 +20,18 @@ LINE_ITEM_CATEGORIES = [
     "Material", "Labor", "Furniture", "Hardware", "Installation", "Transportation", "Design", "Service", "Other",
 ]
 
+# The real, existing Order priority vocabulary (confirmed against
+# OrdersPage.jsx's PRIORITY_OPTIONS dropdown, not invented here) -
+# previously defined nowhere in the backend, so an arbitrary string
+# could be set via direct API call, Excel import, or chat despite the
+# UI only ever offering these four. Deliberately NOT the same set as
+# DailyTask's own priority vocabulary (Low/Normal/High/Urgent, see
+# app/modules/operations/schemas.py) - these are two separate fields on
+# two separate entities with two separate, independently-established
+# real dropdowns; unifying them would be a product decision this
+# schema fix should not make on its own.
+ORDER_PRIORITIES = {"Low", "Medium", "High", "Urgent"}
+
 
 # --- Estimate -----------------------------------------------------------
 
@@ -297,6 +309,16 @@ class OrderCreate(OrderBase):
             raise ValueError("Order value cannot be negative.")
         return v
 
+    @field_validator("priority")
+    @classmethod
+    def priority_must_be_valid(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if v not in ORDER_PRIORITIES:
+            raise ValueError(f"Priority must be one of: {', '.join(sorted(ORDER_PRIORITIES))}")
+        return v
+
     advance: Decimal = Decimal("0")
     items: List[OrderItemCreate] = []
     # When set, the new order's items are copied from that estimate's
@@ -369,6 +391,16 @@ class OrderUpdate(BaseModel):
             raise ValueError("Progress percent must be between 0 and 100.")
         return v
 
+    @field_validator("priority")
+    @classmethod
+    def priority_must_be_valid(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if v not in ORDER_PRIORITIES:
+            raise ValueError(f"Priority must be one of: {', '.join(sorted(ORDER_PRIORITIES))}")
+        return v
+
 
 class OrderResponse(OrderBase):
     id: int
@@ -394,6 +426,18 @@ class OrderResponse(OrderBase):
     # never drift out of sync with the real link.
     source_estimate_id: Optional[int] = None
     source_estimate_code: Optional[str] = None
+    # Family 130 P0.1 s.11: a lightweight, batched, non-material
+    # attention flag - never computed in React, never a fabricated
+    # score. Set by _serialize_orders from OrderService.bulk_attention_flags
+    # (blocked/overdue tasks, production blockers, delivery risk only -
+    # material-shortage risk is the business-wide dashboard's separate,
+    # heavier BOM/stock calculation and is deliberately NOT duplicated
+    # here on every list page load). None for any order not looked at
+    # by that bulk pass (there is none today - kept Optional for schema
+    # safety only).
+    needs_attention: Optional[bool] = None
+    attention_reason: Optional[str] = None
+    attention_risk_level: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

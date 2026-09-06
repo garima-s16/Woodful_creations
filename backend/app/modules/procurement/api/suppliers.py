@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user, require_role
-from app.modules.inventory.models import Supplier, Purchase, SupplierMaterial
+from app.modules.procurement.models import Supplier, Purchase, SupplierMaterial
 from app.modules.inventory.schemas import SupplierCreate, SupplierUpdate, SupplierResponse
 from app.platform.database.id_generator import generate_unique_code, generate_business_id
 

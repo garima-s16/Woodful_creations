@@ -121,6 +121,23 @@ class Settings(BaseSettings):
     # shared across processes). See app/platform/security/rate_limit.py.
     RATE_LIMIT_BACKEND: str = "memory"
 
+    # In-process background scheduler for AutomationService/
+    # NotificationService.run_all_checks (Family 131 section 23 -
+    # "auto-generated", not only generated when someone happens to open
+    # the notification panel). This app installs no Celery/APScheduler
+    # (see automation_service.py's own module docstring) and the
+    # docker-entrypoint runs a single uvicorn process with no --workers
+    # flag (see backend/docker-entrypoint.sh), so one lightweight
+    # stdlib-threading loop per container is correct here - it is not a
+    # second automation engine, only a second *trigger* for the exact
+    # same AutomationService.run_all/NotificationService.run_all_checks
+    # the notification endpoints already call, and every rule's own
+    # dedup_key keeps it safe even if this were ever scaled to more than
+    # one process. Disable for tests or a deployment that already has an
+    # external scheduler calling POST /api/automation/run.
+    AUTOMATION_SCHEDULER_ENABLED: bool = True
+    AUTOMATION_SCHEDULER_INTERVAL_MINUTES: int = 15
+
     # Storage provider selection - "local" is the only
     # backend actually implemented in this build. A future cloud
     # backend (S3-compatible/Azure Blob/GCS) would be selected here via

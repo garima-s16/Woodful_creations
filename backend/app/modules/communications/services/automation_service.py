@@ -27,6 +27,7 @@ auto-executed, and no existing Woodful business rule grants blanket
 auto-purchase/auto-payment authority, so every rule here stops at
 "recommend/notify".
 """
+import calendar
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -34,11 +35,13 @@ from sqlalchemy.orm import Session
 
 from app.modules.communications.models import Notification, AutomationLog
 from app.modules.operations.models import DailyTask
-from app.modules.inventory.models import Material, Purchase
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Milestone
 from app.modules.operations.models import ProductionJob
 from app.modules.clients.models import ClientActivity
 from app.modules.sales.models import Estimate
+from app.modules.hr.models import Leave, SalaryAdvance, SalarySlip
 from app.modules.auth.models import User
 from app.modules.communications.services.notification_service import NotificationService
 
@@ -54,6 +57,12 @@ MILESTONE_DEADLINE_APPROACHING_WINDOW_DAYS = 5
 # framing check_purchase_delivery_approaching already uses via
 # expected_delivery_date.
 PENDING_ESTIMATE_RESPONSE_STALE_DAYS = 5
+# Grace window after a payroll month's last calendar day before a
+# still-"draft" SalarySlip is treated as a genuine finalization issue -
+# mirrors PENDING_ESTIMATE_RESPONSE_STALE_DAYS's "genuinely stale, not
+# merely open yet" framing (payroll for the month just ended isn't an
+# issue on day one of the next month).
+PAYROLL_FINALIZATION_GRACE_DAYS = 5
 CONDITION_SUMMARY_MAX = 2000
 ERROR_MESSAGE_MAX = 2000
 
@@ -61,6 +70,8 @@ ERROR_MESSAGE_MAX = 2000
 class AutomationService:
     RULE_TASK_OVERDUE = "task_overdue"
     RULE_LOW_STOCK_RECOMMENDATION = "low_stock_purchase_recommendation"
+    RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE = "order_at_risk_material_shortage"
+    RULE_DELIVERY_RISK_CRITICAL = "delivery_risk_critical"
     RULE_PURCHASE_DELIVERY_APPROACHING = "purchase_delivery_approaching"
     RULE_PAYMENT_OVERDUE = "payment_overdue"
     RULE_PROJECT_DELAYED = "project_delayed"
@@ -69,12 +80,27 @@ class AutomationService:
     RULE_PENDING_ESTIMATE_RESPONSE = "pending_estimate_response"
     RULE_PROJECT_DEADLINE_APPROACHING = "project_deadline_approaching"
     RULE_OPERATIONAL_SUMMARY = "operational_summary"
+    RULE_PENDING_LEAVE_APPROVAL = "pending_leave_approval"
+    RULE_PENDING_SALARY_ADVANCE_APPROVAL = "pending_salary_advance_approval"
+    RULE_PAYROLL_FINALIZATION_OVERDUE = "payroll_finalization_overdue"
 
     RULES = [
         {"key": RULE_TASK_OVERDUE, "event": "DailyTask past its date and not DONE",
          "action": "Notify the assigned employee's account"},
         {"key": RULE_LOW_STOCK_RECOMMENDATION, "event": "Material at or below its reorder level",
          "action": "Recommend a purchase quantity (master only) - proposes, never auto-creates a Purchase"},
+        {"key": RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE, "event": "An open order's real material shortage - "
+         "against its own BOM, current stock, pending purchases and other orders' reservations - "
+         "not just a material below its reorder level (Family 130 - reuses "
+         "StockService.calculate_at_risk_orders, the same calculation already shown on the dashboard, "
+         "the daily-tasks list and the AI chatbot, so this proactive notification can never disagree "
+         "with what those other surfaces show)", "action": "Notify (broadcast) with a link to the order"},
+        {"key": RULE_DELIVERY_RISK_CRITICAL, "event": "An order's delivery risk reaches CRITICAL "
+         "(P0.50) - reuses OrderService.bulk_attention_flags exactly, the same classification already "
+         "shown on the Orders List and Dashboard, so this can never disagree with what a Master sees "
+         "on-screen. Deliberately does NOT fire for WATCH or AT_RISK - only the most severe level, "
+         "to avoid the notification noise section 38 explicitly warns against",
+         "action": "Notify (broadcast) with a link to the order"},
         {"key": RULE_PURCHASE_DELIVERY_APPROACHING, "event": "Purchase not yet fully received, delivery due soon",
          "action": "Notify master"},
         {"key": RULE_PAYMENT_OVERDUE, "event": "Order balance outstanding 30+ days after order date",
@@ -95,6 +121,16 @@ class AutomationService:
         {"key": RULE_OPERATIONAL_SUMMARY, "event": "Daily rollup of overdue tasks, approaching project "
          "deadlines, blocked production, low stock, pending purchases and pending follow-ups",
          "action": "Notify (broadcast) - counts only, no financial amounts, so safe for every role"},
+        {"key": RULE_PENDING_LEAVE_APPROVAL, "event": "Leave request left in 'Pending' status",
+         "action": "Notify (broadcast) with a link to the leaves list - matches leaves.py's own "
+         "existing get_current_user visibility, not master-only"},
+        {"key": RULE_PENDING_SALARY_ADVANCE_APPROVAL, "event": "Salary advance request left in "
+         "'Pending' status", "action": "Notify master - reveals a requested amount, same financial "
+         "sensitivity tier as PURCHASE_RECOMMENDED/ESTIMATE_PENDING_RESPONSE"},
+        {"key": RULE_PAYROLL_FINALIZATION_OVERDUE, "event": "SalarySlip still 'draft' more than "
+         f"{PAYROLL_FINALIZATION_GRACE_DAYS} day(s) after its own pay-period month fully ended",
+         "action": "Notify master - payroll processing status, same financial sensitivity tier as "
+         "the salary advance rule above"},
     ]
 
     # ---------------------------------------------------------------- #
@@ -247,6 +283,124 @@ class AutomationService:
                     condition_summary=f"Failed while evaluating material id={m.id}.",
                     action_taken="recommend_purchase", status="FAILED",
                     entity_type="material", entity_id=m.id, dedup_key=dedup_key, error_message=str(exc),
+                )
+
+    # ---------------------------------------------------------------- #
+    # Rule: Order at risk of a material shortage (Family 130) -> notify
+    # ---------------------------------------------------------------- #
+    @staticmethod
+    def check_order_at_risk_material_shortage(db: Session, trigger_event: str = "on_demand_check") -> None:
+        """Complements check_low_stock_purchase_recommendations above:
+        that rule is material-centric ("Plywood is low, buy more") and
+        fires even for a shortage that threatens nothing yet. This rule
+        is order-centric - it only fires when a real, current order is
+        actually blocked, and names which one, matching Family 130
+        section 8's target: "explain which order is at risk, why, and
+        what material causes the risk" rather than leaving that
+        connection for someone to work out by hand."""
+        from app.modules.inventory.stock_service import StockService
+        try:
+            at_risk_orders = StockService.calculate_at_risk_orders(db)
+        except Exception as exc:
+            db.rollback()
+            AutomationService._log(
+                db, rule_key=AutomationService.RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE, trigger_event=trigger_event,
+                condition_summary="Failed while calculating at-risk orders.",
+                action_taken="notify:ORDER_AT_RISK", status="FAILED", error_message=str(exc),
+            )
+            return
+
+        for row in at_risk_orders:
+            dedup_key = f"automation:order_at_risk:{row['order_id']}"
+            try:
+                top_material = row["materials"][0]
+                extra = f" and {row['total_shortage_lines'] - 1} other material(s)" if row["total_shortage_lines"] > 1 else ""
+                AutomationService._notify_and_log(
+                    db, rule_key=AutomationService.RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE, trigger_event=trigger_event,
+                    condition_summary=(
+                        f"Order {row['order_code']} ({row['client_name'] or 'client'}) is short "
+                        f"{top_material['shortage']:g} {top_material['unit']} of {top_material['material_name']}{extra}."
+                    ),
+                    notification_type="ORDER_AT_RISK", severity="WARNING",
+                    title=f"Order at risk - {row['order_code']}",
+                    message=(
+                        f"{row['order_code']} ({row['client_name'] or 'client'}) is short "
+                        f"{top_material['shortage']:g} {top_material['unit']} of {top_material['material_name']}{extra}. "
+                        f"This is the current stock/reservation picture - no purchase has been created automatically."
+                    ),
+                    entity_type="order", entity_id=row["order_id"], dedup_key=dedup_key,
+                    action_taken="notify:ORDER_AT_RISK", action_path=f"/orders/{row['order_id']}",
+                )
+            except Exception as exc:
+                db.rollback()
+                AutomationService._log(
+                    db, rule_key=AutomationService.RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE, trigger_event=trigger_event,
+                    condition_summary=f"Failed while evaluating order id={row.get('order_id')}.",
+                    action_taken="notify:ORDER_AT_RISK", status="FAILED",
+                    entity_type="order", entity_id=row.get("order_id"), dedup_key=dedup_key, error_message=str(exc),
+                )
+
+    # ---------------------------------------------------------------- #
+    # Rule: Delivery risk reaches CRITICAL (P0.50) -> notify
+    # ---------------------------------------------------------------- #
+    @staticmethod
+    def check_delivery_risk_critical(db: Session, trigger_event: str = "on_demand_check") -> None:
+        """Complements check_order_at_risk_material_shortage above: that
+        rule fires on a material shortage specifically. This rule fires
+        on the order's overall delivery risk reaching CRITICAL (P0.50's
+        4-level model) - a real delivery commitment already missed and
+        still open, or imminent with a genuine blocker - regardless of
+        which specific signal caused it. Reuses
+        OrderService.bulk_attention_flags exactly, the same bounded,
+        batched calculation already backing the Orders List's
+        attention_risk_level and the Dashboard's delivery_risk_summary,
+        so this can never disagree with what a Master sees on-screen.
+        Deliberately does not fire for WATCH or AT_RISK - only the most
+        severe level, to avoid the notification noise section 38
+        explicitly warns against."""
+        from app.modules.sales.models import Order
+        try:
+            active_order_ids = [
+                r[0] for r in db.query(Order.id).filter(Order.project_status != "Completed").all()
+            ]
+            if not active_order_ids:
+                return
+            flags = OrderService.bulk_attention_flags(db, active_order_ids)
+        except Exception as exc:
+            db.rollback()
+            AutomationService._log(
+                db, rule_key=AutomationService.RULE_DELIVERY_RISK_CRITICAL, trigger_event=trigger_event,
+                condition_summary="Failed while calculating delivery risk.",
+                action_taken="notify:DELIVERY_RISK_CRITICAL", status="FAILED", error_message=str(exc),
+            )
+            return
+
+        orders_by_id = {o.id: o for o in db.query(Order).filter(Order.id.in_(active_order_ids)).all()}
+        for order_id, flag in flags.items():
+            if flag["risk_level"] != "CRITICAL":
+                continue
+            dedup_key = f"automation:delivery_risk_critical:{order_id}"
+            try:
+                order = orders_by_id.get(order_id)
+                if not order:
+                    continue
+                AutomationService._notify_and_log(
+                    db, rule_key=AutomationService.RULE_DELIVERY_RISK_CRITICAL, trigger_event=trigger_event,
+                    condition_summary=f"{order.order_code}'s delivery risk is CRITICAL: {flag['reason']}",
+                    notification_type="DELIVERY_RISK_CRITICAL", severity="CRITICAL",
+                    title=f"Delivery risk CRITICAL - {order.order_code}",
+                    message=f"{order.order_code} is at CRITICAL delivery risk: {flag['reason']}",
+                    entity_type="order", entity_id=order.id, dedup_key=dedup_key,
+                    action_taken="notify:DELIVERY_RISK_CRITICAL", action_path=f"/orders/{order.id}",
+                    recipient_user_id=None,
+                )
+            except Exception as exc:
+                db.rollback()
+                AutomationService._log(
+                    db, rule_key=AutomationService.RULE_DELIVERY_RISK_CRITICAL, trigger_event=trigger_event,
+                    condition_summary=f"Failed while evaluating order id={order_id}.",
+                    action_taken="notify:DELIVERY_RISK_CRITICAL", status="FAILED",
+                    entity_type="order", entity_id=order_id, dedup_key=dedup_key, error_message=str(exc),
                 )
 
     # ---------------------------------------------------------------- #
@@ -541,6 +695,144 @@ class AutomationService:
                 )
 
     # ---------------------------------------------------------------- #
+    # Rule: Pending leave approval -> notify (broadcast)
+    # ---------------------------------------------------------------- #
+    @staticmethod
+    def check_pending_leave_approval(db: Session, trigger_event: str = "on_demand_check") -> None:
+        """Approval Intelligence (Family 131 section 23): a Leave request
+        left in 'Pending' is a real, queryable approval-required
+        condition (Leave.status - see app/modules/hr/models.py), not a
+        fabricated workflow. Broadcast, matching leaves.py's own existing
+        visibility (list_leaves is open to any authenticated user, not
+        master-only) - only the approve/reject action itself is
+        master-only (see leaves.py's require_role("master"))."""
+        leaves = db.query(Leave).filter(Leave.status == "Pending").all()
+        for leave in leaves:
+            dedup_key = f"automation:pending_leave_approval:{leave.id}"
+            try:
+                employee_name = leave.employee.name if leave.employee else "An employee"
+                AutomationService._notify_and_log(
+                    db, rule_key=AutomationService.RULE_PENDING_LEAVE_APPROVAL, trigger_event=trigger_event,
+                    condition_summary=(
+                        f"Leave request (id={leave.id}) for {employee_name} - {leave.leave_type}, "
+                        f"{leave.days} day(s) - is still 'Pending'."
+                    ),
+                    notification_type="LEAVE_APPROVAL_REQUIRED", severity="INFO",
+                    title=f"Leave approval required - {employee_name}",
+                    message=(
+                        f"{employee_name} requested {leave.days} day(s) of {leave.leave_type} leave "
+                        f"starting {leave.start_date.strftime('%d %b %Y')}, awaiting approval."
+                    ),
+                    entity_type="leave", entity_id=leave.id, dedup_key=dedup_key,
+                    action_taken="notify:LEAVE_APPROVAL_REQUIRED", action_path="/leaves",
+                    recipient_user_id=None,
+                )
+            except Exception as exc:
+                db.rollback()
+                AutomationService._log(
+                    db, rule_key=AutomationService.RULE_PENDING_LEAVE_APPROVAL, trigger_event=trigger_event,
+                    condition_summary=f"Failed while evaluating leave id={leave.id}.",
+                    action_taken="notify:LEAVE_APPROVAL_REQUIRED", status="FAILED",
+                    entity_type="leave", entity_id=leave.id, dedup_key=dedup_key, error_message=str(exc),
+                )
+
+    # ---------------------------------------------------------------- #
+    # Rule: Pending salary advance approval -> notify master
+    # ---------------------------------------------------------------- #
+    @staticmethod
+    def check_pending_salary_advance_approval(db: Session, trigger_event: str = "on_demand_check") -> None:
+        """A SalaryAdvance request left in 'Pending' (see
+        app/modules/hr/models.py) is a real approval-required condition.
+        Master-only visibility (not broadcast) - the message states a
+        requested amount, the same financial-commitment sensitivity
+        FINANCIAL_NOTIFICATION_TYPES already assigns to PURCHASE_RECOMMENDED
+        and ESTIMATE_PENDING_RESPONSE."""
+        advances = db.query(SalaryAdvance).filter(SalaryAdvance.status == "Pending").all()
+        for adv in advances:
+            dedup_key = f"automation:pending_salary_advance_approval:{adv.id}"
+            try:
+                employee_name = adv.employee.name if adv.employee else "An employee"
+                AutomationService._notify_and_log(
+                    db, rule_key=AutomationService.RULE_PENDING_SALARY_ADVANCE_APPROVAL, trigger_event=trigger_event,
+                    condition_summary=(
+                        f"Salary advance request (id={adv.id}) for {employee_name} - "
+                        f"Rs {float(adv.requested_amount):,.2f} - is still 'Pending'."
+                    ),
+                    notification_type="SALARY_ADVANCE_APPROVAL_REQUIRED", severity="WARNING",
+                    title=f"Advance approval required - {employee_name}",
+                    message=(
+                        f"{employee_name} requested a salary advance of Rs {float(adv.requested_amount):,.2f} "
+                        f"on {adv.request_date.strftime('%d %b %Y')}, awaiting approval."
+                    ),
+                    entity_type="salary_advance", entity_id=adv.id, dedup_key=dedup_key,
+                    action_taken="notify:SALARY_ADVANCE_APPROVAL_REQUIRED", action_path="/salary-advances",
+                    recipient_user_id=None,
+                )
+            except Exception as exc:
+                db.rollback()
+                AutomationService._log(
+                    db, rule_key=AutomationService.RULE_PENDING_SALARY_ADVANCE_APPROVAL, trigger_event=trigger_event,
+                    condition_summary=f"Failed while evaluating salary advance id={adv.id}.",
+                    action_taken="notify:SALARY_ADVANCE_APPROVAL_REQUIRED", status="FAILED",
+                    entity_type="salary_advance", entity_id=adv.id, dedup_key=dedup_key, error_message=str(exc),
+                )
+
+    # ---------------------------------------------------------------- #
+    # Rule: Payroll issue -> a draft SalarySlip whose own pay-period
+    # month has already ended -> notify master
+    # ---------------------------------------------------------------- #
+    @staticmethod
+    def check_payroll_finalization_overdue(db: Session, trigger_event: str = "on_demand_check") -> None:
+        """Payroll Issue (Family 131 section 23): a SalarySlip left in
+        'draft' after its own pay-period month has fully ended (plus a
+        short grace window - see PAYROLL_FINALIZATION_GRACE_DAYS) is a
+        genuine operational finding, derived only from SalarySlip.month/
+        year/status (see app/modules/hr/models.py) - never a fabricated
+        payroll risk score. month is free text (e.g. "August" - see
+        SalarySlipsPage's own placeholder); unparseable values are
+        skipped rather than guessed at."""
+        now = datetime.utcnow()
+        slips = db.query(SalarySlip).filter(SalarySlip.status == "draft").all()
+        for slip in slips:
+            dedup_key = f"automation:payroll_finalization_overdue:{slip.id}"
+            try:
+                try:
+                    month_num = datetime.strptime((slip.month or "").strip(), "%B").month
+                    year_num = int(slip.year)
+                except (ValueError, TypeError):
+                    continue
+                days_in_month = calendar.monthrange(year_num, month_num)[1]
+                period_end = datetime(year_num, month_num, days_in_month)
+                if now < period_end + timedelta(days=PAYROLL_FINALIZATION_GRACE_DAYS):
+                    continue
+                employee_name = slip.employee.name if slip.employee else "An employee"
+                days_overdue = (now - period_end).days
+                AutomationService._notify_and_log(
+                    db, rule_key=AutomationService.RULE_PAYROLL_FINALIZATION_OVERDUE, trigger_event=trigger_event,
+                    condition_summary=(
+                        f"Salary slip (id={slip.id}) for {employee_name} - {slip.month} {slip.year} - "
+                        f"is still 'draft', {days_overdue} day(s) after the pay period ended."
+                    ),
+                    notification_type="PAYROLL_FINALIZATION_OVERDUE", severity="WARNING",
+                    title=f"Payroll not finalized - {employee_name} ({slip.month} {slip.year})",
+                    message=(
+                        f"{employee_name}'s salary slip for {slip.month} {slip.year} is still in draft, "
+                        f"{days_overdue} day(s) after the pay period ended."
+                    ),
+                    entity_type="salary_slip", entity_id=slip.id, dedup_key=dedup_key,
+                    action_taken="notify:PAYROLL_FINALIZATION_OVERDUE", action_path="/salary-slips",
+                    recipient_user_id=None,
+                )
+            except Exception as exc:
+                db.rollback()
+                AutomationService._log(
+                    db, rule_key=AutomationService.RULE_PAYROLL_FINALIZATION_OVERDUE, trigger_event=trigger_event,
+                    condition_summary=f"Failed while evaluating salary slip id={slip.id}.",
+                    action_taken="notify:PAYROLL_FINALIZATION_OVERDUE", status="FAILED",
+                    entity_type="salary_slip", entity_id=slip.id, dedup_key=dedup_key, error_message=str(exc),
+                )
+
+    # ---------------------------------------------------------------- #
     # Rule: Operational summary -> one consolidated broadcast
     # Not a second analytics system: every count here is a direct query
     # against the same tables/conditions the other rules and
@@ -621,6 +913,8 @@ class AutomationService:
         for check in (
             AutomationService.check_task_overdue,
             AutomationService.check_low_stock_purchase_recommendations,
+            AutomationService.check_order_at_risk_material_shortage,
+            AutomationService.check_delivery_risk_critical,
             AutomationService.check_purchase_delivery_approaching,
             AutomationService.check_payment_overdue,
             AutomationService.check_project_delayed,
@@ -628,6 +922,9 @@ class AutomationService:
             AutomationService.check_follow_up_due,
             AutomationService.check_pending_estimate_response,
             AutomationService.check_project_deadline_approaching,
+            AutomationService.check_pending_leave_approval,
+            AutomationService.check_pending_salary_advance_approval,
+            AutomationService.check_payroll_finalization_overdue,
             AutomationService.check_operational_summary,
         ):
             try:

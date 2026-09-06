@@ -27,8 +27,10 @@ function OrdersPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const location = useLocation();
+  const [sortByRisk, setSortByRisk] = useState(!!location.state?.sortByRisk);
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [orderLineItems, setOrderLineItems] = useState([emptyRow()]);
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -43,7 +45,9 @@ function OrdersPage() {
   const activeFilters = () => {
     const params = {};
     if (statusFilter) params.status = statusFilter;
+    if (priorityFilter) params.priority = priorityFilter;
     if (overdueOnly) params.overdue_only = true;
+    if (sortByRisk) params.sort = 'risk';
     return params;
   };
 
@@ -62,10 +66,22 @@ function OrdersPage() {
     load(activeFilters());
   }, []);
 
-  const applyFilters = (nextStatus, nextOverdue) => {
+  const applyFilters = (nextStatus, nextPriority, nextOverdue) => {
     const params = {};
     if (nextStatus) params.status = nextStatus;
+    if (nextPriority) params.priority = nextPriority;
     if (nextOverdue) params.overdue_only = true;
+    if (sortByRisk) params.sort = 'risk';
+    setPage(1);
+    load(params, 1);
+  };
+
+  const toggleSortByRisk = () => {
+    const next = !sortByRisk;
+    setSortByRisk(next);
+    const params = activeFilters();
+    if (next) params.sort = 'risk';
+    else delete params.sort;
     setPage(1);
     load(params, 1);
   };
@@ -73,13 +89,19 @@ function OrdersPage() {
   const handleFilterChange = (e) => {
     const value = e.target.value;
     setStatusFilter(value);
-    applyFilters(value, overdueOnly);
+    applyFilters(value, priorityFilter, overdueOnly);
+  };
+
+  const handlePriorityFilterChange = (e) => {
+    const value = e.target.value;
+    setPriorityFilter(value);
+    applyFilters(statusFilter, value, overdueOnly);
   };
 
   const handleOverdueChange = (e) => {
     const checked = e.target.checked;
     setOverdueOnly(checked);
-    applyFilters(statusFilter, checked);
+    applyFilters(statusFilter, priorityFilter, checked);
   };
 
   const goToPage = (pageNum) => {
@@ -173,6 +195,20 @@ function OrdersPage() {
 
   const columns = [
     { key: 'order_code', label: 'Order ID' },
+    {
+      // Family 130 P0.50: risk severity from the server's batched
+      // attention_risk_level (OrderService.bulk_attention_flags) -
+      // never computed here.
+      key: 'needs_attention', label: 'Attention',
+      render: (v, row) => v ? (
+        <span
+          className={`status-badge ${row.attention_risk_level === 'CRITICAL' ? 'status-danger' : row.attention_risk_level === 'WATCH' ? 'status-warning' : 'status-danger'}`}
+          title={row.attention_reason || ''}
+        >
+          {row.attention_risk_level === 'CRITICAL' ? 'Critical' : row.attention_risk_level === 'WATCH' ? 'Watch' : 'At Risk'}
+        </span>
+      ) : null,
+    },
     { key: 'client_id', label: 'Client', render: (v) => clients.find((c) => c.id === v)?.name || v },
     { key: 'project_type', label: 'Project Type' },
     { key: 'order_value', label: 'Order Value', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
@@ -180,6 +216,7 @@ function OrdersPage() {
     { key: 'balance', label: 'Balance', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
     { key: 'payment_status', label: 'Payment Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
     { key: 'project_status', label: 'Stage' }, { key: 'progress_percent', label: 'Progress %' },
+    { key: 'priority', label: 'Priority', render: (v) => v ? <span className={`status-badge ${statusClass(v === 'Urgent' || v === 'High' ? 'overdue' : v)}`}>{v}</span> : '-' },
     { key: 'design_status', label: 'Design' }, { key: 'execution_status', label: 'Execution' },
     { key: 'delivery_status', label: 'Delivery' },
     {
@@ -245,9 +282,17 @@ function OrdersPage() {
           <option value="">All Stages</option>
           {STAGE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
+        <select className="form-input" value={priorityFilter} onChange={handlePriorityFilterChange}>
+          <option value="">All Priorities</option>
+          {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={overdueOnly} onChange={handleOverdueChange} />
           Balance outstanding 30+ days
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={sortByRisk} onChange={toggleSortByRisk} />
+          Sort by delivery risk
         </label>
       </form>
       <Table columns={columns} data={orders} loading={pageLoading} error={loadError} onRetry={() => load(activeFilters())} onRowClick={(row) => navigate(`/orders/${row.id}`)} emptyMessage="No orders yet. Create your first order to get started." emptyAction={isPrivileged ? { label: 'New Order', onClick: () => setShowAdd(true) } : undefined} />

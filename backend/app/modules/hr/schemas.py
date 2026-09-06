@@ -3,7 +3,7 @@ working calendar (weekdays + company holidays). Consolidated from five
 separate modules that all belong to the same "human resources" feature
 area."""
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime, date as date_type
 
@@ -109,6 +109,9 @@ class AttendanceBase(BaseModel):
     out_time: Optional[datetime] = None
     standard_hours: Decimal = Decimal("8")
     attendance_status: str = "Present"
+    # Family P0.43 - a real, directly-settable fact (see the model
+    # column's own comment) - never derived from in_time/out_time.
+    overtime_hours: Decimal = Decimal("0")
     remarks: Optional[str] = None
 
     @field_validator("date")
@@ -127,6 +130,13 @@ class AttendanceBase(BaseModel):
     def standard_hours_not_negative(cls, v: Decimal) -> Decimal:
         if v < 0:
             raise ValueError("Standard hours cannot be negative")
+        return v
+
+    @field_validator("overtime_hours")
+    @classmethod
+    def overtime_hours_not_negative(cls, v: Decimal) -> Decimal:
+        if v < 0:
+            raise ValueError("Overtime hours cannot be negative")
         return v
 
     @field_validator("attendance_status")
@@ -148,11 +158,53 @@ class AttendanceCreate(AttendanceBase):
     pass
 
 
+class AttendanceOvertimeAction(BaseModel):
+    """Master's explicit 'Manage Overtime' action - one or more dates
+    for one employee, and whether this call ADDS to whatever overtime
+    already exists on each date or SETS it outright. These are
+    deliberately different actions (spec sections 11/12): "Add" must
+    never silently overwrite a value someone already recorded; "Set"
+    is the explicit, intentional replacement."""
+    employee_id: int
+    dates: List[datetime]
+    hours: Decimal
+    mode: str = "add"  # "add" or "set"
+
+    @field_validator("hours")
+    @classmethod
+    def hours_not_negative(cls, v: Decimal) -> Decimal:
+        if v < 0:
+            raise ValueError("Overtime hours cannot be negative")
+        return v
+
+    @field_validator("dates")
+    @classmethod
+    def dates_not_empty(cls, v: List[datetime]) -> List[datetime]:
+        if not v:
+            raise ValueError("At least one date must be provided")
+        return v
+
+    @field_validator("mode")
+    @classmethod
+    def mode_must_be_valid(cls, v: str) -> str:
+        if v not in ("add", "set"):
+            raise ValueError("mode must be 'add' or 'set'")
+        return v
+
+
 class AttendanceUpdate(BaseModel):
     in_time: Optional[datetime] = None
     out_time: Optional[datetime] = None
     attendance_status: Optional[str] = None
+    overtime_hours: Optional[Decimal] = None
     remarks: Optional[str] = None
+
+    @field_validator("overtime_hours")
+    @classmethod
+    def overtime_hours_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v < 0:
+            raise ValueError("Overtime hours cannot be negative")
+        return v
 
     @field_validator("attendance_status")
     @classmethod
@@ -225,6 +277,9 @@ class LeaveResponse(LeaveBase):
 # --- Salary Slip -----------------------------------------------------------
 
 
+SALARY_SLIP_STATUSES = {"draft", "finalized", "paid"}
+
+
 class SalarySlipBase(BaseModel):
     employee_id: int
     month: str
@@ -270,6 +325,20 @@ class SalarySlipUpdate(BaseModel):
     tds_deduction: Optional[Decimal] = None
     other_deductions: Optional[Decimal] = None
 
+    @field_validator("status")
+    @classmethod
+    def status_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        # The model's own comment documents these three values, but
+        # nothing previously enforced them - a typo or different
+        # casing would silently never match anything that filters on
+        # status (e.g. the payroll summary/business-risk payroll
+        # signal, both of which query for the exact string "finalized").
+        if v is None:
+            return v
+        if v not in SALARY_SLIP_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(sorted(SALARY_SLIP_STATUSES))}")
+        return v
+
     @field_validator("working_days", "paid_days")
     @classmethod
     def _must_be_positive(cls, v, info):
@@ -288,6 +357,10 @@ class SalarySlipUpdate(BaseModel):
 class SalarySlipResponse(SalarySlipBase):
     id: int
     business_id: str
+    # Family P0.44 - never on Create/Update (see _compute_net's own
+    # comment); the only way this becomes non-zero is the salary
+    # advance recovery action, so it is read-only here.
+    advance_deduction: Decimal = Decimal("0")
     net_salary: Decimal
     status: str
     created_at: datetime
@@ -333,6 +406,99 @@ class CompanyHolidayUpdate(BaseModel):
 
 class CompanyHolidayResponse(CompanyHolidayBase):
     id: int
+
+    class Config:
+        from_attributes = True
+
+
+# --- Salary Advance (Family P0.44) ----------------------------------------
+
+
+SALARY_ADVANCE_STATUSES = {"Pending", "Approved", "Rejected"}
+
+
+class SalaryAdvanceCreate(BaseModel):
+    """Covers both the employee-initiated request AND the Master
+    direct-advance workflow (spec section 8) - the difference is only
+    who the authenticated caller is, enforced by the route, not a
+    separate schema. employee_id is accepted here (needed for the
+    Master-on-behalf case); an employee's own request always ignores
+    whatever employee_id they send and uses their own, so an employee
+    can never request on someone else's behalf by editing this field."""
+    employee_id: int
+    requested_amount: Decimal
+    request_date: datetime
+    reason: Optional[str] = None
+    remarks: Optional[str] = None
+
+    @field_validator("requested_amount")
+    @classmethod
+    def requested_amount_must_be_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("Requested amount must be greater than zero")
+        return v
+
+
+class SalaryAdvanceApprove(BaseModel):
+    """approved_amount is optional - omitting it means "approve exactly
+    the requested amount" (spec section 7's "approve a different
+    amount" is opt-in, not mandatory)."""
+    approved_amount: Optional[Decimal] = None
+    recovery_month: str
+    recovery_year: str
+    remarks: Optional[str] = None
+
+    @field_validator("approved_amount")
+    @classmethod
+    def approved_amount_must_be_positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v <= 0:
+            raise ValueError("Approved amount must be greater than zero")
+        return v
+
+
+class SalaryAdvanceReject(BaseModel):
+    rejection_reason: Optional[str] = None
+
+
+class SalaryAdvanceRecovery(BaseModel):
+    """Links one recovery action to one real, existing SalarySlip -
+    the spec's own "must use the authoritative payroll calculation"
+    requirement means this cannot just be a number typed here; the
+    route resolves the SalarySlip for (employee_id, month, year) and
+    fails if it does not exist, rather than inventing one."""
+    amount: Decimal
+    month: str
+    year: str
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("Recovery amount must be greater than zero")
+        return v
+
+
+class SalaryAdvanceResponse(BaseModel):
+    id: int
+    business_id: Optional[str] = None
+    employee_id: int
+    employee_name: Optional[str] = None
+    requested_amount: Decimal
+    request_date: datetime
+    reason: Optional[str] = None
+    status: str
+    approved_amount: Optional[Decimal] = None
+    approved_by: Optional[str] = None
+    approval_date: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    recovery_month: Optional[str] = None
+    recovery_year: Optional[str] = None
+    recovered_amount: Decimal
+    outstanding_amount: Decimal
+    created_by: Optional[str] = None
+    remarks: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

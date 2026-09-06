@@ -20,6 +20,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import NotFoundPage from './pages/NotFoundPage';
 const DashboardPage = React.lazy(() => import('./modules/reporting/pages/DashboardPage'));
+const BusinessDecisionCentrePage = React.lazy(() => import('./modules/reporting/pages/BusinessDecisionCentrePage'));
 const InventoryPage = React.lazy(() => import('./modules/inventory/pages/InventoryPage'));
 const MaterialsPage = React.lazy(() => import('./modules/inventory/pages/MaterialsPage'));
 const LocationsPage = React.lazy(() => import('./modules/inventory/pages/LocationsPage'));
@@ -41,6 +42,8 @@ const RateCardImportPage = React.lazy(() => import('./modules/catalog/pages/Rate
 const SupplierDetailPage = React.lazy(() => import('./modules/procurement/pages/SupplierDetailPage'));
 const PurchasesPage = React.lazy(() => import('./modules/procurement/pages/PurchasesPage'));
 const PurchaseDetailPage = React.lazy(() => import('./modules/procurement/pages/PurchaseDetailPage'));
+const ProcurementRequirementsPage = React.lazy(() => import('./modules/procurement/pages/ProcurementRequirementsPage'));
+const ProcurementRequirementDetailPage = React.lazy(() => import('./modules/procurement/pages/ProcurementRequirementDetailPage'));
 const IssuesPage = React.lazy(() => import('./modules/operations/pages/IssuesPage'));
 const ClientsPage = React.lazy(() => import('./modules/clients/pages/ClientsPage'));
 const ClientDetailPage = React.lazy(() => import('./modules/clients/pages/ClientDetailPage'));
@@ -63,6 +66,7 @@ const CandidatesPage = React.lazy(() => import('./modules/recruitment/pages/Cand
 const CandidateDetailPage = React.lazy(() => import('./modules/recruitment/pages/CandidateDetailPage'));
 const InterviewsPage = React.lazy(() => import('./modules/recruitment/pages/InterviewsPage'));
 const SalarySlipsPage = React.lazy(() => import('./modules/hr/pages/SalarySlipsPage'));
+const SalaryAdvancesPage = React.lazy(() => import('./modules/hr/pages/SalaryAdvancesPage'));
 const UsersPage = React.lazy(() => import('./pages/UsersPage'));
 const AuditLogsPage = React.lazy(() => import('./pages/AuditLogsPage'));
 const AnalyticsPage = React.lazy(() => import('./modules/reporting/pages/AnalyticsPage'));
@@ -178,6 +182,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/" element={<Protected><DashboardPage /></Protected>} />
       <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/business-decisions" element={<Protected><BusinessDecisionCentrePage /></Protected>} />
       <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
       <Route path="/inventory" element={<Protected><InventoryPage /></Protected>} />
       <Route path="/materials" element={<Protected><MaterialsPage /></Protected>} />
@@ -200,6 +205,8 @@ function AppRoutes() {
       <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />
       <Route path="/purchases/:purchaseId" element={<Protected><PurchaseDetailPage /></Protected>} />
+      <Route path="/procurement-requirements" element={<Protected><ProcurementRequirementsPage /></Protected>} />
+      <Route path="/procurement-requirements/:requirementId" element={<Protected><ProcurementRequirementDetailPage /></Protected>} />
       <Route path="/issues" element={<Protected><IssuesPage /></Protected>} />
       <Route path="/clients" element={<Protected><ClientsPage /></Protected>} />
       <Route path="/clients/:clientId" element={<Protected><ClientDetailPage /></Protected>} />
@@ -225,6 +232,7 @@ function AppRoutes() {
       <Route path="/candidates/:candidateId" element={<Protected><CandidateDetailPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
       <Route path="/salary-slips" element={<Protected><SalarySlipsPage /></Protected>} />
+      <Route path="/salary-advances" element={<Protected><SalaryAdvancesPage /></Protected>} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </Suspense>

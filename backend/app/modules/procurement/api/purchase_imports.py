@@ -8,12 +8,13 @@ from app.platform.database.database import get_db
 from app.platform.audit.audit import log_action
 from app.platform.configuration.config import settings
 from app.platform.security.security import require_role
-from app.modules.inventory.models import Material, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Supplier
 from app.modules.inventory.schemas import PurchaseCreate
 from app.modules.procurement.imports.purchase_schemas import (
     ImportPreviewResponse, ImportRowPreview, ImportCommitRequest, ImportCommitResult,
 )
-from app.modules.inventory.stock_service import StockService
+from app.modules.procurement.services import ProcurementService
 from app.platform.database.id_generator import generate_unique_code, generate_business_id
 from app.modules.procurement.imports.purchase_import import (
     build_import_template, parse_uploaded_workbook, validate_and_match_row, normalize_match_key,
@@ -144,7 +145,7 @@ def commit_import(data: ImportCommitRequest, request: Request, db: Session = Dep
                    auth=Depends(require_role("master"))):
     """Actually creates records - only for rows the caller sends here,
     which should be exactly the rows the user reviewed and confirmed in
-    the preview step. Each row commits individually (StockService.
+    the preview step. Each row commits individually (ProcurementService.
     record_purchase commits internally, same as manual purchase entry) -
     this is NOT one atomic all-or-nothing transaction. If a row fails
     partway through the batch, earlier rows in this same request are
@@ -185,7 +186,7 @@ def commit_import(data: ImportCommitRequest, request: Request, db: Session = Dep
             if not material_id:
                 raise ValueError(f'Row for "{row.material_name}" has no resolved material - not imported.')
 
-            purchase = StockService.record_purchase(db, PurchaseCreate(
+            purchase = ProcurementService.record_purchase(db, PurchaseCreate(
                 date=row.invoice_date or datetime.utcnow(),
                 supplier_id=row.matched_supplier_id, material_id=material_id,
                 quantity=row.quantity, unit=row.unit, rate=row.rate,

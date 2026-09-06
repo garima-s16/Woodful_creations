@@ -8,7 +8,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 
-from app.modules.inventory.models import Material, SupplierMaterial
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import SupplierMaterial
 from app.modules.catalog.models import Product
 from app.modules.sales.models import OrderItem, EstimateLineItem
 from app.modules.ai.schemas import ProposedAction

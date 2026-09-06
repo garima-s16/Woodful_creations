@@ -1,5 +1,6 @@
 """Shop-floor operations domain models: DailyTask, TaskComment,
-ProductionJob, Issue, Milestone, ProjectExpense.
+ProductionJob, ProductionOperation, WorkCentre, CuttingRequirement,
+Issue, Milestone, ProjectExpense.
 
 Consolidated from daily_task.py + production_job.py + issue.py +
 milestone.py + project_expense.py. These are
@@ -73,6 +74,25 @@ class TaskComment(BaseModel):
     task = relationship("DailyTask")
 
 
+class WorkCentre(BaseModel):
+    """A configurable production resource (P0.3.5) - CNC, Cutting, Edge
+    Banding, Assembly, Finishing, or any other resource this business
+    actually has, never a hardcoded list. capacity_hours_per_day is a
+    simple, honest daily-capacity figure - not a full working-calendar
+    system (holidays, shift patterns, per-day overrides), which this
+    codebase has no existing model for and which P0.3.6's capacity
+    check does not yet need; building one now would be exactly the
+    "fabricated architecture" the brief warns against."""
+    __tablename__ = "work_centres"
+
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
+    name = Column(String(100), nullable=False, unique=True)
+    type = Column(String(50), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    capacity_hours_per_day = Column(Numeric(5, 2), nullable=True)
+    notes = Column(Text, nullable=True)
+
+
 class ProductionJob(BaseModel):
     """Production & Machine Job Tracker."""
     __tablename__ = "production_jobs"
@@ -95,11 +115,56 @@ class ProductionJob(BaseModel):
     status = Column(String(20), nullable=False, default="Not Started", index=True)
     completion_date = Column(DateTime, nullable=True)  # set when the job actually transitions to Completed
     remarks = Column(Text, nullable=True)
-    blocker_reason = Column(Text, nullable=True)  # set when status="Blocked" - why, matching DailyTask.delay_reason's role
+    blocker_reason = Column(Text, nullable=True)  # freestanding - can accompany any status, not tied to a "Blocked" status value (there isn't one; see PRODUCTION_JOB_STATUSES in schemas.py)
 
     employee = relationship("Employee")
     order = relationship("Order", back_populates="production_jobs")
     material = relationship("Material")
+    operations = relationship("ProductionOperation", back_populates="production_job",
+                               cascade="all, delete-orphan", order_by="ProductionOperation.sequence")
+
+
+class ProductionOperation(BaseModel):
+    """A single manufacturing step within a ProductionJob (P0.3.3/3.4) -
+    e.g. Cutting -> CNC -> Edge Banding -> Assembly -> Finishing.
+    Deliberately a simple, linear dependency (depends_on_operation_id,
+    at most one predecessor) rather than a general workflow/DAG engine -
+    matches every dependency example the spec gives (a strictly ordered
+    chain) and its explicit "do not build an unnecessarily complex
+    workflow engine".
+
+    resource is free text for now, matching ProductionJob.machine's
+    existing convention - work_centre_id below is the newer, optional
+    link to a real, configured WorkCentre (P0.3.5); both exist
+    side by side so operations recorded before WorkCentre existed
+    remain valid without a backfill."""
+    __tablename__ = "production_operations"
+
+    production_job_id = Column(Integer, ForeignKey("production_jobs.id"), nullable=False, index=True)
+    sequence = Column(Integer, nullable=False, default=1)
+    operation_name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    resource = Column(String(100), nullable=True)
+    work_centre_id = Column(Integer, ForeignKey("work_centres.id"), nullable=True, index=True)
+    estimated_duration_minutes = Column(Integer, nullable=True)
+    actual_duration_minutes = Column(Integer, nullable=True)
+    status = Column(String(20), nullable=False, default="Not Started", index=True)
+    depends_on_operation_id = Column(Integer, ForeignKey("production_operations.id"), nullable=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+
+    production_job = relationship("ProductionJob", back_populates="operations")
+    depends_on = relationship("ProductionOperation", remote_side="ProductionOperation.id")
+    employee = relationship("Employee")
+    work_centre = relationship("WorkCentre")
+
+    @property
+    def is_blocked_by_dependency(self):
+        """True only when this operation has a real predecessor that is
+        not yet Completed - never a fabricated block. An operation with
+        no predecessor is never blocked by this check."""
+        return bool(self.depends_on_operation_id) and self.depends_on is not None and self.depends_on.status != "Completed"
 
 
 class Issue(BaseModel):
@@ -172,3 +237,49 @@ class ProjectExpense(BaseModel):
     remarks = Column(Text, nullable=True)
 
     order = relationship("Order", back_populates="expenses")
+
+
+class CuttingRequirement(BaseModel):
+    """A single part that needs to be cut from a material sheet (P0.3
+    section 25) - one row per part, not a single lump quantity, so
+    each part's own dimensions/grain/rotation constraint is tracked
+    individually rather than collapsed into free text (the brief's own
+    "do not store critical cutting data only as free text"). Creating
+    this record does NOT touch physical stock - it is a plan, not a
+    consumption event; StockService.record_issue (via Issue) remains
+    the only path that actually reduces Material.current_stock, kept
+    completely separate on purpose.
+
+    Real dimensions in millimetres (length/width), not a vague "size"
+    string. thickness_mm is optional since it's frequently already
+    implied by the chosen material (Material.thickness_size), not
+    duplicated here unless a part genuinely needs a different
+    thickness recorded. grain_direction/rotation_allowed exist because
+    a part that must keep its grain aligned genuinely cannot be
+    freely rotated 90 degrees when nested onto a sheet - this is
+    real, structural information a nesting algorithm needs, not
+    decoration."""
+    __tablename__ = "cutting_requirements"
+
+    business_id = Column(String(10), unique=True, index=True, nullable=True)
+    production_job_id = Column(Integer, ForeignKey("production_jobs.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)
+    part_name = Column(String(255), nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    length_mm = Column(Numeric(10, 2), nullable=False)
+    width_mm = Column(Numeric(10, 2), nullable=False)
+    thickness_mm = Column(Numeric(10, 2), nullable=True)
+    # "Length" / "Width" / "None" - free text like ProductionJob.machine's
+    # existing convention (a fixed grain-direction enum would need to
+    # anticipate every material type up front; this business decides
+    # its own vocabulary instead), but never left implicit in a
+    # description field, which is the actual brief requirement.
+    grain_direction = Column(String(20), nullable=True)
+    rotation_allowed = Column(Boolean, nullable=False, default=True)
+    kerf_mm = Column(Numeric(6, 2), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    production_job = relationship("ProductionJob")
+    product = relationship("Product")
+    material = relationship("Material")

@@ -64,3 +64,45 @@ def test_overall_gross_margin_ratio_is_zero_when_no_orders(client, test_user):
     _login(client, test_user)
     resp = client.get("/api/dashboard/orders").json()
     assert resp["overall_gross_margin_ratio"] == 0.0
+
+
+def test_delivery_risk_summary_counts_critical_order(client, test_user):
+    """P0.50 section 23 - the dashboard summary must reuse the exact
+    same bulk_attention_flags calculation as the Orders List, never a
+    separately-derived count."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Dashboard Risk Client", "phone": "9000010150"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Dashboard Risk Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Dashboard critical work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    resp = client.get("/api/dashboard/orders").json()
+    assert resp["delivery_risk_summary"]["CRITICAL"] >= 1
+
+
+def test_delivery_risk_summary_excludes_completed_orders(client, test_user):
+    """A Completed order's historical delivery timing is not an
+    actionable "needs attention today" signal, even if its delivery
+    date happens to be in the past."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Dashboard Completed Client", "phone": "9000010151"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=10)).isoformat(),
+    }).json()
+    client.put(f"/api/orders/{order['id']}", json={"project_status": "Completed"})
+
+    resp = client.get("/api/dashboard/orders").json()
+    total_active_in_summary = sum(resp["delivery_risk_summary"].values())
+    # This order (now Completed) must not be counted in the summary at
+    # all - active_orders (the denominator this summary is built from)
+    # must also exclude it.
+    assert total_active_in_summary == resp["active_orders"]

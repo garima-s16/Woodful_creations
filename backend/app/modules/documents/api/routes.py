@@ -14,7 +14,7 @@ from app.platform.audit.audit import log_action
 from app.platform.configuration.config import settings
 from app.modules.documents.models import GenericDocument, DOCUMENT_PARENT_TYPES
 from app.modules.sales.models import Order
-from app.modules.inventory.models import Supplier, Purchase
+from app.modules.procurement.models import Supplier, Purchase
 from app.modules.hr.models import Employee
 from app.modules.catalog.models import Product
 from app.modules.documents.schemas import GenericDocumentResponse

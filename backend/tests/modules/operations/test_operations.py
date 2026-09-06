@@ -569,3 +569,88 @@ def test_tasks_export_query_count_does_not_scale_with_row_count(client, test_use
     # for this one export alone. Eager-loading keeps it to a small,
     # fixed number regardless of row count.
     assert counter.count < 15, f"expected a bounded query count, got {counter.count} - possible N+1 regression"
+
+
+def _make_at_risk_order(client, suffix):
+    """Same shortage-inducing setup as test_shortage_intelligence.py -
+    duplicated in miniature here since that module owns the shortage
+    formula's own tests; this file only needs one at-risk order to
+    prove the task-list enrichment surfaces it correctly."""
+    material = client.post("/api/materials/", json={
+        "name": f"Task Risk Sheet {suffix}", "unit": "Sheets", "opening_stock": "1", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": f"Task Risk Product {suffix}", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": f"Task Risk Client {suffix}", "phone": f"900001040{suffix}"}).json()["id"]
+    return client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+
+def test_task_list_flags_material_at_risk_when_requested(client, test_user):
+    _login(client, test_user)
+    employee_id = client.post("/api/employees/", json={
+        "name": "Task Risk Employee", "monthly_salary": "20000", "daily_wage": "800",
+    }).json()["id"]
+    order = _make_at_risk_order(client, "1")
+    task = client.post("/api/daily-tasks/", json={
+        "date": "2026-08-19T00:00:00", "employee_id": employee_id, "order_id": order["id"],
+        "task_description": "Cut sheets for at-risk order",
+    }).json()
+
+    resp = client.get("/api/daily-tasks/", params={"include_material_risk": "true"})
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["id"] == task["id"])
+    assert row["material_at_risk"] is True
+
+
+def test_task_list_omits_material_risk_by_default(client, test_user):
+    """The flag is opt-in - a plain list call (e.g. the dashboard's
+    small "my tasks" widget) must not pay for the bulk shortage
+    calculation it never asked for, and must not report a false
+    positive by defaulting to True."""
+    _login(client, test_user)
+    employee_id = client.post("/api/employees/", json={
+        "name": "Task Risk Default Employee", "monthly_salary": "20000", "daily_wage": "800",
+    }).json()["id"]
+    order = _make_at_risk_order(client, "2")
+    task = client.post("/api/daily-tasks/", json={
+        "date": "2026-08-19T00:00:00", "employee_id": employee_id, "order_id": order["id"],
+        "task_description": "Cut sheets for at-risk order, no flag requested",
+    }).json()
+
+    resp = client.get("/api/daily-tasks/")
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["id"] == task["id"])
+    assert row["material_at_risk"] is False
+
+
+def test_task_list_material_at_risk_false_for_well_stocked_order(client, test_user):
+    _login(client, test_user)
+    employee_id = client.post("/api/employees/", json={
+        "name": "Task No Risk Employee", "monthly_salary": "20000", "daily_wage": "800",
+    }).json()["id"]
+    material = client.post("/api/materials/", json={
+        "name": "Task No Risk Sheet", "unit": "Sheets", "opening_stock": "100", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Task No Risk Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "2"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Task No Risk Client", "phone": "9000010403"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+    task = client.post("/api/daily-tasks/", json={
+        "date": "2026-08-19T00:00:00", "employee_id": employee_id, "order_id": order["id"],
+        "task_description": "Cut sheets for well-stocked order",
+    }).json()
+
+    resp = client.get("/api/daily-tasks/", params={"include_material_risk": "true"})
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["id"] == task["id"])
+    assert row["material_at_risk"] is False

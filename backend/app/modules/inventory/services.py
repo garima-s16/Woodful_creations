@@ -12,7 +12,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
-from app.modules.inventory.models import Material, Purchase, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase, Supplier
 from app.modules.operations.models import Issue
 from app.modules.ai.schemas import ProposedAction
 from app.modules.inventory.imports.material_interpreter import extract_thickness, interpret_material_name
@@ -213,6 +214,28 @@ def _stock_summary(db: Session, user_role: str = "user"):
         f"You have {material_count} materials tracked.",
         ["Check low stock", "Show out of stock"], [],
     )
+
+
+def _at_risk_orders(db: Session):
+    """Which open orders currently have a real, current material
+    shortage - Family 130 section 15's "which materials will run
+    short" target question, framed the more actionable way: not just
+    which material, but which customer order it actually threatens."""
+    from app.modules.inventory.stock_service import StockService
+    at_risk = StockService.calculate_at_risk_orders(db)
+    if not at_risk:
+        return "No open orders are currently at risk of a material shortage.", [], []
+    records = []
+    for row in at_risk[:10]:
+        top_material = row["materials"][0]
+        extra = f" (+{row['total_shortage_lines'] - 1} more material)" if row["total_shortage_lines"] > 1 else ""
+        records.append({
+            "type": "Order", "label": f"{row['order_code']} - {row['client_name'] or 'Client'}",
+            "sublabel": f"Short on {top_material['material_name']}{extra}",
+            "path": f"/orders/{row['order_id']}",
+            "actions": [{"label": "View Order", "path": f"/orders/{row['order_id']}"}],
+        })
+    return f"{len(at_risk)} order(s) are at risk of a material shortage.", [], records
 
 
 def _low_stock(db: Session, user_role: str):

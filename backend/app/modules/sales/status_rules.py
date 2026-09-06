@@ -99,6 +99,35 @@ ORDER_PROJECT_STATUSES = {
 ORDER_SUB_STATUSES = {"Pending", "In Progress", "Completed"}
 
 
+# A cancelled order is a terminal record - the job has been called off.
+# Unlike estimates (which have a real linear approval flow), most
+# project_status moves are legitimately non-linear (see the docstring
+# below), so this deliberately does NOT introduce a full transition
+# graph. It guards only the one terminal case a real business rule
+# requires: once "Cancelled", the generic status-update field must
+# never silently move an order back into an active stage (e.g.
+# Cancelled -> Material Purchase) - that would be reopening a
+# called-off job through the same field that closed it, with no
+# explicit "reactivate this order" decision behind it. There is no
+# reactivation workflow in this system yet; when one exists, it should
+# be its own explicit action/endpoint, not a side effect of this check
+# being loosened.
+ORDER_TERMINAL_PROJECT_STATUSES = {"Cancelled"}
+
+
+def validate_order_project_status_transition(current: str, new: str) -> Optional[str]:
+    """Returns an error message if the caller is trying to move a
+    terminal-status order to a different status, or None if that's not
+    what's happening. Called in addition to validate_order_status_value
+    (which only checks the new value is a real status name) - this
+    checks the current value too, which that function deliberately does
+    not have."""
+    if current in ORDER_TERMINAL_PROJECT_STATUSES and new != current:
+        return (f"This order is '{current}' and cannot be moved to '{new}'. "
+                f"A cancelled order cannot be reopened through a status update.")
+    return None
+
+
 def validate_order_status_value(field_name: str, value: str) -> Optional[str]:
     """Order status fields don't have a meaningful linear transition
     order the way an estimate's approval flow does (a job can move

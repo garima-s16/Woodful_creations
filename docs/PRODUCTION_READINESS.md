@@ -89,8 +89,8 @@ executed here regardless of how many times they are retried.
   and fixed 2 stale app.core references in
   tests/security/test_security_and_config.py left over from an
   earlier module rename to app.platform.
-- BLOCKED: the actual test suite (pytest, close to 1000 test functions
-  across 36 files) has not been executed - FastAPI/SQLAlchemy/pytest
+- BLOCKED: the actual test suite (pytest, 1120 test functions
+  across 47 files, re-counted directly against the current repo) has not been executed - FastAPI/SQLAlchemy/pytest
   are not installed in this sandbox and cannot be installed without
   network access. Static verification above is not a substitute for
   running the suite. Action required: run pytest in a real environment
@@ -225,6 +225,42 @@ executed here regardless of how many times they are retried.
   this sandbox. Action required: a real test request against actual
   GEMINI_API_KEY, confirming authorization, redaction, and rate
   limiting behave the same way in practice as the code implies.
+
+## Notifications / Automation
+
+- FIXED this session - a real defect, found by actually running the
+  master verification script and then inspecting the notification
+  read endpoints: GET /api/notifications/ and GET
+  /api/notifications/unread-count unconditionally re-ran the entire
+  AutomationService.run_all (all ~12 rules) plus
+  NotificationService.run_all_checks on every single call, regardless
+  of the background automation scheduler (app/main.py,
+  AUTOMATION_SCHEDULER_ENABLED=true by default) already running the
+  identical logic on its own interval. The docstring's own claim
+  ("there's no background scheduler in this app") was stale - the
+  scheduler was added after that comment was written and never
+  updated. In practice this meant every notification-panel open and
+  every unread-count badge poll (typically on a short client-side
+  timer), across every logged-in user, independently re-executed the
+  full automation engine on top of what the scheduler was already
+  doing - a real, unbounded database-load multiplier at any
+  meaningful concurrent-user count.
+- Fix: both endpoints now only run the on-demand fallback when
+  AUTOMATION_SCHEDULER_ENABLED is False; with the scheduler enabled
+  (the production default), they are pure reads, exactly as their
+  name says. tests/conftest.py now explicitly sets
+  AUTOMATION_SCHEDULER_ENABLED=False for the test environment, since
+  the test client never runs the real background thread - without
+  this, tests would have silently had neither mechanism fire.
+- 2 new tests added, proving both branches explicitly (scheduler
+  enabled -> automation engine not triggered by the read endpoint;
+  scheduler disabled -> it is). NOT RUNTIME VERIFIED - no pytest
+  execution possible in this sandbox (network-blocked, no backend
+  venv). CODE VERIFIED: full backend compile + import-resolution
+  sweep clean after the change.
+- Deduplication (dedup_key), idempotency, and financial-visibility
+  filtering (_visible_to/FINANCIAL_NOTIFICATION_TYPES) were inspected
+  and are unaffected by this fix - unchanged from before.
 
 ## Observability / monitoring
 

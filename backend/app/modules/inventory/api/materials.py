@@ -9,7 +9,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user, require_role
-from app.modules.inventory.models import Material, MaterialSubcategory, MaterialAttributeValue, Location, Purchase
+from app.modules.inventory.models import Material, MaterialSubcategory, MaterialAttributeValue, Location
+from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Issue
 from app.modules.inventory.schemas import MaterialCreate, MaterialUpdate, MaterialResponse, MaterialNameInterpretResponse
 from app.modules.inventory.imports.material_interpreter import interpret_material_name

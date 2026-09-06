@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user
 from app.modules.procurement.models import PersonalCartItem
-from app.modules.inventory.models import Material, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Supplier
 from app.modules.procurement.schemas import PersonalCartItemCreate, PersonalCartItemUpdate, PersonalCartItemResponse
 
 router = APIRouter(prefix="/api/personal-cart", tags=["personal-cart"])

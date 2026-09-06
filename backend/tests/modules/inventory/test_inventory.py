@@ -19,11 +19,13 @@ from app.platform.database.database import engine
 from decimal import Decimal
 
 from app.platform.security.security import hash_password
-from app.modules.inventory.models import Material, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Supplier
 from app.modules.auth.models import User
 from app.modules.inventory.schemas import PurchaseCreate
 from app.modules.operations.schemas import IssueCreate
 from app.modules.inventory.stock_service import StockService
+from app.modules.procurement.services import ProcurementService
 from tests.helpers import _login, _create_employee_with_login as _create_employee
 
 
@@ -1065,7 +1067,7 @@ def test_add_purchase_updates_stock(db_session, material, supplier):
         date=datetime.utcnow(), supplier_id=supplier.id, material_id=material.id,
         quantity=5, unit="Nos", rate=100, gst_percent=0,
     )
-    StockService.record_purchase(db_session, data)
+    ProcurementService.record_purchase(db_session, data)
     db_session.refresh(material)
     assert material.current_stock == 15
 

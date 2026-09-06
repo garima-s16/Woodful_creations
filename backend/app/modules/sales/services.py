@@ -13,10 +13,8 @@ from sqlalchemy import func
 
 from app.modules.sales.models import Order, Estimate
 from app.modules.clients.models import Client
-from app.modules.operations.models import ProductionJob, Issue, DailyTask
 from app.modules.reporting.models import AIWorkspaceReport
 from app.modules.sales.order_service import OrderService
-from app.modules.ai.security import sanitize_untrusted_text
 from app.modules.ai.schemas import ChatContext, ProposedAction
 
 AMOUNT_PATTERN = re.compile(r"(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d+)?)\s*(?:rs\.?|rupees|inr)?", re.IGNORECASE)
@@ -36,49 +34,24 @@ def _detect_payment_mode(m: str) -> Optional[str]:
 
 
 def _order_risk_workspace(db: Session, order_id: int, user_role: str, message: str):
-    """"What is blocking this order" - a real multi-dimensional
-    analysis combining only genuinely existing, queryable
-    connections (tasks, production jobs, materials actually issued,
-    delivery date) - never a fabricated materials-shortage figure,
-    since EstimateLineItem has no link to the Material catalog at
-    all, only a free-text description. The result is persisted as
-    a real Woodful artifact (AIWorkspaceReport), not a one-off
-    message that disappears, matching the "viewable,
-    actionable, connected to Woodful data" requirement."""
+    """"What is blocking this order" - delegates the actual risk
+    computation to OrderService.compute_order_health (the single
+    authoritative Order Health/Risk contract, Family 130 P0.1), then
+    adds the chat-specific behavior that function deliberately does
+    NOT do: role-based financial redaction, persisting the result as a
+    real Woodful artifact (AIWorkspaceReport, so it's viewable/
+    actionable/connected to Woodful data, not a one-off message that
+    disappears), and plain-text formatting for the chat reply."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         return "I couldn't find that order.", [], []
     is_privileged = user_role in ("master",)
 
-    tasks = db.query(DailyTask).filter(DailyTask.order_id == order_id).all()
-    blocked_tasks = [t for t in tasks if t.status == "BLOCKED"]
-    open_tasks = [t for t in tasks if t.status != "DONE"]
-
-    jobs = db.query(ProductionJob).filter(ProductionJob.order_id == order_id).all()
-    incomplete_jobs = [j for j in jobs if j.status != "Completed"]
-
-    issued_materials = db.query(Issue).filter(Issue.order_id == order_id).all()
-
-    delivery_at_risk = False
-    if order.delivery_date:
-        days_left = (order.delivery_date - datetime.utcnow()).days
-        delivery_at_risk = days_left <= 3 and (bool(open_tasks) or bool(incomplete_jobs))
-
-    risk_level = "AT_RISK" if (blocked_tasks or delivery_at_risk) else "ON_TRACK"
-
-    findings = {
-        "order_code": order.order_code,
-        "stage": order.project_status,
-        "blocked_tasks": [
-            {"id": t.id, "description": t.task_description, "reason": sanitize_untrusted_text(t.delay_reason) or "No reason recorded"}
-            for t in blocked_tasks
-        ],
-        "open_task_count": len(open_tasks),
-        "incomplete_production_jobs": len(incomplete_jobs),
-        "materials_issued_count": len(issued_materials),
-        "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
-        "delivery_at_risk": delivery_at_risk,
-    }
+    findings = OrderService.compute_order_health(db, order_id)
+    risk_level = findings["risk_level"]
+    blocked_tasks = findings["blocked_tasks"]
+    material_shortages = findings["material_shortages"]
+    delivery_at_risk = findings["delivery_at_risk"]
     if is_privileged:
         findings["pending_payment"] = float(order.balance or 0)
 
@@ -90,13 +63,29 @@ def _order_risk_workspace(db: Session, order_id: int, user_role: str, message: s
     db.commit()
     db.refresh(report)
 
-    lines = [f"{order.order_code} - {'AT RISK' if risk_level == 'AT_RISK' else 'ON TRACK'}"]
+    delivery_timing = findings["delivery_timing"]
+    business_impact = findings["business_impact"]
+
+    risk_label = {"CRITICAL": "CRITICAL", "AT_RISK": "AT RISK", "WATCH": "WATCH", "ON_TRACK": "ON TRACK"}.get(risk_level, risk_level)
+    lines = [f"{order.order_code} - {risk_label}"]
+    if delivery_timing["has_delivery_date"]:
+        lines.append(f"Delivery: {delivery_timing['urgency_text']}")
     if blocked_tasks:
-        reasons = ", ".join(f"{t.task_description} ({sanitize_untrusted_text(t.delay_reason) or 'no reason recorded'})" for t in blocked_tasks[:3])
+        reasons = ", ".join(f"{t['description']} ({t['reason']})" for t in blocked_tasks[:3])
         lines.append(f"Blocked: {reasons}")
+    if material_shortages:
+        top = material_shortages[0]
+        shortage_text = f"Short {top['shortage']:g} {top['unit']} of {top['material_name']}"
+        if len(material_shortages) > 1:
+            shortage_text += f" (+{len(material_shortages) - 1} other material(s))"
+        if top["supplier_options"]:
+            shortage_text += f" - {top['supplier_options'][0]['supplier_name']} can supply this"
+        lines.append(shortage_text)
     if delivery_at_risk:
         lines.append("Delivery date is close with work still open.")
-    if not blocked_tasks and not delivery_at_risk:
+    if risk_level != "ON_TRACK":
+        lines.append(business_impact)
+    if not blocked_tasks and not delivery_at_risk and not material_shortages:
         lines.append("No blockers found - work is progressing normally.")
 
     records = [{

@@ -167,6 +167,73 @@ def _tool_get_upcoming_holidays(db: Session, args: dict, user_role: str) -> Tupl
     return f"{len(holidays)} upcoming holiday(s): " + ", ".join(f"{h.name} ({h.date.strftime('%d %b')})" for h in holidays), records
 
 
+def _tool_get_business_attention(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
+    """"What needs my attention today?" / "Which orders are at risk?" -
+    reuses business_risk_service.get_business_risks directly, the same
+    contract the Business Decision Centre API returns (Family P0.49/
+    P0.51) - never a second risk calculation here. user_role gates
+    payroll/salary-advance items exactly as the REST endpoint does."""
+    from app.modules.reporting.business_risk_service import get_business_risks
+    result = get_business_risks(db, is_privileged=(user_role == "master"))
+    if result["total"] == 0:
+        return "Nothing needs attention right now.", []
+
+    lines = [f"{result['total']} item(s) need attention: "
+             f"{result['counts']['CRITICAL']} critical, {result['counts']['HIGH']} high, "
+             f"{result['counts']['MEDIUM']} medium, {result['counts']['LOW']} low."]
+    for risk in result["risks"][:5]:
+        lines.append(f"- [{risk['severity']}] {risk['title']}: {risk['reason']}")
+    if result["total"] > 5:
+        lines.append(f"...and {result['total'] - 5} more.")
+    records = [
+        {"type": risk["risk_type"].title(), "label": risk["title"], "sublabel": risk["severity"], "path": risk["action_path"]}
+        for risk in result["risks"][:5]
+    ]
+    return "\n".join(lines), records
+
+
+def _tool_get_salary_advance_status(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
+    """"Who has salary advance outstanding?" - master-only (financial/
+    HR data), reuses hr/payroll_service.get_salary_advance_summary
+    directly."""
+    if user_role != "master":
+        return "You do not have permission to view salary advance information.", []
+    from app.modules.hr.payroll_service import get_salary_advance_summary
+    summary = get_salary_advance_summary(db)
+    if summary["advances_with_outstanding_balance"] == 0 and summary["pending_requests"] == 0:
+        return "No salary advances currently outstanding or awaiting review.", []
+    text = (f"{summary['pending_requests']} request(s) awaiting review. "
+            f"{summary['advances_with_outstanding_balance']} advance(s) with outstanding balance "
+            f"totalling {summary['total_outstanding_amount']:g}.")
+    return text, []
+
+
+def _tool_get_overtime_status(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
+    """"Who has approved overtime?" - master-only (cross-employee HR
+    data), reuses hr/payroll_service.get_overtime_summary directly.
+    Defaults to the current calendar month if none is given."""
+    if user_role != "master":
+        return "You do not have permission to view overtime information.", []
+    from datetime import datetime
+    from app.modules.hr.payroll_service import get_overtime_summary
+    now = datetime.utcnow()
+    month = args.get("month") or now.strftime("%B")
+    year = args.get("year") or str(now.year)
+    result = get_overtime_summary(db, month, year)
+    if result.get("error"):
+        return result["error"], []
+    if not result["employees"]:
+        return f"No approved overtime recorded for {month} {year}.", []
+    lines = [f"Approved overtime for {month} {year}:"]
+    for e in result["employees"]:
+        lines.append(f"- {e['employee_name']}: {e['total_overtime_hours']:g} hours")
+    records = [
+        {"type": "Employee", "label": e["employee_name"], "sublabel": f"{e['total_overtime_hours']:g} hrs OT", "path": "/attendance"}
+        for e in result["employees"]
+    ]
+    return "\n".join(lines), records
+
+
 def _tool_get_low_stock_materials(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
     """Reuses ChatService._low_stock directly - the exact same query
     the deterministic 'low stock' keyword match already uses - rather
@@ -218,6 +285,45 @@ def _tool_get_order(db: Session, args: dict, user_role: str) -> Tuple[str, List[
         "path": f"/orders/{order.id}",
     }]
     return text + ".", records
+
+
+def _tool_get_order_material_requirements(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
+    """Material Requirement + Shortage Intelligence, via the chatbot -
+    reuses StockService.calculate_order_material_requirements exactly
+    as the API/UI do (single authoritative implementation, per Family
+    130's own non-negotiable rule), never recomputes the math here."""
+    from app.modules.inventory.stock_service import StockService
+
+    code = args.get("order_code", "")
+    order, error = _resolve_single_order(db, code)
+    if error:
+        return error, []
+
+    result = StockService.calculate_order_material_requirements(db, order.id)
+    materials = result["materials"]
+    if not materials:
+        return f"{order.order_code} has no products with a bill of materials, so there's nothing to check.", []
+
+    lines = []
+    for row in materials:
+        line = f"{row['material_name']}: needs {row['required']:g} {row['unit']}, {row['available']:g} available"
+        if row["reserved_by_other_orders"] > 0:
+            line += f" ({row['reserved_by_other_orders']:g} already reserved by other open orders)"
+        if row["pending_purchase_quantity"] > 0:
+            line += f", {row['pending_purchase_quantity']:g} already on order"
+        if row["shortage"] > 0:
+            line += f" - short by {row['shortage']:g}, recommend purchasing {row['shortage']:g} more"
+        else:
+            line += " - no shortage"
+        lines.append(line)
+    text = f"Material requirements for {order.order_code}:\n" + "\n".join(lines)
+
+    records = [{
+        "type": "Material", "label": row["material_name"],
+        "sublabel": f"Shortage {row['shortage']:g} {row['unit']}" if row["shortage"] > 0 else "In stock",
+        "path": f"/materials/{row['material_id']}",
+    } for row in materials]
+    return text, records
 
 
 def _tool_get_order_tasks(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
@@ -399,10 +505,10 @@ def _tool_search_documents(db: Session, args: dict, user_role: str) -> Tuple[str
     # parent must be resolved individually per type for a meaningful
     # label/path rather than left as a bare ID.
     from app.modules.sales.models import Order
-    from app.modules.inventory.models import Supplier
+    from app.modules.procurement.models import Supplier
     from app.modules.hr.models import Employee
     from app.modules.catalog.models import Product
-    from app.modules.inventory.models import Purchase
+    from app.modules.procurement.models import Purchase
     resolvers = {
         "order": (Order, "order_code", "/orders"),
         "supplier": (Supplier, "name", "/suppliers"),
@@ -434,7 +540,11 @@ READ_TOOL_DISPATCH = {
     "search_clients": _tool_search_clients,
     "get_upcoming_holidays": _tool_get_upcoming_holidays,
     "get_low_stock_materials": _tool_get_low_stock_materials,
+    "get_business_attention": _tool_get_business_attention,
+    "get_salary_advance_status": _tool_get_salary_advance_status,
+    "get_overtime_status": _tool_get_overtime_status,
     "get_order": _tool_get_order,
+    "get_order_material_requirements": _tool_get_order_material_requirements,
     "get_order_tasks": _tool_get_order_tasks,
     "get_estimate": _tool_get_estimate,
     "get_order_payments": _tool_get_order_payments,

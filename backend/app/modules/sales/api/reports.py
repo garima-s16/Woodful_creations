@@ -189,14 +189,17 @@ def export_orders(
         filters_applied.append(f"Client: {client_obj.name if client_obj else client_id}")
 
     orders = query.order_by(Order.order_date.desc()).all()
+    risk_flags = OrderService.bulk_attention_flags(db, [o.id for o in orders]) if orders else {}
     rows = []
     for o in orders:
+        flag = risk_flags.get(o.id, {})
         row = {
             "order_id": o.business_id or "", "order_code": o.order_code,
             "client": o.client.name if o.client else "", "project_type": o.project_type or "",
             "order_date": o.order_date.strftime("%d-%m-%Y") if o.order_date else "",
             "delivery_date": o.delivery_date.strftime("%d-%m-%Y") if o.delivery_date else "",
             "status": o.project_status, "progress_percent": o.progress_percent,
+            "risk_level": flag.get("risk_level", ""), "risk_reason": flag.get("reason") or "",
         }
         if is_privileged:
             row["order_value"] = float(o.order_value or 0)
@@ -205,9 +208,9 @@ def export_orders(
         rows.append(row)
 
     columns = ["order_id", "order_code", "client", "project_type", "order_date", "delivery_date",
-               "status", "progress_percent"]
+               "status", "progress_percent", "risk_level", "risk_reason"]
     headers = ["Order ID", "Order Code", "Client", "Project Type", "Order Date", "Delivery Date",
-               "Status", "Progress %"]
+               "Status", "Progress %", "Delivery Risk", "Risk Reason"]
     total_columns = []
     if is_privileged:
         columns[6:6] = ["order_value", "total_received", "balance"]
@@ -218,6 +221,10 @@ def export_orders(
     if filters_applied:
         subtitle += "  |  Filters: " + ", ".join(filters_applied)
     summary = [("Total Orders", str(len(orders)))]
+    critical_count = sum(1 for f in risk_flags.values() if f.get("risk_level") == "CRITICAL")
+    at_risk_count = sum(1 for f in risk_flags.values() if f.get("risk_level") == "AT_RISK")
+    if critical_count or at_risk_count:
+        summary.append(("Critical / At Risk", f"{critical_count} / {at_risk_count}"))
     if is_privileged:
         summary.append(("Total Order Value", f"Rs {sum(r['order_value'] for r in rows):,.2f}"))
         summary.append(("Total Outstanding", f"Rs {sum(r['balance'] for r in rows):,.2f}"))

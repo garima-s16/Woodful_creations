@@ -25,7 +25,8 @@ from app.models.setting import (
     Department, TaskStatus, AttendanceStatus, Machine,
     ProjectStatus, Priority, PaymentMode, LeadSource, ProjectType, ExpenseCategory,
 )
-from app.modules.inventory.models import MaterialCategory, MaterialSubcategory, Location, Supplier, SupplierMaterial, Material, Purchase
+from app.modules.inventory.models import MaterialCategory, MaterialSubcategory, Location, Material
+from app.modules.procurement.models import Supplier, SupplierMaterial, Purchase
 from app.modules.clients.models import Client
 from app.modules.communications.models import Notification
 from app.modules.communications.services.notification_service import NotificationService

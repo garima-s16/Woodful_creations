@@ -1,4 +1,5 @@
 import logging
+import threading
 
 from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.platform.configuration.config import settings
-from app.platform.database.database import engine
+from app.platform.database.database import engine, SessionLocal
 from app.platform.middleware.middleware import SecurityHeadersMiddleware, GlobalRateLimitMiddleware
 from app.platform.database.auto_migrate import run_startup_migrations
 from app.platform.monitoring.monitoring import capture_exception
@@ -55,6 +56,63 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 _migration_state = {"healthy": True, "error": None}
+_scheduler_stop_event = threading.Event()
+_scheduler_thread = None
+
+
+def _automation_scheduler_loop():
+    """Family 131 section 23 - "auto-generated" notifications: calls the
+    exact same AutomationService.run_all/NotificationService.run_all_checks
+    the notification endpoints already call on-demand, just on a timer
+    instead of only when someone opens the notification panel. Not a
+    second automation engine - every rule's own dedup_key (see
+    NotificationService.notify) still governs whether anything new is
+    actually created, so this can never duplicate a notification the
+    on-demand path already created, and vice versa.
+
+    Runs in a plain daemon thread, not asyncio - every existing DB call
+    in this app already uses the same synchronous SQLAlchemy Session
+    (see get_db), so a background asyncio task would either block the
+    event loop or need its own separate async DB layer; a thread with
+    its own SessionLocal() session matches how the rest of the app
+    already talks to the database. Sleeps in short slices so shutdown
+    (see the "shutdown" event below) doesn't have to wait out a full
+    interval."""
+    from app.modules.communications.services.automation_service import AutomationService
+    from app.modules.communications.services.notification_service import NotificationService
+
+    interval_seconds = max(60, settings.AUTOMATION_SCHEDULER_INTERVAL_MINUTES * 60)
+    logger.info("Automation scheduler started (every %s minute(s)).", settings.AUTOMATION_SCHEDULER_INTERVAL_MINUTES)
+    while not _scheduler_stop_event.is_set():
+        db = SessionLocal()
+        try:
+            AutomationService.run_all(db, trigger_event="scheduled_job")
+            NotificationService.run_all_checks(db)
+        except Exception:
+            # One bad cycle must never kill the loop - the on-demand path
+            # (opening the notification panel) still works even if a
+            # scheduled cycle fails, and the next cycle simply tries again.
+            logger.exception("Automation scheduler cycle failed.")
+        finally:
+            db.close()
+        _scheduler_stop_event.wait(interval_seconds)
+
+
+@app.on_event("shutdown")
+def stop_automation_scheduler():
+    _scheduler_stop_event.set()
+    if _scheduler_thread is not None:
+        _scheduler_thread.join(timeout=5)
+
+
+def _start_automation_scheduler():
+    global _scheduler_thread
+    if not settings.AUTOMATION_SCHEDULER_ENABLED:
+        logger.info("Automation scheduler disabled (AUTOMATION_SCHEDULER_ENABLED=false).")
+        return
+    _scheduler_stop_event.clear()
+    _scheduler_thread = threading.Thread(target=_automation_scheduler_loop, name="automation-scheduler", daemon=True)
+    _scheduler_thread.start()
 
 
 @app.on_event("startup")
@@ -74,6 +132,11 @@ def on_startup():
         _migration_state["healthy"] = False
         _migration_state["error"] = str(exc)
         raise
+    # Only start the background notification scheduler once migrations
+    # have actually succeeded - starting it earlier (registered as its
+    # own startup handler) would race it against an unmigrated schema,
+    # exactly what the migration-failure branch above exists to prevent.
+    _start_automation_scheduler()
 
 
 @app.get("/health")

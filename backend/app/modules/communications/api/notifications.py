@@ -24,25 +24,33 @@ def _visible_to(query, user_id: int, role: str):
     return NotificationService.visible_to(query, user_id, role)
 
 
+def _run_on_demand_checks_if_scheduler_disabled(db: Session) -> None:
+    """The on-demand fallback path (Family P0 production-readiness
+    review, section 16): when the background automation scheduler
+    (app/main.py's _automation_scheduler_loop) is enabled, it already
+    keeps notifications fresh on its own interval - these read
+    endpoints must not ALSO re-run the entire automation engine on
+    every single call, which would mean every notification-panel open
+    and every unread-count poll, across every logged-in user,
+    independently re-executes all automation rules on top of what the
+    scheduler is already doing. Only when the scheduler is disabled do
+    these endpoints fall back to running the checks themselves, so
+    notifications still stay current in that configuration."""
+    if settings.AUTOMATION_SCHEDULER_ENABLED:
+        return
+    AutomationService.run_all(db, trigger_event="on_demand_check")
+    NotificationService.run_all_checks(db)
+
+
 @router.get("/", response_model=List[NotificationResponse])
 def list_notifications(unread_only: bool = Query(False), limit: int = Query(50, ge=1, le=200),
                         db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Runs the real on-demand checks first, so opening the panel always
-    reflects current state - there's no background scheduler in this
-    app, so "check when someone actually looks" is the real mechanism,
-    made safe to call repeatedly by dedup_key. Also runs the
-    automation rules (task overdue, low-stock reorder recommendation,
-    purchase delivery approaching, project delayed, production blocked -
-    payment overdue was already covered by NotificationService above).
-    Runs before NotificationService.run_all_checks below - its payment
-    -overdue rule diffs the notification set right before/after calling
-    the exact same NotificationService check, so it needs to run first
-    to see that notification as newly created; run_all_checks below then
-    calling the same payment check again is a harmless dedup no-op, and
-    still needed here for check_stock_notifications (LOW_STOCK/
-    OUT_OF_STOCK), which stays exactly as it already was."""
-    AutomationService.run_all(db, trigger_event="on_demand_check")
-    NotificationService.run_all_checks(db)
+    """Reads notification state. Only runs the on-demand automation
+    fallback itself when the background scheduler is disabled (see
+    _run_on_demand_checks_if_scheduler_disabled) - with the scheduler
+    enabled (the default), this is a pure read, exactly as its name
+    says, and does not re-run the automation engine on every poll."""
+    _run_on_demand_checks_if_scheduler_disabled(db)
 
     query = _visible_to(db.query(Notification), auth.get("user_id"), auth.get("role", "user"))
     if unread_only:
@@ -52,8 +60,10 @@ def list_notifications(unread_only: bool = Query(False), limit: int = Query(50, 
 
 @router.get("/unread-count")
 def unread_count(db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    AutomationService.run_all(db, trigger_event="on_demand_check")
-    NotificationService.run_all_checks(db)
+    """The most frequently-polled notification endpoint (typically a
+    badge count on a short client-side timer) - must never independently
+    re-run the full automation engine while the scheduler is active."""
+    _run_on_demand_checks_if_scheduler_disabled(db)
     query = _visible_to(db.query(Notification), auth.get("user_id"), auth.get("role", "user"))
     count = query.filter(Notification.is_read.is_(False)).count()
     return {"count": count}

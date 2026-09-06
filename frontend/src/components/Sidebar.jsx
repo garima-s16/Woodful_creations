@@ -17,6 +17,7 @@ function Sidebar({ isOpen, user, onClose }) {
       name: 'Home',
       items: [
         { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
+        { path: '/business-decisions', label: 'Business Attention', icon: AnalyticsIcon },
         { path: '/analytics', label: 'Analytics', icon: AnalyticsIcon },
       ],
     },
@@ -32,6 +33,7 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
           { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
+          { path: '/procurement-requirements', label: 'Procurement Requirements', icon: PurchaseIcon },
         ] : []),
         { path: '/issues', label: 'Material Issues', icon: IssueIcon },
         { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },
@@ -64,6 +66,7 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/leaves', label: 'Leave', icon: LeaveIcon },
         { path: '/company-holidays', label: 'Company Holidays', icon: LeaveIcon },
         { path: '/salary-slips', label: 'Salary', icon: SalaryIcon },
+        { path: '/salary-advances', label: 'Salary Advances', icon: SalaryIcon },
         ...(isTrueMaster ? [
           { path: '/candidates', label: 'Candidates', icon: CandidateIcon },
           { path: '/interviews', label: 'Interviews', icon: InterviewIcon },

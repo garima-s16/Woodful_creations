@@ -515,6 +515,311 @@ def test_valid_order_project_status_accepted(client, test_user):
     assert resp.json()["project_status"] == "Cancelled"
 
 
+def test_order_health_endpoint_on_track(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300026")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["risk_level"] == "ON_TRACK"
+    assert body["order_code"] == order["order_code"]
+    assert "pending_payment" in body  # master sees financial data
+
+
+def test_order_health_endpoint_at_risk_and_employee_redaction(client, test_user, db_session):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300027")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "2000",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Health Endpoint Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Fit hardware", "status": "BLOCKED", "delay_reason": "Waiting for hinges",
+    })
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["risk_level"] == "AT_RISK"
+    assert any("hinges" in r for r in body["reasons"])
+    assert "pending_payment" in body
+
+    client.post("/api/auth/logout")
+    from app.platform.security.security import hash_password
+    from app.modules.auth.models import User
+    user = User(username="healthendpointuser", email="healthendpointuser@example.com", full_name="Health Endpoint User",
+                password_hash=hash_password("UserPass1!"), role="user", is_active=True)
+    db_session.add(user)
+    db_session.commit()
+    client.post("/api/auth/login", json={"identifier": "healthendpointuser@example.com", "password": "UserPass1!"})
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    assert "pending_payment" not in resp.json()
+
+
+def test_order_health_endpoint_not_found(client, test_user):
+    _login(client, test_user)
+    resp = client.get("/api/orders/999999999/health")
+    assert resp.status_code == 404
+
+
+def test_order_health_overdue_task_is_a_finding(client, test_user):
+    """Regression: an open task past its due_date is a real signal
+    (DailyTask.due_date is genuine data) and must not be invisible just
+    because nobody marked it BLOCKED (Family 130 P0.1 s.3)."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300028")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Overdue Task Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Deliver hardware", "status": "TO DO",
+        "due_date": "2020-01-01T00:00:00",
+    })
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    body = resp.json()
+    assert body["risk_level"] == "AT_RISK"
+    assert any("overdue" in r.lower() for r in body["reasons"])
+    assert body["next_action"]["type"] == "overdue_task"
+
+
+def test_order_health_production_blocker_is_a_finding(client, test_user):
+    """Regression: a ProductionJob with a blocker_reason is a genuine
+    production blocker even though it has no dedicated 'Blocked' status,
+    and must outrank a plain overdue task in Next Action (s.5 priority)."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300029")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    client.post("/api/production-jobs/", json={
+        "date": "2026-07-01T00:00:00", "order_id": order["id"], "operation": "Cutting",
+        "status": "In Progress", "blocker_reason": "Waiting for CNC machine repair",
+    })
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    body = resp.json()
+    assert body["risk_level"] == "AT_RISK"
+    assert any("cnc" in r.lower() for r in body["reasons"])
+    assert body["next_action"]["type"] == "production_blocker"
+    assert body["readiness"]["production"] == "blocked"
+
+
+def test_order_health_next_action_priority_blocked_task_over_shortage(client, test_user):
+    """A blocked task must win Next Action over a material shortage
+    even when both are present (s.5 priority order)."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300030")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Priority Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Fit hardware", "status": "BLOCKED", "delay_reason": "Waiting for hinges",
+    })
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    body = resp.json()
+    assert body["next_action"]["type"] == "blocked_task"
+
+
+def test_order_health_no_findings_uses_uncheckable_language(client, test_user):
+    """Section 3: a clean result must say a blocker was not found from
+    available data, not claim there is definitively 'no risk'."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300031")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    body = resp.json()
+    assert "no blocker found" in body["reasons"][0].lower()
+    assert body["next_action"] is None or body["next_action"]["type"] == "open_task"
+
+
+def test_order_health_actual_completion_date_from_audit_log(client, test_user):
+    """Section 7: actual completion is derived from the existing
+    project_status audit trail, not a new column and not fabricated."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300032")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.json()["actual_completion_date"] is None
+    assert resp.json()["readiness"]["delivery"] == "unavailable"
+
+    client.put(f"/api/orders/{order['id']}", json={"project_status": "Completed"})
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    body = resp.json()
+    assert body["actual_completion_date"] is not None
+    assert body["readiness"]["delivery"] == "delivered"
+
+
+def test_order_list_needs_attention_flag_from_blocked_task(client, test_user):
+    """Section 11: the Order List's needs_attention flag must come from
+    the server's batched signals, not be silently absent or computed
+    client-side."""
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300033")
+    quiet_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "List Flag Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Fit hardware", "status": "BLOCKED", "delay_reason": "Waiting for hinges",
+    })
+    resp = client.get("/api/orders/")
+    assert resp.status_code == 200
+    by_id = {o["id"]: o for o in resp.json()}
+    assert by_id[order["id"]]["needs_attention"] is True
+    assert "hinges" not in (by_id[order["id"]]["attention_reason"] or "")  # names the task, not the delay text
+    assert by_id[quiet_order["id"]]["needs_attention"] is False
+
+
+def test_order_list_shows_critical_risk_level_for_overdue_blocked_order(client, test_user):
+    """P0.50 section 19/22 - the Orders List must distinguish CRITICAL
+    severity, not just a flat needs_attention flag, using the same
+    bounded, batched calculation as before (no new per-order query)."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300034")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "List Critical Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Overdue delivery work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    resp = client.get("/api/orders/")
+    assert resp.status_code == 200
+    by_id = {o["id"]: o for o in resp.json()}
+    assert by_id[order["id"]]["attention_risk_level"] == "CRITICAL"
+
+
+def test_order_list_sort_by_risk_surfaces_critical_order_first(client, test_user):
+    """P0.50 section 19 - a CRITICAL order must surface first when
+    sort=risk is requested, even though it was created before (and so
+    would sort last under the default order_date-desc ordering) an
+    on-track order created after it."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300035")
+    critical_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-06-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Sort Risk Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-06-01T00:00:00", "employee_id": employee["id"], "order_id": critical_order["id"],
+        "task_description": "Overdue critical sort work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+    quiet_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-08-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+
+    # Default order: newest first - the quiet order (created later) is
+    # expected to lead, confirming the base case still works correctly.
+    default_resp = client.get("/api/orders/")
+    assert default_resp.status_code == 200
+    default_ids = [o["id"] for o in default_resp.json()]
+    assert default_ids.index(quiet_order["id"]) < default_ids.index(critical_order["id"])
+
+    # Risk sort: the CRITICAL order must now lead, regardless of date.
+    risk_resp = client.get("/api/orders/", params={"sort": "risk"})
+    assert risk_resp.status_code == 200
+    risk_ids = [o["id"] for o in risk_resp.json()]
+    assert risk_ids.index(critical_order["id"]) < risk_ids.index(quiet_order["id"])
+    top = next(o for o in risk_resp.json() if o["id"] == critical_order["id"])
+    assert top["attention_risk_level"] == "CRITICAL"
+
+
+def test_order_invalid_priority_rejected(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300028")
+    resp = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000",
+        "priority": "Critical",
+    })
+    assert resp.status_code == 422
+
+
+def test_order_valid_priority_accepted(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300029")
+    resp = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000",
+        "priority": "Urgent",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["priority"] == "Urgent"
+
+
+def test_order_invalid_priority_rejected_on_update(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300030")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000",
+    }).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"priority": "Somewhat Important"})
+    assert resp.status_code == 422
+
+
+def test_order_list_filter_by_priority(client, test_user):
+    _login(client, test_user)
+    c1 = _create_client(client, phone="9812300031")
+    c2 = _create_client(client, phone="9812300032")
+    client.post("/api/orders/", json={
+        "client_id": c1["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "priority": "Urgent",
+    })
+    client.post("/api/orders/", json={
+        "client_id": c2["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "priority": "Low",
+    })
+    resp = client.get("/api/orders/", params={"priority": "Urgent"})
+    assert resp.status_code == 200
+    results = resp.json()
+    assert len(results) >= 1
+    assert all(o["priority"] == "Urgent" for o in results)
+
+
+def test_cancelled_order_cannot_be_reopened(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300024")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000",
+    }).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"project_status": "Cancelled"})
+    assert resp.status_code == 200
+    resp = client.put(f"/api/orders/{order['id']}", json={"project_status": "Material Purchase"})
+    assert resp.status_code == 400
+    # Re-fetch to confirm the status genuinely did not change server-side,
+    # not just that the response was rejected.
+    resp = client.get(f"/api/orders/{order['id']}")
+    assert resp.json()["project_status"] == "Cancelled"
+
+
+def test_cancelled_order_status_set_to_cancelled_again_is_a_noop(client, test_user):
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300025")
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000",
+    }).json()
+    client.put(f"/api/orders/{order['id']}", json={"project_status": "Cancelled"})
+    resp = client.put(f"/api/orders/{order['id']}", json={"project_status": "Cancelled"})
+    assert resp.status_code == 200
+
+
 def test_arbitrary_order_sub_status_rejected(client, test_user):
     _login(client, test_user)
     c = _create_client(client, phone="9812300022")
@@ -1277,6 +1582,113 @@ def test_profitability_combines_material_cost_and_project_expenses(client, test_
     assert body["estimated_gross_profit"] == 65000.0  # 100000 - 35000, not just 100000 - 15000
 
 
+def test_labour_cost_attributed_from_completed_task_days(client, test_user):
+    """Family P0.45: Employee.monthly_salary / 26 per distinct
+    (employee, date) among this order's DONE tasks - not per task."""
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Labour Cost Client A", "phone": "9000010160"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Labour Cost Employee A", "monthly_salary": "26000"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-15T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Cutting", "status": "DONE",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/profitability")
+    body = resp.json()
+    assert body["labour_is_attributed"] is True
+    assert body["labour_days"] == 1
+    assert body["labour_cost"] == 1000.0  # 26000 / 26
+    # The existing, pre-P0.45 keys must remain completely unaffected.
+    assert body["actual_direct_costs"] == 0.0
+    assert body["estimated_gross_profit"] == 100000.0
+    # The new, labour-inclusive keys reflect it.
+    assert body["total_direct_cost_with_labour"] == 1000.0
+    assert body["gross_profit_with_labour"] == 99000.0
+
+
+def test_labour_cost_does_not_double_count_same_day_multiple_tasks(client, test_user):
+    """Two DONE tasks, same employee, same day, same order -> one
+    labour-day, not two - the exact double-counting risk this
+    attribution method must avoid."""
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Labour Cost Client B", "phone": "9000010161"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Labour Cost Employee B", "monthly_salary": "26000"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-15T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Cutting", "status": "DONE",
+    })
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-15T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Assembly", "status": "DONE",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/profitability")
+    body = resp.json()
+    assert body["labour_days"] == 1
+    assert body["labour_cost"] == 1000.0
+
+
+def test_labour_cost_counts_different_days_separately(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Labour Cost Client C", "phone": "9000010162"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Labour Cost Employee C", "monthly_salary": "26000"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-15T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Day 1", "status": "DONE",
+    })
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-16T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Day 2", "status": "DONE",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/profitability")
+    body = resp.json()
+    assert body["labour_days"] == 2
+    assert body["labour_cost"] == 2000.0
+
+
+def test_labour_cost_ignores_incomplete_tasks(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Labour Cost Client D", "phone": "9000010163"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Labour Cost Employee D", "monthly_salary": "26000"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-08-15T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Still working", "status": "DOING",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/profitability")
+    body = resp.json()
+    assert body["labour_is_attributed"] is False
+    assert body["labour_days"] == 0
+    assert body["labour_cost"] == 0.0
+
+
+def test_labour_cost_unattributed_when_no_task_work_at_all(client, test_user):
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Labour Cost Client E", "phone": "9000010164"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-15T00:00:00", "order_value": "100000.00", "advance": "0",
+    }).json()
+
+    resp = client.get(f"/api/orders/{order['id']}/profitability")
+    body = resp.json()
+    assert body["labour_is_attributed"] is False
+    assert body["labour_days"] == 0
+    assert "No completed" in body["labour_method"]
+
+
 def test_order_with_no_material_issued_has_zero_material_cost(client, test_user):
     """An order with only expenses and no material issued must not
     show a fabricated material cost - genuinely zero, honestly."""
@@ -1683,6 +2095,34 @@ def test_blocking_query_creates_persisted_report(client, test_user):
     assert reports[0]["findings"]["blocked_tasks"][0]["reason"] == "Waiting for hinges"
 
 
+def test_chatbot_order_risk_correctly_reports_critical_not_on_track(client, test_user):
+    """Regression test for a severe bug: the chatbot's risk_level-to-
+    text mapping only matched the exact string 'AT_RISK', so the newer
+    CRITICAL value fell through to the else branch and was reported to
+    the Master as "ON TRACK" - the opposite of the truth."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Chatbot Critical Client", "phone": "9000010003"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Chatbot Critical Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Overdue critical work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    resp = client.post("/api/chat/", json={
+        "message": "what is blocking this order",
+        "context": {"record_type": "order", "record_id": order["id"]},
+    })
+    assert resp.status_code == 200
+    body = resp.json()["response"]
+    assert "CRITICAL" in body
+    assert "ON TRACK" not in body
+
+
 def test_order_with_no_blockers_is_on_track(client, test_user):
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "AI Workspace On Track Client", "phone": "9000010002"}).json()["id"]
@@ -1698,6 +2138,48 @@ def test_order_with_no_blockers_is_on_track(client, test_user):
 
     reports = client.get(f"/api/orders/{order['id']}/ai-reports").json()
     assert reports[0]["risk_level"] == "ON_TRACK"
+
+
+def test_order_blocking_query_includes_real_material_shortage(client, test_user):
+    """Family 130 - "what's blocking this order" must include a real
+    material shortage against this order's own BOM, reusing
+    StockService.calculate_order_material_requirements - previously
+    this workspace never computed a material figure at all, even
+    though the order has a real, unmet BOM requirement."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Blocking Query Shortage Sheet", "unit": "Sheets", "opening_stock": "1", "minimum_stock": "1",
+    }).json()
+    supplier = client.post("/api/suppliers/", json={"name": "Blocking Query Supplier"}).json()
+    client.post("/api/supplier-materials/", json={
+        "supplier_id": supplier["id"], "material_id": material["id"], "supplier_price": "300.00", "lead_time_days": 3,
+    })
+    product = client.post("/api/products/", json={
+        "name": "Blocking Query Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Blocking Query Client", "phone": "9000010700"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-20T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    resp = client.post("/api/chat/", json={
+        "message": "what is blocking this order",
+        "context": {"record_type": "order", "record_id": order["id"]},
+    })
+    assert resp.status_code == 200
+    body = resp.json()["response"]
+    assert "AT RISK" in body
+    assert "Blocking Query Shortage Sheet" in body
+    assert "Blocking Query Supplier" in body
+
+    reports = client.get(f"/api/orders/{order['id']}/ai-reports").json()
+    assert reports[0]["risk_level"] == "AT_RISK"
+    shortages = reports[0]["findings"]["material_shortages"]
+    assert len(shortages) == 1
+    assert shortages[0]["material_name"] == "Blocking Query Shortage Sheet"
+    assert shortages[0]["supplier_options"][0]["supplier_name"] == "Blocking Query Supplier"
 
 
 def test_deictic_followup_triggers_order_risk_check(client, test_user):
@@ -1753,3 +2235,328 @@ def test_employee_viewing_master_created_report_does_not_see_payment(client, tes
 
     employee_view = client.get(f"/api/orders/{order['id']}/ai-reports").json()
     assert "pending_payment" not in employee_view[0]["findings"]
+
+
+def test_replacing_order_items_leaves_a_traceable_audit_record(client, test_user, db_session):
+    """P0.1 section 8 - item changes must not silently leave downstream
+    information untraceable. Previously, replacing an order's items
+    hard-deleted the old rows with no snapshot ever taken; the audit
+    log recorded only a bare items_changed=True flag, permanently
+    losing what the old items actually were."""
+    from app.platform.audit.audit import AuditLog
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Item Trace Client", "phone": "9000010900"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Original Cabinet", "quantity": "1", "unit": "Piece", "rate": "10000"}],
+    }).json()
+
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "items": [{"description": "Revised Cabinet", "quantity": "2", "unit": "Piece", "rate": "12000"}],
+    })
+    assert resp.status_code == 200
+
+    log_entry = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.module_name == "orders", AuditLog.record_id == order["id"], AuditLog.action == "update_order")
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert log_entry is not None
+    assert log_entry.old_value["items"][0]["description"] == "Original Cabinet"
+    assert log_entry.old_value["items"][0]["rate"] == 10000.0
+    assert log_entry.new_value["items"][0]["description"] == "Revised Cabinet"
+    assert log_entry.new_value["items"][0]["quantity"] == 2.0
+
+
+# ===========================================================================
+# P0.50 - Delivery Risk Engine (extends compute_order_health, not a second
+# engine). Dates are relative to actual current time since the underlying
+# calculation uses datetime.utcnow(), not a fixed test clock.
+# ===========================================================================
+
+def _make_order_with_delivery(client, days_from_now, suffix, project_status=None):
+    from datetime import datetime, timedelta
+    c = client.post("/api/clients/", json={"name": f"Delivery Risk Client {suffix}", "phone": f"900001110{suffix}"}).json()
+    delivery_date = (datetime.utcnow() + timedelta(days=days_from_now)).isoformat()
+    payload = {
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": delivery_date,
+    }
+    order = client.post("/api/orders/", json=payload).json()
+    if project_status:
+        client.put(f"/api/orders/{order['id']}", json={"project_status": project_status})
+    return order
+
+
+def test_delivery_risk_watch_level_for_approaching_delivery_with_open_work(client, test_user):
+    """P0.50 section 6 - a delivery 5 days out with open work is a
+    genuine early warning (WATCH), distinct from the more urgent
+    AT_RISK 3-day window - not the same 2-level bucket as before."""
+    _login(client, test_user)
+    order = _make_order_with_delivery(client, 5, "1")
+    employee = client.post("/api/employees/", json={"name": "Delivery Risk Watch Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Prep materials", "status": "TO DO",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["risk_level"] == "WATCH"
+    assert body["delivery_timing"]["days_remaining"] == 5
+    assert body["delivery_timing"]["is_overdue"] is False
+
+
+def test_delivery_risk_critical_when_overdue_and_still_open(client, test_user):
+    """P0.50 - a delivery commitment already missed, with the order
+    still not completed, is more severe than the generic AT_RISK the
+    old 2-level model would have used for every non-trivial finding."""
+    _login(client, test_user)
+    order = _make_order_with_delivery(client, -2, "2")
+    employee = client.post("/api/employees/", json={"name": "Delivery Risk Critical Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Still pending", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["risk_level"] == "CRITICAL"
+    assert body["delivery_timing"]["is_overdue"] is True
+    assert body["delivery_timing"]["urgency_text"] == "2 days overdue"
+    assert body["next_action"]["type"] == "delivery_overdue"
+    assert "already been missed" in body["business_impact"]
+
+
+def test_delivery_risk_not_critical_when_overdue_but_completed(client, test_user):
+    """An overdue delivery date on an order already marked Completed is
+    not a live risk - the commitment was met (or the order closed) by
+    the time work finished, whatever the original target date was."""
+    _login(client, test_user)
+    order = _make_order_with_delivery(client, -5, "3", project_status="Completed")
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["risk_level"] != "CRITICAL"
+    assert body["readiness"]["delivery"] == "delivered"
+
+
+def test_delivery_timing_reports_missing_date_honestly(client, test_user):
+    _login(client, test_user)
+    c = client.post("/api/clients/", json={"name": "No Delivery Date Client", "phone": "9000011200"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    timing = resp.json()["delivery_timing"]
+    assert timing["has_delivery_date"] is False
+    assert timing["urgency_text"] == "Delivery date not set"
+
+
+def test_health_evidence_carries_raw_shortage_numbers(client, test_user):
+    """P0.50 section 9 - evidence must carry the actual numbers behind
+    a reason, not just its sentence."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Health Evidence Sheet", "unit": "Sheets", "opening_stock": "2", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Health Evidence Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    c = client.post("/api/clients/", json={"name": "Health Evidence Client", "phone": "9000011300"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    evidence = resp.json()["evidence"]
+    shortage_evidence = next(e for e in evidence if e["type"] == "material_shortage")
+    assert shortage_evidence["required"] == 5.0
+    assert shortage_evidence["available"] == 2.0
+    assert shortage_evidence["shortage"] == 3.0
+    assert "cannot fully proceed" in resp.json()["business_impact"]
+
+
+def test_orders_export_includes_delivery_risk_columns(client, test_user):
+    """P0.50 section 37 - the export must show the same risk
+    classification as the API/UI (bulk_attention_flags), never a
+    separately-calculated Excel-only value."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    c = client.post("/api/clients/", json={"name": "Export Risk Client", "phone": "9000011400"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Export Risk Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Export risk work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    resp = client.get("/api/reports/orders.xlsx")
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.content))
+    ws = wb.active
+    header_row, data_rows = None, []
+    for row in ws.iter_rows(values_only=True):
+        if row and "Order Code" in row:
+            header_row = list(row)
+            continue
+        if header_row and row and row[header_row.index("Order Code")] == order["order_code"]:
+            data_rows.append(row)
+    assert "Delivery Risk" in header_row
+    assert "Risk Reason" in header_row
+    risk_col = header_row.index("Delivery Risk")
+    assert data_rows[0][risk_col] == "CRITICAL"
+
+
+def test_production_summary_reflects_completed_and_pending_jobs(client, test_user):
+    """P0.50 section 14 - the exact structured breakdown the spec's own
+    example asks for (N jobs, completed: X, pending: Y)."""
+    _login(client, test_user)
+    c = client.post("/api/clients/", json={"name": "Production Summary Client", "phone": "9000011500"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+    job1 = client.post("/api/production-jobs/", json={
+        "date": "2026-07-01T00:00:00", "operation": "Cutting", "order_id": order["id"],
+    }).json()
+    client.put(f"/api/production-jobs/{job1['id']}", json={"status": "Completed"})
+    client.post("/api/production-jobs/", json={
+        "date": "2026-07-01T00:00:00", "operation": "Assembly", "order_id": order["id"],
+    })
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    summary = resp.json()["production_summary"]
+    assert summary["has_production_jobs"] is True
+    assert summary["total_jobs"] == 2
+    assert summary["completed_jobs"] == 1
+    assert summary["pending_jobs"] == 1
+
+
+def test_production_summary_reports_no_jobs_honestly(client, test_user):
+    _login(client, test_user)
+    c = client.post("/api/clients/", json={"name": "No Production Client", "phone": "9000011501"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.json()["production_summary"]["has_production_jobs"] is False
+
+
+def test_procurement_chain_distinguishes_no_purchase_from_purchase_placed(client, test_user):
+    """P0.50 section 13 - the full narrative chain: shortage -> purchase
+    required -> purchase not received. Evidence must distinguish "no
+    purchase placed yet" from "a purchase exists but is insufficient"."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Procurement Chain Sheet", "unit": "Sheets", "opening_stock": "2", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Procurement Chain Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    c = client.post("/api/clients/", json={"name": "Procurement Chain Client", "phone": "9000011502"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    assert resp.status_code == 200
+    evidence = next(e for e in resp.json()["evidence"] if e["type"] == "material_shortage")
+    assert evidence["procurement_status"] == "no_purchase_placed"
+    assert "no purchase has been placed yet" in resp.json()["business_impact"]
+
+    # Now place a purchase that doesn't fully cover the gap (3 short).
+    supplier = client.post("/api/suppliers/", json={"name": "Procurement Chain Supplier"}).json()
+    client.post("/api/purchases/", json={
+        "date": "2026-07-01T00:00:00", "supplier_id": supplier["id"], "material_id": material["id"],
+        "quantity": "1", "unit": "Sheets", "rate": "500.00", "gst_percent": "18", "receipt_status": "Ordered",
+    })
+
+    resp2 = client.get(f"/api/orders/{order['id']}/health")
+    evidence2 = next(e for e in resp2.json()["evidence"] if e["type"] == "material_shortage")
+    assert evidence2["procurement_status"] == "purchase_placed_insufficient"
+    assert "pending purchase is received" in resp2.json()["business_impact"]
+
+
+def test_procurement_chain_flags_when_shortage_blocks_production(client, test_user):
+    """The chain must genuinely connect a shortage to a specific
+    blocked job by material, not just co-occur with an unrelated one."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Blocking Chain Sheet", "unit": "Sheets", "opening_stock": "2", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Blocking Chain Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    c = client.post("/api/clients/", json={"name": "Blocking Chain Client", "phone": "9000011503"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+    job = client.post("/api/production-jobs/", json={
+        "date": "2026-07-01T00:00:00", "operation": "Cutting", "order_id": order["id"], "material_id": material["id"],
+    }).json()
+    client.put(f"/api/production-jobs/{job['id']}", json={"blocker_reason": "Waiting for sheets"})
+
+    resp = client.get(f"/api/orders/{order['id']}/health")
+    evidence = next(e for e in resp.json()["evidence"] if e["type"] == "material_shortage")
+    assert evidence["blocks_production"] is True
+
+
+def test_what_if_shows_risk_impact_of_hypothetical_delivery_date(client, test_user):
+    """P0.50 section 11 - moving an order's delivery date closer with
+    open work must show the risk-level impact, using the exact same
+    calculation as the real health endpoint, without touching the
+    order's actual committed date."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    c = client.post("/api/clients/", json={"name": "What If Client", "phone": "9000011504"}).json()
+    order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+        "delivery_date": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "What If Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "What if open work", "status": "TO DO",
+    })
+
+    hypothetical = (datetime.utcnow() + timedelta(days=2)).isoformat()
+    resp = client.get(f"/api/orders/{order['id']}/what-if", params={"new_delivery_date": hypothetical})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["current"]["risk_level"] == "ON_TRACK"
+    assert body["simulated"]["risk_level"] in ("AT_RISK", "WATCH")
+    assert body["risk_level_changed"] is True
+
+    # The order's real, committed delivery date must be untouched.
+    real_order = client.get(f"/api/orders/{order['id']}").json()
+    assert real_order["delivery_date"] is not None
+    assert real_order["delivery_date"][:10] != hypothetical[:10]
+
+
+def test_what_if_requires_auth(client):
+    resp = client.get("/api/orders/1/what-if", params={"new_delivery_date": "2026-09-01T00:00:00"})
+    assert resp.status_code == 401
+
+
+def test_what_if_unknown_order_returns_404(client, test_user):
+    _login(client, test_user)
+    resp = client.get("/api/orders/999999/what-if", params={"new_delivery_date": "2026-09-01T00:00:00"})
+    assert resp.status_code == 404

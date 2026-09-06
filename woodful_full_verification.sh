@@ -100,6 +100,12 @@ else
     record "python3" "BLOCKED" "not found on PATH - required dependency unavailable for the entire backend"
 fi
 
+if command -v pip &>/dev/null || command -v pip3 &>/dev/null; then
+    record "pip" "PASS" "available on PATH"
+else
+    record "pip" "BLOCKED" "not found on PATH"
+fi
+
 if command -v node &>/dev/null; then
     record "node" "PASS" "$(node --version 2>&1)"
 else
@@ -110,6 +116,16 @@ if command -v npm &>/dev/null; then
     record "npm" "PASS" "$(npm --version 2>&1)"
 else
     record "npm" "BLOCKED" "not found on PATH - required dependency unavailable for the frontend"
+fi
+
+if command -v docker &>/dev/null; then
+    if docker info &>/dev/null; then
+        record "docker" "PASS" "installed and daemon reachable"
+    else
+        record "docker" "NOT CONFIGURED" "installed but daemon not running/reachable"
+    fi
+else
+    record "docker" "NOT CONFIGURED" "not found on PATH - Docker validation will be skipped"
 fi
 
 if [ -f "backend/.env" ]; then
@@ -645,6 +661,31 @@ else
     else
         record "CORS not wildcarded" "PASS" "no wildcard found"
     fi
+fi
+
+# ----------------------------------------------------------------------
+section "STALE REFERENCE CHECK"
+# ----------------------------------------------------------------------
+# Confirms this verification runner itself, and the repository it is
+# checking, contain no leftover references to the pre-reorg locations
+# (the app now lives at backend/app/main.py, not backend/main.py; there
+# is no top-level database/ directory, no root package.json/
+# package-lock.json, and no app/core/ path).
+
+STALE_HITS=$(grep -rlIE "backend/main\.py|database/models|app/core/|app\.core\." \
+    --include="*.md" --include="*.bat" --include="*.sh" --include="*.py" \
+    --include="*.yml" --include="*.yaml" . 2>/dev/null \
+    | grep -v -E "woodful_full_verification|node_modules|/venv/" || true)
+if [ -f "package.json" ] || [ -f "package-lock.json" ]; then
+    STALE_HITS="$STALE_HITS
+./package.json (root package.json should not exist - frontend/package.json is authoritative)"
+fi
+
+if [ -z "$STALE_HITS" ]; then
+    record "Stale root-path references" "PASS" "no references found to backend/main.py, database/, root package.json/package-lock.json, or old core/ paths"
+else
+    record "Stale root-path references" "FAIL" "found a stale reference - see console output above from grep"
+    echo "$STALE_HITS" | redact
 fi
 
 # ----------------------------------------------------------------------

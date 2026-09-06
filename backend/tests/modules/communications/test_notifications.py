@@ -6,7 +6,8 @@ from app.modules.communications.models import AutomationLog
 from app.modules.clients.models import ClientActivity
 from app.modules.operations.models import Milestone
 from app.modules.sales.models import Estimate
-from app.modules.inventory.models import Material, Purchase
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.communications.models import Notification
 from app.modules.communications.services.automation_service import AutomationService
 from app.modules.communications.services.notification_service import NotificationService
@@ -261,6 +262,100 @@ def test_material_above_reorder_level_does_not_recommend(client, test_user, db_s
     assert db_session.query(Notification).filter(Notification.notification_type == "PURCHASE_RECOMMENDED").count() == 0
 
 
+def test_order_at_risk_material_shortage_notifies_with_order_context(client, test_user, db_session):
+    """Family 130 - distinct from check_low_stock_purchase_recommendations
+    above: that rule only knows a material is low, never which order it
+    threatens. This rule must name the actual order."""
+    _login_with_credentials(client)
+    material = client.post("/api/materials/", json={
+        "name": "Automation At Risk Sheet", "unit": "Sheets", "opening_stock": "1", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Automation At Risk Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "5"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Automation At Risk Client", "phone": "9000010600"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    AutomationService.check_order_at_risk_material_shortage(db_session)
+
+    notif = db_session.query(Notification).filter(Notification.notification_type == "ORDER_AT_RISK").first()
+    assert notif is not None
+    assert "Automation At Risk Sheet" in notif.message
+    assert notif.related_entity_type == "order" and notif.related_entity_id == order["id"]
+
+    log = db_session.query(AutomationLog).filter(
+        AutomationLog.rule_key == "order_at_risk_material_shortage"
+    ).first()
+    assert log is not None
+    assert log.related_entity_type == "order" and log.related_entity_id == order["id"]
+
+
+def test_delivery_risk_critical_notifies_with_order_context(client, test_user, db_session):
+    """P0.50 section 38 - fires only for the most severe (CRITICAL)
+    delivery risk level, reusing OrderService.bulk_attention_flags
+    exactly, the same calculation already backing the Orders List and
+    Dashboard."""
+    from datetime import datetime, timedelta
+    _login_with_credentials(client)
+    client_id = client.post("/api/clients/", json={"name": "Automation Critical Client", "phone": "9000010650"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-07-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Automation Critical Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-07-01T00:00:00", "employee_id": employee["id"], "order_id": order["id"],
+        "task_description": "Automation critical work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+
+    AutomationService.check_delivery_risk_critical(db_session)
+
+    notif = db_session.query(Notification).filter(Notification.notification_type == "DELIVERY_RISK_CRITICAL").first()
+    assert notif is not None
+    assert notif.severity == "CRITICAL"
+    assert notif.related_entity_type == "order" and notif.related_entity_id == order["id"]
+
+    log = db_session.query(AutomationLog).filter(AutomationLog.rule_key == "delivery_risk_critical").first()
+    assert log is not None
+    assert log.related_entity_id == order["id"]
+
+
+def test_delivery_risk_critical_does_not_fire_for_on_track_order(client, test_user, db_session):
+    _login_with_credentials(client)
+    client_id = client.post("/api/clients/", json={"name": "Automation On Track Client", "phone": "9000010651"}).json()["id"]
+    client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-07-01T00:00:00", "order_value": "5000", "advance": "0",
+    })
+
+    AutomationService.check_delivery_risk_critical(db_session)
+
+    assert db_session.query(Notification).filter(Notification.notification_type == "DELIVERY_RISK_CRITICAL").count() == 0
+
+
+def test_order_with_sufficient_stock_does_not_trigger_at_risk_notification(client, test_user, db_session):
+    _login_with_credentials(client)
+    material = client.post("/api/materials/", json={
+        "name": "Automation No Risk Sheet", "unit": "Sheets", "opening_stock": "100", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "Automation No Risk Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "2"}],
+    }).json()
+    client_id = client.post("/api/clients/", json={"name": "Automation No Risk Client", "phone": "9000010601"}).json()["id"]
+    client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    })
+
+    AutomationService.check_order_at_risk_material_shortage(db_session)
+
+    assert db_session.query(Notification).filter(Notification.notification_type == "ORDER_AT_RISK").count() == 0
+
+
 # --------------------------------------------------------------------- #
 # Duplicate prevention / idempotency
 # --------------------------------------------------------------------- #
@@ -344,8 +439,10 @@ def test_master_can_view_automation_logs_and_trigger_run(client, test_user, db_s
     rules_resp = client.get("/api/automation/rules")
     assert rules_resp.status_code == 200
     assert {r["key"] for r in rules_resp.json()} == {
-        "task_overdue", "low_stock_purchase_recommendation", "purchase_delivery_approaching",
-        "payment_overdue", "project_delayed", "production_blocked",
+        "task_overdue", "low_stock_purchase_recommendation", "order_at_risk_material_shortage",
+        "delivery_risk_critical",
+        "purchase_delivery_approaching", "payment_overdue", "project_delayed", "production_blocked",
+        "follow_up_due", "pending_estimate_response", "project_deadline_approaching", "operational_summary",
     }
 
 
@@ -690,7 +787,7 @@ def test_operational_summary_does_not_duplicate_same_day(client, test_user, db_s
 
 
 # --------------------------------------------------------------------- #
-# run_all now covers all ten rules
+# run_all covers every registered rule (12 as of P0.50)
 # --------------------------------------------------------------------- #
 def test_run_all_covers_new_gap_fix_rules(client, test_user, db_session):
     _login_with_credentials(client)
@@ -758,3 +855,45 @@ def test_employee_notified_on_task_status_change(client, test_user, db_session):
 
     notifications = client.get("/api/notifications/").json()
     assert any(n["notification_type"] == "TASK_STATUS_CHANGED" for n in notifications)
+
+
+def test_notifications_endpoint_skips_automation_engine_when_scheduler_enabled(client, test_user, db_session, monkeypatch):
+    """Production-readiness review fix: with the background scheduler
+    enabled, GET /api/notifications/ must not independently re-run the
+    entire automation engine on every call - that would mean every
+    panel open and every unread-count poll, across every logged-in
+    user, duplicates what the scheduler is already doing on its own
+    interval."""
+    from app.platform.configuration import config as config_module
+    monkeypatch.setattr(config_module.settings, "AUTOMATION_SCHEDULER_ENABLED", True)
+    _login_with_credentials(client)
+    client.post("/api/materials/", json={
+        "name": "Scheduler Skip Material", "unit": "box", "minimum_stock": "5", "opening_stock": "1",
+    })
+
+    client.get("/api/notifications/")
+
+    # The low-stock automation rule was never triggered, because the
+    # on-demand fallback correctly stayed off while the scheduler is
+    # enabled.
+    assert db_session.query(Notification).filter(
+        Notification.notification_type == "PURCHASE_RECOMMENDED"
+    ).count() == 0
+
+
+def test_notifications_endpoint_runs_automation_engine_when_scheduler_disabled(client, test_user, db_session, monkeypatch):
+    """The complementary case - with the scheduler disabled (this
+    fixture's default, and the only way tests can exercise this
+    endpoint's fallback), the on-demand check must still run."""
+    from app.platform.configuration import config as config_module
+    monkeypatch.setattr(config_module.settings, "AUTOMATION_SCHEDULER_ENABLED", False)
+    _login_with_credentials(client)
+    client.post("/api/materials/", json={
+        "name": "Scheduler Run Material", "unit": "box", "minimum_stock": "5", "opening_stock": "1",
+    })
+
+    client.get("/api/notifications/")
+
+    assert db_session.query(Notification).filter(
+        Notification.notification_type == "PURCHASE_RECOMMENDED"
+    ).count() >= 1

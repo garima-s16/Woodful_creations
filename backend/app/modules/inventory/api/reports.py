@@ -15,7 +15,8 @@ from app.platform.database.database import get_db
 from app.platform.security.security import get_current_user, require_role
 from app.platform.security.rate_limit import rate_limit
 from app.platform.configuration.config import settings
-from app.modules.inventory.models import Purchase, Material, Supplier
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase, Supplier
 from app.modules.operations.models import Issue
 from app.shared.exporters import build_workbook, xlsx_response
 
@@ -77,7 +78,7 @@ def export_suppliers(
     established pattern. No privileged-gating - Supplier itself carries
     no financial field (per-material pricing lives on the separate
     SupplierMaterial table, not exported here)."""
-    from app.modules.inventory.models import Supplier
+    from app.modules.procurement.models import Supplier
 
     query = db.query(Supplier)
     filters_applied = []

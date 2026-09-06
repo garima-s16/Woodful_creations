@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
 from app.modules.communications.models import Notification
-from app.modules.inventory.models import Material, Purchase
+from app.modules.inventory.models import Material
+from app.modules.procurement.models import Purchase
 from app.modules.sales.models import Order
 from app.modules.auth.models import User
 from app.platform.database.id_generator import generate_business_id
@@ -22,11 +23,25 @@ from app.platform.database.id_generator import generate_business_id
 # ESTIMATE_PENDING_RESPONSE is about an Estimate -
 # a financial document whose create/update/revise routes are already
 # require_role("master") in estimates.py - same tier.
+# SALARY_ADVANCE_APPROVAL_REQUIRED states a requested amount for a
+# specific employee - same financial-commitment sensitivity as
+# PURCHASE_RECOMMENDED/ESTIMATE_PENDING_RESPONSE, and salary advance
+# approve/reject is already require_role("master") in
+# salary_advances.py - same tier.
+# PAYROLL_FINALIZATION_OVERDUE is a payroll-processing status for a
+# specific employee (draft slip, no amount stated) - kept master-only
+# alongside the other payroll/HR-approval type above rather than
+# broadcast, since payroll processing state is management information,
+# not an operational fact every role needs (unlike LOW_STOCK/
+# OUT_OF_STOCK/PURCHASE_RECEIVED above).
 # Lives here (not in the notifications route) so every other place that
 # needs the exact same "can this role see this notification" rule -
 # the communication search included - imports the one
 # definition rather than re-deriving it.
-FINANCIAL_NOTIFICATION_TYPES = {"PAYMENT_OVERDUE", "PAYMENT_DUE", "PURCHASE_RECOMMENDED", "ESTIMATE_PENDING_RESPONSE"}
+FINANCIAL_NOTIFICATION_TYPES = {
+    "PAYMENT_OVERDUE", "PAYMENT_DUE", "PURCHASE_RECOMMENDED", "ESTIMATE_PENDING_RESPONSE",
+    "SALARY_ADVANCE_APPROVAL_REQUIRED", "PAYROLL_FINALIZATION_OVERDUE",
+}
 
 
 class NotificationService:
@@ -158,8 +173,9 @@ class NotificationService:
 
     @staticmethod
     def notify_purchase_received(db: Session, purchase: Purchase):
-        """Called directly from StockService.record_purchase - a real
-        event as it happens, not a periodic scan."""
+        """Called directly from ProcurementService.record_purchase/
+        mark_purchase_received - a real event as it happens, not a
+        periodic scan."""
         material_name = purchase.material.name if purchase.material else "Material"
         supplier_name = purchase.supplier.name if purchase.supplier else "Supplier"
         NotificationService.notify(

@@ -138,11 +138,41 @@ READ_TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     },
     {
+        "name": "get_business_attention",
+        "description": "What needs attention across the business right now - e.g. 'what needs my attention today', 'what should I prioritize', 'which orders are at risk'. Combines delivery risk (from real order/material/production/task signals) and, for Master users, payroll/salary-advance attention items, in priority order.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_salary_advance_status",
+        "description": "Master-only: outstanding salary advance requests and balances across all employees, e.g. 'who has salary advance outstanding' or 'is there anything pending on salary advances'.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_overtime_status",
+        "description": "Master-only: which employees have approved overtime recorded for a given month, e.g. 'who has approved overtime' or 'overtime for September'. Defaults to the current month if none is given.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "month": {"type": "string", "description": "Full month name, e.g. 'September'. Defaults to the current month."},
+                "year": {"type": "string", "description": "4-digit year, e.g. '2026'. Defaults to the current year."},
+            },
+        },
+    },
+    {
         "name": "get_order",
         "description": "Look up a specific order's status, value, and outstanding balance by order code, e.g. 'what's the status of WC-2026-003'.",
         "parameters": {
             "type": "object",
             "properties": {"order_code": {"type": "string", "description": "Order code or partial code, e.g. 'WC-2026-003' or '2026-003'"}},
+            "required": ["order_code"],
+        },
+    },
+    {
+        "name": "get_order_material_requirements",
+        "description": "Check whether an order's products have enough material in stock, e.g. 'does WC-2026-003 have enough material' or 'material shortage for [client]'s order'. Traces each product's bill of materials against real current stock and any purchase already placed but not yet received, and states the recommended purchase quantity if there is a real shortage.",
+        "parameters": {
+            "type": "object",
+            "properties": {"order_code": {"type": "string", "description": "Order code or partial code"}},
             "required": ["order_code"],
         },
     },
@@ -1643,7 +1673,7 @@ def _handle_message_impl(message: str, db: Session, user_role: str,
             if user_role not in ("master",):
                 return "Receiving purchases requires a master account.", [], None, []
 
-            from app.modules.inventory.models import Purchase
+            from app.modules.procurement.models import Purchase
             code = args.get("purchase_code", "")
             purchase = db.query(Purchase).filter(Purchase.purchase_code.ilike(f"%{code}%")).first()
             if not purchase:

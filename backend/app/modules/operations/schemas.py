@@ -137,6 +137,13 @@ class DailyTaskResponse(DailyTaskBase):
     order_code: Optional[str] = None
     product_name: Optional[str] = None
     employee_name: Optional[str] = None
+    # True when this task's order already has a known material shortage
+    # (StockService.calculate_at_risk_orders) - only populated on the
+    # list endpoint, which computes this once for the whole page rather
+    # than per task; single-task responses (create/update) leave this
+    # at its default rather than paying for the bulk check on every
+    # write, where the value is disproportionate to the cost.
+    material_at_risk: bool = False
 
     class Config:
         from_attributes = True
@@ -277,6 +284,136 @@ class ProductionJobResponse(ProductionJobBase):
         from_attributes = True
 
 
+# --- Production Operation (P0.3.3/3.4) -------------------------------
+
+PRODUCTION_OPERATION_STATUSES = {"Not Started", "In Progress", "Completed"}
+
+
+class ProductionOperationBase(BaseModel):
+    production_job_id: int
+    sequence: int = 1
+    operation_name: str
+    description: Optional[str] = None
+    resource: Optional[str] = None
+    work_centre_id: Optional[int] = None
+    estimated_duration_minutes: Optional[int] = None
+    actual_duration_minutes: Optional[int] = None
+    status: str = "Not Started"
+    depends_on_operation_id: Optional[int] = None
+    employee_id: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+
+class ProductionOperationCreate(ProductionOperationBase):
+    @field_validator("sequence")
+    @classmethod
+    def sequence_must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("Sequence must be at least 1")
+        return v
+
+    @field_validator("estimated_duration_minutes", "actual_duration_minutes")
+    @classmethod
+    def duration_not_negative(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Duration cannot be negative")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def status_must_be_valid(cls, v: str) -> str:
+        v = (v or "").strip()
+        if v not in PRODUCTION_OPERATION_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(sorted(PRODUCTION_OPERATION_STATUSES))}")
+        return v
+
+
+class ProductionOperationUpdate(BaseModel):
+    status: Optional[str] = None
+    actual_duration_minutes: Optional[int] = None
+    resource: Optional[str] = None
+    employee_id: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+    @field_validator("actual_duration_minutes")
+    @classmethod
+    def duration_not_negative(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Duration cannot be negative")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def status_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if v not in PRODUCTION_OPERATION_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(sorted(PRODUCTION_OPERATION_STATUSES))}")
+        return v
+
+
+class ProductionOperationResponse(ProductionOperationBase):
+    id: int
+    business_id: Optional[str] = None
+    is_blocked_by_dependency: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Work Centre (P0.3.5) ---------------------------------------------
+
+
+class WorkCentreCreate(BaseModel):
+    name: str
+    type: Optional[str] = None
+    is_active: bool = True
+    capacity_hours_per_day: Optional[Decimal] = None
+    notes: Optional[str] = None
+
+    @field_validator("capacity_hours_per_day")
+    @classmethod
+    def capacity_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v < 0:
+            raise ValueError("Capacity cannot be negative")
+        return v
+
+
+class WorkCentreUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    is_active: Optional[bool] = None
+    capacity_hours_per_day: Optional[Decimal] = None
+    notes: Optional[str] = None
+
+    @field_validator("capacity_hours_per_day")
+    @classmethod
+    def capacity_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v < 0:
+            raise ValueError("Capacity cannot be negative")
+        return v
+
+
+class WorkCentreResponse(BaseModel):
+    id: int
+    business_id: Optional[str] = None
+    name: str
+    type: Optional[str] = None
+    is_active: bool
+    capacity_hours_per_day: Optional[Decimal] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- Issue -----------------------------------------------------------
 
 
@@ -381,6 +518,85 @@ class ProjectExpenseUpdate(BaseModel):
 class ProjectExpenseResponse(ProjectExpenseBase):
     id: int
     business_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Cutting Requirement (P0.3 section 25) --------------------------------
+
+
+class CuttingRequirementBase(BaseModel):
+    production_job_id: int
+    product_id: Optional[int] = None
+    material_id: int
+    part_name: str
+    quantity: int = 1
+    length_mm: Decimal
+    width_mm: Decimal
+    thickness_mm: Optional[Decimal] = None
+    grain_direction: Optional[str] = None
+    rotation_allowed: bool = True
+    kerf_mm: Optional[Decimal] = None
+    notes: Optional[str] = None
+
+
+class CuttingRequirementCreate(CuttingRequirementBase):
+    @field_validator("quantity")
+    @classmethod
+    def quantity_must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("Quantity must be at least 1")
+        return v
+
+    @field_validator("length_mm", "width_mm")
+    @classmethod
+    def dimension_must_be_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("Dimensions must be greater than zero")
+        return v
+
+    @field_validator("thickness_mm", "kerf_mm")
+    @classmethod
+    def optional_dimension_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v <= 0:
+            raise ValueError("If given, this must be greater than zero")
+        return v
+
+
+class CuttingRequirementUpdate(BaseModel):
+    part_name: Optional[str] = None
+    quantity: Optional[int] = None
+    length_mm: Optional[Decimal] = None
+    width_mm: Optional[Decimal] = None
+    thickness_mm: Optional[Decimal] = None
+    grain_direction: Optional[str] = None
+    rotation_allowed: Optional[bool] = None
+    kerf_mm: Optional[Decimal] = None
+    notes: Optional[str] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_must_be_positive(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 1:
+            raise ValueError("Quantity must be at least 1")
+        return v
+
+    @field_validator("length_mm", "width_mm")
+    @classmethod
+    def dimension_must_be_positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v <= 0:
+            raise ValueError("Dimensions must be greater than zero")
+        return v
+
+
+class CuttingRequirementResponse(CuttingRequirementBase):
+    id: int
+    business_id: Optional[str] = None
+    material_name: Optional[str] = None
+    product_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

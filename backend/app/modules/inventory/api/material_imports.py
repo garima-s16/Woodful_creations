@@ -7,7 +7,8 @@ from app.platform.database.database import get_db
 from app.platform.configuration.config import settings
 from app.platform.security.security import require_role
 from app.platform.audit.audit import log_action
-from app.modules.inventory.models import Material, MaterialCategory, MaterialSubcategory, Supplier, Location
+from app.modules.inventory.models import Material, MaterialCategory, MaterialSubcategory, Location
+from app.modules.procurement.models import Supplier
 from app.modules.inventory.imports.material_schemas import (
     MaterialImportPreviewResponse, MaterialImportRowPreview,
     MaterialImportCommitRequest, MaterialImportCommitResult,

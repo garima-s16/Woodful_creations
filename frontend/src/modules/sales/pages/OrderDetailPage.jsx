@@ -35,6 +35,9 @@ function OrderDetailPage() {
   const [aiReports, setAiReports] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
   const [profitability, setProfitability] = useState(null);
+  const [materialRequirements, setMaterialRequirements] = useState(null);
+  const [materialRiskDismissed, setMaterialRiskDismissed] = useState(false);
+  const [orderHealth, setOrderHealth] = useState(null);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState(null);
   const [sendEmailKind, setSendEmailKind] = useState(null); // 'order' | 'invoice' | null
@@ -143,6 +146,12 @@ function OrderDetailPage() {
     paymentsAPI.list({ order_id: orderId }).then((res) => setPayments(res.data)).catch((err) => setPayments(err.response?.status === 403 ? 'forbidden' : 'error'));
     projectExpensesAPI.list({ order_id: orderId }).then((res) => setExpenses(res.data)).catch((err) => setExpenses(err.response?.status === 403 ? 'forbidden' : 'error'));
     ordersAPI.profitability(orderId).then((res) => setProfitability(res.data)).catch((err) => setProfitability(err.response?.status === 403 ? 'forbidden' : 'error'));
+    ordersAPI.materialRequirements(orderId).then((res) => setMaterialRequirements(res.data.materials)).catch(() => setMaterialRequirements('error'));
+    // Deterministic Order Health/Risk (Family 130 P0.1) - same
+    // authoritative computation the chatbot's "what is blocking this
+    // order" query uses. Drives the header's Next Action/risk line
+    // below instead of the page re-deriving it from raw tasks.
+    ordersAPI.health(orderId).then((res) => setOrderHealth(res.data)).catch(() => setOrderHealth(null));
 
     setCommentsError(false);
     ordersAPI.listComments(orderId).then((res) => setComments(res.data)).catch(() => { setComments([]); setCommentsError(true); });
@@ -227,17 +236,55 @@ function OrderDetailPage() {
           )}
           <OrderLifecycle order={order} />
           <div className="detail-meta">
-            {(() => {
-              const nextAction = [...tasks]
-                .filter((t) => t.status !== 'DONE')
-                .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-              return nextAction ? (
-                <div className="detail-meta-item">
-                  <span className="detail-meta-label">Next Action</span>
-                  <span className="detail-meta-value">{nextAction.task_description}</span>
-                </div>
-              ) : null;
-            })()}
+            {orderHealth?.next_action && (
+              // Sourced from OrderService.compute_order_health's priority-ordered
+              // next_action (blocked task > material shortage > production
+              // blocker > overdue task > delivery risk > earliest open task) -
+              // not re-derived from raw tasks here, so a generic open task can
+              // never hide a stronger business blocker (Family 130 P0.1 s.5).
+              <div className="detail-meta-item">
+                <span className="detail-meta-label">Next Action</span>
+                <span className="detail-meta-value">
+                  {orderHealth.next_action.description}
+                  {orderHealth.next_action.detail ? ` — ${orderHealth.next_action.detail}` : ''}
+                </span>
+              </div>
+            )}
+            {orderHealth && orderHealth.risk_level !== 'ON_TRACK' && (
+              <div className="detail-meta-item">
+                <span className="detail-meta-label">Needs Attention</span>
+                <span className="detail-meta-value">
+                  <span className={`status-badge ${
+                    orderHealth.risk_level === 'CRITICAL' ? 'status-danger'
+                      : orderHealth.risk_level === 'AT_RISK' ? 'status-danger' : 'status-warning'
+                  }`}>
+                    {orderHealth.risk_level === 'CRITICAL' ? 'Critical'
+                      : orderHealth.risk_level === 'AT_RISK' ? 'At Risk' : 'Watch'}
+                  </span>{' '}
+                  {orderHealth.reasons[0]}
+                </span>
+              </div>
+            )}
+            {orderHealth?.readiness && (
+              // Structured, non-fabricated readiness (Family 130 P0.1 s.6) -
+              // "unavailable" means no real data exists for that dimension
+              // yet, never a hidden pass. No percentage is invented.
+              <div className="detail-meta-item">
+                <span className="detail-meta-label">Readiness</span>
+                <span className="detail-meta-value" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(orderHealth.readiness).map(([dim, state]) => {
+                    const cls = ['blocked', 'at_risk', 'overdue'].includes(state) ? 'status-danger'
+                      : ['ready', 'on_track', 'delivered'].includes(state) ? 'status-ok'
+                      : state === 'in_progress' ? 'status-warning' : 'status-muted';
+                    return (
+                      <span key={dim} className={`status-badge ${cls}`} title={`${dim}: ${state}`}>
+                        {dim}: {state.replace('_', ' ')}
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className="page-actions">
@@ -269,6 +316,27 @@ function OrderDetailPage() {
         )}
         <Card><div className="card-body"><div className="detail-meta-label">Progress</div><h3>{order.progress_percent}%</h3></div></Card>
       </div>
+
+      {!materialRiskDismissed && Array.isArray(materialRequirements) && materialRequirements.some((m) => Number(m.shortage) > 0) && (() => {
+        const shortages = materialRequirements.filter((m) => Number(m.shortage) > 0);
+        const top = shortages[0];
+        const topSupplier = top.supplier_options?.[0];
+        return (
+          <Alert
+            type="error"
+            onClose={() => setMaterialRiskDismissed(true)}
+            message={
+              <>
+                <strong>Order at material risk.</strong> Short {top.shortage} {top.unit} of {top.material_name}
+                {shortages.length > 1 ? ` (+${shortages.length - 1} other material(s))` : ''}.
+                {topSupplier
+                  ? ` ${topSupplier.supplier_name} can supply this${topSupplier.lead_time_days != null ? ` (${topSupplier.lead_time_days}d lead time)` : ''} - recommend reviewing procurement.`
+                  : ' No supplier option is on file for this material yet - recommend reviewing procurement.'}
+              </>
+            }
+          />
+        );
+      })()}
 
       <div className="page-actions" style={{ marginBottom: 'var(--space-5)' }}>
         {canViewFinancials && <button className="btn-secondary" onClick={() => setActiveAction('payment')}>Record Payment</button>}
@@ -341,8 +409,13 @@ function OrderDetailPage() {
           <div className="card-body">
             {aiReports.slice(0, 3).map((r) => (
               <div key={r.id} className="detail-meta-item" style={{ marginBottom: 12 }}>
-                <span className={`status-badge ${r.risk_level === 'AT_RISK' ? 'status-danger' : 'status-ok'}`}>
-                  {r.risk_level === 'AT_RISK' ? 'At Risk' : 'On Track'}
+                <span className={`status-badge ${
+                  r.risk_level === 'CRITICAL' || r.risk_level === 'AT_RISK' ? 'status-danger'
+                    : r.risk_level === 'WATCH' ? 'status-warning' : 'status-ok'
+                }`}>
+                  {r.risk_level === 'CRITICAL' ? 'Critical'
+                    : r.risk_level === 'AT_RISK' ? 'At Risk'
+                    : r.risk_level === 'WATCH' ? 'Watch' : 'On Track'}
                 </span>
                 <span className="detail-meta-label">{new Date(r.created_at).toLocaleString()}</span>
                 {r.findings.blocked_tasks?.length > 0 && (
@@ -529,18 +602,52 @@ function OrderDetailPage() {
         issues === 'forbidden'
           ? <Alert type="info" message="You do not have permission to view materials issued for this order." />
           : (
-            <Table
-              columns={[
-                { key: 'issue_code', label: 'Issue' },
-                { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
-                { key: 'material_id', label: 'Material', render: (v) => materials.find((m) => m.id === v)?.name || v },
-                { key: 'quantity_issued', label: 'Quantity' }, { key: 'issued_to', label: 'Issued To' },
-              ]}
-              data={issues === 'error' ? [] : (issues || [])}
-              error={issues === 'error'}
-              onRetry={load}
-              emptyMessage="No materials issued to this project yet."
-            />
+            <>
+              {materialRequirements === 'error' ? null : materialRequirements && materialRequirements.length > 0 && (
+                <Card title="Material Requirement + Shortage" style={{ marginBottom: 'var(--space-4)' }}>
+                  <div className="card-body">
+                    <Table
+                      columns={[
+                        { key: 'material_name', label: 'Material' },
+                        { key: 'required', label: 'Required', render: (v, row) => `${v} ${row.unit}` },
+                        { key: 'available', label: 'Available' },
+                        { key: 'reserved_by_other_orders', label: 'Reserved (Other Orders)' },
+                        { key: 'pending_purchase_quantity', label: 'Pending Purchase' },
+                        {
+                          key: 'shortage', label: 'Shortage',
+                          render: (v) => Number(v) > 0
+                            ? <span style={{ color: 'var(--danger)', fontWeight: 600 }}>{v}</span>
+                            : <span style={{ color: 'var(--success)' }}>None</span>,
+                        },
+                        {
+                          key: 'supplier_options', label: 'Recommended Supplier',
+                          render: (v, row) => {
+                            if (Number(row.shortage) <= 0) return '-';
+                            const top = v?.[0];
+                            if (!top) return <span style={{ color: 'var(--text-secondary)' }}>No supplier on file</span>;
+                            return `${top.supplier_name}${top.lead_time_days != null ? ` (${top.lead_time_days}d)` : ''}`;
+                          },
+                        },
+                      ]}
+                      data={materialRequirements}
+                      emptyMessage="No products with a bill of materials on this order."
+                    />
+                  </div>
+                </Card>
+              )}
+              <Table
+                columns={[
+                  { key: 'issue_code', label: 'Issue' },
+                  { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+                  { key: 'material_id', label: 'Material', render: (v) => materials.find((m) => m.id === v)?.name || v },
+                  { key: 'quantity_issued', label: 'Quantity' }, { key: 'issued_to', label: 'Issued To' },
+                ]}
+                data={issues === 'error' ? [] : (issues || [])}
+                error={issues === 'error'}
+                onRetry={load}
+                emptyMessage="No materials issued to this project yet."
+              />
+            </>
           )
       )}
 

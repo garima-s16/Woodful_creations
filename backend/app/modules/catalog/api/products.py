@@ -65,7 +65,7 @@ def list_products(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db), auth=Depends(get_current_user),
 ):
-    query = db.query(Product).options(joinedload(Product.materials_used))
+    query = db.query(Product).options(joinedload(Product.materials_used).joinedload(ProductMaterial.material))
     if search:
         like = f"%{search}%"
         query = query.filter(or_(Product.name.ilike(like), Product.product_code.ilike(like),
@@ -135,7 +135,7 @@ def create_product(data: ProductCreate, request: Request, confirm_duplicate: boo
 
 @router.get("/{product_id}", response_model=ProductResponse)
 def get_product(product_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    product = db.query(Product).options(joinedload(Product.materials_used)).filter(Product.id == product_id).first()
+    product = db.query(Product).options(joinedload(Product.materials_used).joinedload(ProductMaterial.material)).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return _serialize_products([product], auth.get("role", "user"))[0]
