@@ -84,6 +84,20 @@ else
 fi
 echo ""
 
+# Run database migrations - without this, a fresh clone has a venv,
+# dependencies, and a .env file, but no database tables at all, and the
+# app fails with confusing errors the moment it's actually run (SQLite
+# by default; uses whatever DATABASE_URL is configured in backend/.env
+# above). Only meaningful once .env exists, hence run after the check
+# above rather than immediately after dependency install.
+echo "Running database migrations..."
+source backend/venv/bin/activate
+cd backend
+alembic upgrade head && echo "Migrations applied" || echo "WARNING: Migrations failed - check backend/.env's DATABASE_URL and SECRET_KEY, then run 'cd backend && alembic upgrade head' manually."
+cd ..
+deactivate
+echo ""
+
 # Check frontend node_modules
 echo "Checking frontend setup..."
 if [ ! -d "frontend/node_modules" ]; then

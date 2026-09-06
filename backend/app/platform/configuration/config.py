@@ -24,7 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # existence here, rather than relying on a particular pydantic-settings
 # version's own multi-file-priority behavior, so this is unambiguous on
 # inspection regardless of which version is installed.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _LOCAL_ENV_FILE = _PROJECT_ROOT / "local.env"
 _DEFAULT_ENV_FILE = _PROJECT_ROOT / ".env"
 _ENV_FILE = _LOCAL_ENV_FILE if _LOCAL_ENV_FILE.exists() else _DEFAULT_ENV_FILE

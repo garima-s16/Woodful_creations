@@ -11,17 +11,17 @@ from app.models.setting import (
 )
 
 from app.modules.inventory.models import Location, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition, MaterialAttributeValue, Material
-from app.modules.procurement.models import Supplier, SupplierMaterial
+from app.modules.procurement.models import Supplier, SupplierMaterial, ProcurementRequirement, SupplierDecision
 from app.modules.catalog.models import Product, ProductMaterial, RateCard
 from app.modules.inventory.models import StockTransfer, StockAdjustment
 from app.modules.procurement.models import Purchase
-from app.modules.operations.models import Issue, Milestone, DailyTask, TaskComment, ProductionJob
+from app.modules.operations.models import Issue, Milestone, DailyTask, TaskComment, ProductionJob, WorkCentre, ProductionOperation
 
 from app.modules.clients.models import Client, ClientActivity, ClientDocument, ClientProductRate
 from app.modules.sales.models import Order, OrderItem, OrderComment, Payment, PaymentDocument, Estimate, EstimateLineItem
 from app.modules.operations.models import ProjectExpense
 
-from app.modules.hr.models import Employee, Attendance, Leave, SalarySlip, WorkingCalendarSettings, CompanyHoliday
+from app.modules.hr.models import Employee, Attendance, Leave, SalarySlip, WorkingCalendarSettings, CompanyHoliday, SalaryAdvance
 from app.modules.reporting.models import AIWorkspaceReport
 from app.modules.documents.models import GenericDocument
 from app.modules.ai.models import ChatLearningCandidate
@@ -49,4 +49,5 @@ __all__ = [
     "GenericDocument", "StockLedgerEntry",
     "Candidate", "Interview",
     "AuditLog", "AutomationLog",
+    "SalaryAdvance", "WorkCentre", "ProductionOperation", "ProcurementRequirement", "SupplierDecision",
 ]

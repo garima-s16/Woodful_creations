@@ -59,7 +59,7 @@ _MIGRATION_LOCK_KEY = 8825170392  # arbitrary, fixed - see comment above
 
 
 def _alembic_config() -> Config:
-    backend_dir = Path(__file__).resolve().parent.parent.parent
+    backend_dir = Path(__file__).resolve().parent.parent.parent.parent
     cfg = Config(str(backend_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     return cfg

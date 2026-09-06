@@ -1078,3 +1078,38 @@ def test_master_can_still_delete_employee(client, test_user):
     employee = client.post("/api/employees/", json={"name": "Global Delete Guard Master Employee", "monthly_salary": "20000"}).json()
     resp = client.delete(f"/api/employees/{employee['id']}")
     assert resp.status_code == 204
+
+
+def test_settings_env_file_resolves_inside_backend_directory():
+    """Regression test for a real bug: _PROJECT_ROOT was off by one
+    directory level (backend/app/ instead of backend/), so a genuinely
+    correct, fully-populated backend/.env was silently never found or
+    read at all - Settings would fail with "SECRET_KEY Field required"
+    even when SECRET_KEY was actually set, because the file containing
+    it was never located. Asserts the resolved default env file path
+    is a direct child of the real backend/ directory (parent of app/),
+    not of app/ itself."""
+    from pathlib import Path
+    from app.platform.configuration import config as config_module
+    backend_dir = Path(config_module.__file__).resolve().parent.parent.parent
+    assert config_module._DEFAULT_ENV_FILE.parent == backend_dir
+    assert config_module._DEFAULT_ENV_FILE.name == ".env"
+
+
+def test_alembic_config_resolves_to_real_backend_files():
+    """Regression test for the same class of bug in
+    auto_migrate.py's _alembic_config - it was resolving to
+    backend/app/ instead of backend/, meaning run_startup_migrations
+    (called on every backend startup, with main.py explicitly refusing
+    to start the server if it fails) could never find the real
+    alembic.ini or alembic/ folder. Asserts the config genuinely
+    points at files that exist on disk, not merely a plausible-looking
+    path."""
+    from pathlib import Path
+    from app.platform.database.auto_migrate import _alembic_config
+    cfg = _alembic_config()
+    ini_path = Path(cfg.config_file_name)
+    script_location = Path(cfg.get_main_option("script_location"))
+    assert ini_path.exists(), f"{ini_path} does not exist - alembic.ini path resolution is broken"
+    assert script_location.exists(), f"{script_location} does not exist - alembic script_location resolution is broken"
+    assert (script_location / "env.py").exists()

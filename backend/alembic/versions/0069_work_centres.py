@@ -40,7 +40,9 @@ def upgrade() -> None:
     if table_exists(bind, "production_operations"):
         add_column_if_missing(
             bind, "production_operations",
-            sa.Column("work_centre_id", sa.Integer(), sa.ForeignKey("work_centres.id"), nullable=True),
+            sa.Column("work_centre_id", sa.Integer(),
+                      sa.ForeignKey("work_centres.id", name="fk_production_operations_work_centre_id"),
+                      nullable=True),
         )
         create_index_if_missing(bind, "ix_production_operations_work_centre_id", "production_operations", ["work_centre_id"])
 

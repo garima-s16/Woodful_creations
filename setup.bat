@@ -85,6 +85,26 @@ if not exist "backend\.env" (
 )
 echo.
 
+REM Run database migrations - without this, a fresh clone has a venv,
+REM dependencies, and a .env file, but no database tables at all, and
+REM the app fails with confusing errors the moment it's actually run
+REM (SQLite by default; uses whatever DATABASE_URL is configured in
+REM backend\.env above). Only meaningful once .env exists, hence run
+REM after the check above rather than immediately after dependency
+REM install.
+echo Running database migrations...
+call backend\venv\Scripts\activate.bat
+cd backend
+alembic upgrade head
+if errorlevel 1 (
+    echo WARNING: Migrations failed - check backend\.env's DATABASE_URL and SECRET_KEY, then run "cd backend ^&^& alembic upgrade head" manually.
+) else (
+    echo Migrations applied
+)
+cd ..
+call backend\venv\Scripts\deactivate.bat
+echo.
+
 REM Check frontend node_modules
 echo Checking frontend setup...
 if not exist "frontend\node_modules" (
