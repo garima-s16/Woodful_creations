@@ -1,0 +1,1200 @@
+/* Page/module styles: generic Pages.css, login, cart drawer, line-
+   item editor, location tree, material attributes editor/catalog,
+   and the mobile-app install page. */
+
+/* --- Pages.css --- */
+.page {
+  padding: var(--space-6) var(--space-6) var(--space-8); max-width: 1400px; margin: 0 auto;
+  animation: pageFadeIn 220ms ease-out;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: var(--space-6); flex-wrap: wrap; gap: var(--space-3);
+  border-bottom: 1px solid var(--border-color); padding-bottom: var(--space-4);
+}
+.page-header h1 { font-size: 1.9rem; font-weight: 600; }
+.page-actions { display: flex; gap: var(--space-3); align-items: center; }
+
+.btn-primary, .btn-secondary, .btn-tertiary, .btn-danger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 20px; border-radius: var(--radius-sm); font-size: 0.85rem;
+  font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none;
+  text-align: center; letter-spacing: 0.01em; transition: all var(--transition);
+}
+/* Primary = the one gold-filled action per view. Previously this used
+   --color-ink (near-black) on the near-black page background, which
+   made primary CTAs nearly invisible - fixed to use the actual accent
+   color so "primary" reads as obviously primary. */
+.btn-primary { background: var(--color-gold); color: var(--color-ink); border-color: var(--color-gold); }
+.btn-primary:hover { background: var(--color-gold-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-danger { background: var(--danger); color: var(--danger-text); border: 1px solid transparent; }
+.btn-danger:hover { background: var(--danger-soft); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-secondary { background: transparent; color: var(--text-primary); border-color: var(--border-strong); }
+.btn-secondary:hover { background: var(--surface-elevated); border-color: var(--color-gold); }
+/* Tertiary/ghost - the most recessive button, no border at all, for an
+   action that must not visually compete with a primary or secondary
+   action on the same surface (e.g. "Cancel" next to "Save"). */
+.btn-tertiary { background: transparent; color: var(--text-secondary); border-color: transparent; padding: 10px 14px; }
+.btn-tertiary:hover { background: var(--surface-elevated); color: var(--text-primary); }
+.btn-link { background: none; border: none; color: var(--color-gold); cursor: pointer; text-decoration: none; padding: 0; font-size: 0.85rem; font-weight: 600; }
+
+.btn-primary:focus-visible, .btn-secondary:focus-visible,
+.btn-tertiary:focus-visible, .btn-danger:focus-visible, .btn-link:focus-visible {
+  outline: none; box-shadow: var(--focus-ring);
+}
+.btn-primary:disabled, .btn-secondary:disabled,
+.btn-tertiary:disabled, .btn-danger:disabled {
+  opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none;
+}
+
+/* Shared icon-only button baseline - 44px minimum matches the mobile
+   touch-target fix already applied to the navbar's icon buttons.
+   Requires aria-label on the button itself for accessibility, since
+   there is no visible text label. */
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0; border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid transparent; color: var(--text-primary);
+  cursor: pointer; transition: all var(--transition);
+}
+.btn-icon:hover { background: var(--surface-elevated); }
+.btn-icon:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-icon:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none; }
+.btn-link:hover { text-decoration: underline; }
+
+.tab-bar { display: flex; gap: 4px; margin-bottom: var(--space-5); border-bottom: 1px solid var(--border-color); }
+.tab {
+  padding: var(--space-3) var(--space-4); border: none; background: none; cursor: pointer;
+  font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; letter-spacing: 0.02em;
+  color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all var(--transition);
+}
+.tab.active { color: var(--text-primary); border-bottom-color: var(--color-gold); }
+.tab:hover { color: var(--text-primary); }
+
+/* Grid children (Card) also carry their own margin-bottom for
+   standalone use, which stacked on top of this grid's gap and skewed
+   row alignment/spacing - zeroed here so the grid gap is the only
+   source of spacing between KPI cards. */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6); }
+.kpi-row .card { margin-bottom: 0; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-5); margin-bottom: var(--space-5); }
+
+.settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-5); }
+.settings-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.settings-nav-item {
+  text-align: left; padding: 10px 14px; border: none; background: var(--surface);
+  border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem; color: var(--text-primary);
+  transition: all var(--transition);
+}
+.settings-nav-item.active { background: var(--color-gold); color: var(--color-ink); }
+.settings-content { min-height: 200px; }
+
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.app-body { display: flex; flex: 1; }
+.app-content {
+  flex: 1;
+  /* Flex items default to min-width: auto, which refuses to shrink
+     below the intrinsic width of their content - a wide table (like
+     Inventory's Stock tab, with 10+ columns) would otherwise force
+     this whole flex child, and with it .app-body/the page itself,
+     wider than the viewport instead of scrolling within its own
+     overflow-x: auto below. min-width: 0 is the standard fix for this
+     well-documented flexbox behavior. */
+  min-width: 0;
+  overflow-x: auto;
+  background: var(--light-bg);
+}
+
+/* Detail page tabs & sections */
+.detail-header {
+  display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
+  gap: var(--space-4); margin-bottom: var(--space-5);
+}
+.detail-header-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-start; }
+.detail-title { font-size: 1.6rem; }
+.detail-subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+.business-id-badge {
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 7px;
+  margin-left: 8px;
+}
+.client-id-cell { display: flex; flex-direction: column; gap: 3px; }
+.client-id-cell .business-id-badge { margin-left: 0; align-self: flex-start; }
+.client-id-cell .client-id-ref { font-size: 0.72rem; color: var(--text-tertiary, var(--text-secondary)); }
+
+/* Excel import (Clients, Purchases, Products) */
+.import-dropzone {
+  border: 2px dashed var(--border-color); border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-5); text-align: center; cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.import-dropzone:hover, .import-dropzone.drag-over {
+  border-color: var(--color-gold); background: rgba(192, 138, 69, 0.06);
+}
+.import-dropzone-title { font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
+.import-dropzone-hint { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
+
+.import-file-selected {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4); margin-top: var(--space-3);
+  background: var(--surface-elevated);
+}
+.import-file-name { font-weight: 600; margin-right: 10px; }
+.import-file-size { color: var(--text-secondary); font-size: 0.85rem; }
+
+.import-result-grid {
+  display: flex; gap: var(--space-6); margin: var(--space-4) 0;
+}
+.import-result-grid > div { display: flex; flex-direction: column; }
+.import-result-number { font-size: 1.8rem; font-weight: 700; color: var(--color-gold); }
+.import-result-label { font-size: 0.78rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.import-row-error { font-size: 0.76rem; color: var(--danger); margin-top: 3px; }
+.import-row-possible-match { font-size: 0.76rem; color: var(--warning); margin-top: 4px; max-width: 320px; }
+
+.order-item-product-link { font-size: 0.76rem; color: var(--color-gold-soft); margin-top: 2px; }
+.detail-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-3); }
+.detail-meta-item { font-size: 0.85rem; }
+.detail-meta-label { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; display: block; margin-bottom: 2px; }
+.detail-meta-value { font-weight: 600; }
+
+.status-badge {
+  display: inline-block; padding: 4px 10px; border-radius: 100px; font-size: 0.72rem;
+  font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+}
+.status-ok, .status-completed, .status-paid { background: var(--success-bg); color: var(--success); }
+.status-gold { background: rgba(192, 138, 69, 0.15); color: var(--color-gold); }
+.status-warning, .status-pending, .status-in-progress { background: var(--warning-bg); color: var(--warning); }
+.status-neutral { background: var(--border-color); color: var(--text-secondary); }
+.status-danger, .status-overdue, .status-out-of-stock { background: var(--danger-bg); color: var(--danger); }
+.status-muted { background: var(--surface-elevated); color: var(--text-secondary); opacity: 0.75; }
+.status-info { background: var(--info-bg); color: var(--info); }
+
+@media (max-width: 900px) {
+  .page { padding: var(--space-4); }
+  .settings-layout { grid-template-columns: 1fr; }
+  .dashboard-grid { grid-template-columns: 1fr; }
+}
+
+.attention-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-5); }
+.attention-column h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: var(--space-2); }
+.attention-item {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--border-color); padding: 8px 0; cursor: pointer;
+  font-size: 0.83rem; color: var(--text-primary);
+}
+.attention-item:hover { color: var(--color-gold); }
+.attention-item:focus-visible { outline: 2px solid var(--color-gold); outline-offset: -2px; color: var(--color-gold); }
+.attention-item-hint { display: block; font-size: 0.74rem; color: var(--text-secondary); margin-top: 2px; }
+
+.readiness-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4); border-radius: 8px; border-left: 4px solid var(--border-color);
+  background: var(--surface-elevated); margin-bottom: var(--space-4);
+}
+.readiness-banner.readiness-ready { border-left-color: var(--success); }
+.readiness-banner.readiness-partially_ready { border-left-color: var(--warning); }
+.readiness-banner.readiness-blocked { border-left-color: var(--danger); }
+.readiness-reason { color: var(--text-secondary); font-size: 0.9rem; }
+
+.page-search { display: flex; gap: var(--space-3); margin-bottom: var(--space-4); max-width: 420px; }
+.page-search input { flex: 1; }
+
+/* Dashboard - unified hierarchy */
+.dashboard-header { margin-bottom: var(--space-5); }
+.dashboard-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-gold); font-weight: 700; }
+.dashboard-header h1 { font-size: 2.1rem; margin-top: 4px; }
+.dashboard-subtitle { color: var(--text-secondary); font-size: 0.92rem; margin-top: 8px; }
+
+.dashboard-error-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4);
+  padding: var(--space-6); color: var(--text-secondary);
+}
+.dashboard-error-state p { margin: 0; font-size: 0.95rem; }
+
+.founder-attention-list { display: flex; flex-direction: column; gap: 12px; }
+.founder-attention-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.founder-attention-row:last-child { border-bottom: none; }
+.founder-attention-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.founder-attention-critical { background: var(--danger, #c0392b); }
+.founder-attention-warning { background: var(--color-gold); }
+.founder-attention-text {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.founder-attention-text strong { font-size: 0.92rem; }
+.founder-attention-text span { font-size: 0.8rem; color: var(--text-secondary); }
+
+.hero-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-5);
+  padding: var(--space-6) 0; border-bottom: 1px solid var(--border-color); margin-bottom: var(--space-5);
+}
+.hero-metric { display: flex; flex-direction: column; gap: 6px; }
+.hero-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.hero-value { font-family: var(--font-display); font-size: 2.4rem; font-weight: 600; color: var(--text-primary); }
+.hero-value.hero-warning { color: var(--warning); }
+
+.secondary-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-7); }
+
+.production-pipeline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-2) 0; }
+.pipeline-stage { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 90px; }
+.pipeline-count { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; color: var(--color-gold-soft); }
+.pipeline-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.pipeline-arrow { color: var(--text-secondary); font-size: 1.1rem; opacity: 0.5; }
+
+.dashboard-section { margin-bottom: var(--space-7); }
+.section-heading {
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary); font-weight: 700; margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-color);
+}
+
+.activity-row {
+  display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-3); align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 0.86rem;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-desc { color: var(--text-primary); }
+.activity-date { color: var(--text-secondary); font-size: 0.78rem; white-space: nowrap; }
+
+.page-summary { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+.duplicate-match-list { list-style: none; margin: 0; padding: 0; }
+.duplicate-match-list li {
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-color); font-size: 0.86rem;
+}
+.duplicate-match-list li:last-child { border-bottom: none; }
+
+.follow-up-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-3); align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 0.86rem;
+}
+.follow-up-row:last-child { border-bottom: none; }
+.follow-up-overdue { color: var(--danger); font-weight: 600; }
+
+.bulk-purchase-shared-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.bulk-purchase-shared-fields label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-secondary);
+}
+.bulk-purchase-shared-fields select, .bulk-purchase-shared-fields input {
+  padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-primary); font-size: 0.9rem;
+}
+.bulk-purchase-rows { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.bulk-purchase-row {
+  display: grid; grid-template-columns: 2fr 0.8fr 0.8fr 0.8fr 1.2fr auto; gap: var(--space-2); align-items: center;
+}
+.bulk-purchase-row select, .bulk-purchase-row input {
+  padding: 8px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-primary); font-size: 0.88rem; min-width: 0;
+}
+.bulk-purchase-actions { margin-top: var(--space-4); }
+
+@media (max-width: 768px) {
+  .bulk-purchase-row { grid-template-columns: 1fr 1fr; }
+  .bulk-purchase-row select:first-child { grid-column: 1 / -1; }
+}
+
+/* --- LoginPage.css --- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+}
+
+.login-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  flex: 1;
+}
+
+/* Left panel: brand - deliberately fixed dark chrome, matching the
+   same permanent brand identity treatment already used for
+   Navbar/Sidebar/Footer, independent of the overall page theme. */
+.login-brand-panel {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-6) var(--space-7);
+}
+
+.brand-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.login-brand-top {
+  position: absolute;
+  top: var(--space-6);
+  left: var(--space-7);
+  z-index: 1;
+}
+
+.login-logo-small {
+  height: 30px;
+  width: auto;
+  display: block;
+  filter: brightness(0) invert(1);
+}
+
+.login-brand-content {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+}
+
+.login-brand-statement {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--color-ivory);
+  margin: 0;
+}
+
+.login-brand-descriptor {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: rgba(247, 243, 236, 0.62);
+  margin: var(--space-3) 0 0;
+  max-width: 320px;
+}
+
+/* Right panel: form - functional page content, genuinely theme-adaptive
+   (unlike the brand panel opposite it, which is deliberately fixed). */
+.login-form-panel {
+  background: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.login-form-wrap {
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-form-wrap h1 {
+  font-size: 2rem;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.login-form-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-6);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.login-form .form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.login-form .form-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.login-form .form-group input {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  font-family: var(--font-body);
+  background: var(--surface);
+  color: var(--text-primary);
+  caret-color: var(--color-gold);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.login-form .form-group input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.login-form .form-group input:focus {
+  outline: none;
+  border-color: var(--color-gold);
+  box-shadow: var(--focus-ring);
+}
+
+.login-form .form-group input:disabled {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.password-input-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-row input {
+  flex: 1;
+  padding-right: 42px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  opacity: 0.85;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  transition: color var(--transition), opacity var(--transition);
+}
+
+.password-toggle:hover { color: var(--color-gold-soft); opacity: 1; }
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.login-form .error-message {
+  background: var(--danger-bg);
+  color: var(--danger);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  border-left: 3px solid var(--danger);
+}
+
+.login-button {
+  padding: 13px 20px;
+  background: var(--color-gold);
+  color: var(--color-ink);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.login-button:hover:not(:disabled) {
+  background: var(--color-gold-soft);
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-button:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .login-container {
+    grid-template-columns: 1fr;
+  }
+
+  .login-brand-panel {
+    padding: var(--space-6) var(--space-5);
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-brand-panel {
+    min-height: 170px;
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .login-brand-statement {
+    font-size: 1rem;
+  }
+
+  .login-brand-descriptor {
+    font-size: 0.85rem;
+  }
+
+  .login-form-panel {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* --- CartDrawer.css --- */
+.cart-drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(17, 17, 15, 0.35);
+  opacity: 0; pointer-events: none; transition: opacity var(--transition);
+  z-index: 60;
+}
+.cart-drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.cart-drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 380px; max-width: 92vw;
+  background: var(--surface); box-shadow: var(--shadow-lg);
+  transform: translateX(100%); transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 61; display: flex; flex-direction: column;
+}
+.cart-drawer.open { transform: translateX(0); }
+
+.cart-drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-color);
+}
+.cart-drawer-header h3 { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; }
+.cart-drawer-close { background: none; border: none; color: var(--text-secondary); padding: 4px; }
+.cart-drawer-close:hover { color: var(--text-primary); }
+
+.cart-drawer-empty { padding: var(--space-6) var(--space-5); text-align: center; }
+.cart-drawer-empty-title { font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.cart-drawer-empty-sub { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: var(--space-4); }
+
+.cart-drawer-items { flex: 1; overflow-y: auto; padding: var(--space-3) var(--space-5); }
+.cart-drawer-item {
+  display: grid; grid-template-columns: 1fr auto; row-gap: 6px; column-gap: 10px;
+  padding: var(--space-3) 0; border-bottom: 1px solid var(--border-color);
+}
+.cart-drawer-item-name { font-weight: 600; font-size: 0.88rem; color: var(--text-primary); }
+.cart-drawer-item-supplier { font-size: 0.74rem; color: var(--text-secondary); }
+
+.cart-drawer-item-shortage {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+.cart-drawer-shortage-buy { color: var(--color-gold); }
+.cart-drawer-shortage-covered { color: var(--success, #2e7d32); }
+.cart-drawer-item-qty {
+  display: flex; align-items: center; gap: 8px; justify-self: end;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden;
+}
+/* Was only theming the background - the +/- glyphs inherited the page's
+   light --text-primary from body, landing light text on this same light
+   ivory fill (invisible). Text color needed pairing explicitly, same as
+   any other light-fill control in the app (e.g. .btn-submit uses
+   --color-ink on a gold fill). */
+.cart-drawer-item-qty button {
+  background: var(--color-ivory-dim); color: var(--color-ink); border: none;
+  width: 24px; height: 26px; font-size: 0.9rem; cursor: pointer;
+  transition: background-color var(--transition);
+}
+.cart-drawer-item-qty button:hover:not(:disabled) { background: var(--color-tan); }
+.cart-drawer-item-qty button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+.cart-drawer-item-qty span { min-width: 18px; text-align: center; font-size: 0.82rem; font-weight: 600; }
+.cart-drawer-item-value { font-size: 0.82rem; color: var(--text-secondary); grid-column: 1; }
+.cart-drawer-item-actions { grid-column: 2; display: flex; align-items: center; gap: 10px; justify-self: end; }
+.cart-drawer-remove { background: none; border: none; color: var(--text-secondary); }
+.cart-drawer-remove:hover { color: var(--danger); }
+
+.cart-drawer-footer {
+  padding: var(--space-4) var(--space-5) max(var(--space-4), calc(env(safe-area-inset-bottom) + var(--space-3)));
+  border-top: 1px solid var(--border-color);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.cart-drawer-total { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
+.cart-drawer-total strong { font-family: var(--font-display); font-size: 1.15rem; }
+.cart-drawer-footer-secondary { display: flex; gap: var(--space-2); }
+.cart-drawer-footer-secondary button { flex: 1; }
+
+/* --- LineItemEditor.css --- */
+.line-item-editor { margin: 12px 0; display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* Each item is now its own card with two rows - Product/Description get
+   real, comfortable width on their own row; everything else (Category,
+   Qty, Unit, Rate, Amount, Actions) sits below as a compact row that
+   wraps onto further lines if the available width genuinely can't fit
+   them, instead of every column shrinking to keep one rigid 8-across
+   row on screen. */
+.line-item-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--surface);
+}
+
+.line-item-primary-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.6fr);
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.line-item-secondary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  align-items: flex-end;
+}
+
+.line-item-field--category { flex: 1 1 130px; min-width: 110px; }
+.line-item-field--qty { flex: 0 1 90px; min-width: 76px; }
+.line-item-field--unit { flex: 0 1 100px; min-width: 84px; }
+.line-item-field--rate { flex: 1 1 140px; min-width: 120px; }
+.line-item-field--amount { flex: 0 1 130px; min-width: 110px; }
+
+.line-item-row-actions {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.line-item-card input,
+.line-item-card select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.88rem;
+  width: 100%;
+  min-height: 36px;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.line-item-card input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.line-item-card input:focus,
+.line-item-card select:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--color-gold);
+}
+
+.line-item-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* Every field now carries its own label - this is a compact card, not
+   a spreadsheet row sharing one header, so the label needs to travel
+   with the field at every width, desktop included. */
+.line-item-field::before {
+  content: attr(data-label);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+}
+
+.product-picker { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.product-picker input.product-id-missing { border-color: var(--danger); }
+.product-picker-label {
+  font-size: 0.7rem; color: var(--color-gold-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.product-picker-toggle {
+  font-size: 0.68rem; padding: 0; text-align: left; background: none; border: none;
+  color: var(--text-secondary); cursor: pointer; text-decoration: underline;
+}
+.product-picker-toggle:hover { color: var(--color-gold); }
+.product-picker-dropdown {
+  position: absolute; top: 100%; left: 0; z-index: 20;
+  width: max(260px, 100%); max-width: min(320px, 90vw); margin-top: 4px; padding: 8px;
+  background: var(--surface-elevated); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+}
+/* Portal variant (see LineItemEditor.jsx) - rendered into document.body
+   instead of here, positioned in viewport coordinates via inline style
+   (top/bottom/left/width), so the static top:100%/left:0 above don't
+   apply and z-index must clear the modal overlay's own 1000 to still
+   render above the modal it visually belongs to. */
+.product-picker-dropdown--portal {
+  position: fixed;
+  top: auto; left: auto; margin-top: 0;
+  z-index: 1100;
+  max-width: min(320px, 90vw);
+}
+.product-picker-dropdown input {
+  margin-bottom: 6px;
+}
+.product-picker-hint { font-size: 0.8rem; color: var(--text-secondary); padding: 4px 2px; }
+.product-picker-result {
+  display: flex; flex-direction: column; gap: 1px; width: 100%;
+  padding: 6px 8px; text-align: left; background: none; border: none;
+  border-radius: 4px; cursor: pointer;
+}
+.product-picker-result:hover { background: rgba(192, 138, 69, 0.1); }
+.product-picker-result-id { font-size: 0.72rem; color: var(--color-gold-soft); font-family: 'Courier New', monospace; }
+.product-picker-result-name { font-size: 0.88rem; color: var(--text-primary); }
+
+.line-item-pricing-rule { font-size: 0.72rem; color: var(--color-gold-soft); margin-top: 4px; white-space: nowrap; }
+.line-item-input-error { border-color: var(--danger) !important; }
+.line-item-field-error { font-size: 0.72rem; color: var(--danger); margin-top: 4px; white-space: nowrap; }
+
+.line-item-amount {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.line-item-row-actions { display: flex; gap: 4px; align-items: center; }
+.line-item-row-actions button {
+  width: 32px; height: 32px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  line-height: 1;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+.line-item-row-actions button:hover:not(:disabled) {
+  background: var(--surface-elevated);
+  border-color: var(--border-strong);
+}
+.line-item-row-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
+.line-item-remove { color: var(--danger); }
+
+.line-item-add { margin-top: 8px; }
+
+.line-item-subtotal {
+  text-align: right;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-strong);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+/* Below this, even the compact secondary-row fields (Category/Qty/
+   Unit/Rate/Amount) don't have enough shared width to sit comfortably
+   side by side - stack Product and Description into their own full-
+   width rows too, and let the already-wrapping secondary row settle
+   into pairs. Nothing shrinks below its desktop size; it just uses
+   more vertical space instead. */
+@media (max-width: 640px) {
+  .line-item-primary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .line-item-field--category,
+  .line-item-field--rate { flex-basis: 45%; min-width: 0; }
+  .line-item-field--qty,
+  .line-item-field--unit,
+  .line-item-field--amount { flex-basis: 28%; min-width: 0; }
+
+  .line-item-row-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .line-item-row-actions button {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+}
+
+/* --- LocationTree.css --- */
+.location-tree-root, .location-node-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.location-node-children {
+  margin-left: 26px;
+  padding-left: 12px;
+  border-left: 1px dashed var(--border-color);
+}
+
+.location-node-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+.location-node:last-child > .location-node-row { border-bottom: none; }
+
+.location-node-toggle,
+.location-node-toggle-spacer {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.location-node-toggle {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.location-node-name { font-weight: 600; font-size: 0.9rem; }
+.location-node-type {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-gold);
+  background: rgba(192, 138, 69, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* --- MaterialAttributesEditor.css --- */
+.material-attributes-editor { margin: 12px 0; }
+
+.material-attributes-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.material-attributes-fields {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.material-attributes-label {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+/* --- MaterialCatalog.css --- */
+/* ---- Category pills ---- */
+.category-pills {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4); scrollbar-width: thin;
+}
+.category-pill {
+  flex-shrink: 0; padding: 7px 16px; border-radius: 100px; border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-primary); font-size: 0.8rem; font-weight: 600;
+  white-space: nowrap; transition: all var(--transition);
+}
+.category-pill:hover { border-color: var(--color-gold); }
+.category-pill.active { background: var(--color-gold); color: var(--color-ink); border-color: var(--color-gold); }
+
+/* ---- Toolbar ---- */
+.catalog-toolbar {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.catalog-search {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+}
+.catalog-search svg { color: var(--text-secondary); flex-shrink: 0; }
+.catalog-search input {
+  border: none; outline: none; flex: 1; padding: 10px 0; font-size: 0.88rem;
+  background: transparent; font-family: var(--font-body);
+}
+.catalog-search-btn { padding: 7px 14px; font-size: 0.78rem; }
+
+.catalog-filter-toggle { position: relative; }
+.catalog-filter-toggle.has-active { border-color: var(--color-gold); color: var(--color-gold); }
+.filter-count {
+  background: var(--color-gold); color: var(--color-ink); border-radius: 100px;
+  font-size: 0.68rem; font-weight: 700; padding: 1px 6px; margin-left: 4px;
+}
+
+.catalog-sort {
+  padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); font-size: 0.82rem; color: var(--text-primary); font-family: var(--font-body);
+}
+
+.view-toggle {
+  display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden;
+}
+.view-toggle button {
+  background: var(--surface); border: none; padding: 8px 12px; display: flex; align-items: center;
+  gap: 4px; font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); border-right: 1px solid var(--border-color);
+}
+.view-toggle button:last-child { border-right: none; }
+.view-toggle button.active { background: var(--color-gold); color: var(--color-ink); }
+.view-toggle button:hover:not(.active) { background: var(--surface-elevated); }
+
+/* ---- Filter panel ---- */
+.catalog-filter-panel {
+  display: flex; align-items: flex-end; gap: var(--space-4); flex-wrap: wrap;
+  background: var(--surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-md);
+  padding: var(--space-4); margin-bottom: var(--space-5);
+}
+.catalog-filter-field {
+  display: flex; flex-direction: column; gap: 4px; font-size: 0.74rem; font-weight: 600;
+  color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em;
+}
+.catalog-filter-field select,
+.catalog-filter-field input[type="text"],
+.catalog-filter-field input[type="number"] {
+  padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  font-size: 0.84rem; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-primary);
+  background: var(--surface); font-family: var(--font-body); min-width: 160px;
+}
+.catalog-filter-checkbox {
+  flex-direction: row; align-items: center; gap: 6px; text-transform: none; letter-spacing: normal;
+  font-weight: 500; font-size: 0.85rem; color: var(--text-primary);
+}
+
+/* ---- Grid / list containers ---- */
+.material-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-4); margin-bottom: var(--space-5);
+}
+.material-list { display: flex; flex-direction: column; margin-bottom: var(--space-5); }
+
+.material-card-added .material-card,
+.material-card-added .material-row-card {
+  animation: catalogAddPulse 480ms ease-out;
+}
+@keyframes catalogAddPulse {
+  0% { box-shadow: 0 0 0 0 rgba(192, 138, 69, 0.4); }
+  100% { box-shadow: 0 0 0 8px rgba(192, 138, 69, 0); }
+}
+
+/* ---- Skeletons ---- */
+.material-card-skeleton {
+  height: 260px; border-radius: var(--radius-md); background: var(--surface-elevated);
+  border: 1px solid var(--border-color); position: relative; overflow: hidden;
+}
+.material-row-skeleton {
+  height: 62px; border-radius: var(--radius-sm); background: var(--surface-elevated);
+  border: 1px solid var(--border-color); margin-bottom: 8px; position: relative; overflow: hidden;
+}
+.material-card-skeleton::after, .material-row-skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--shimmer-highlight), transparent);
+  animation: materialCardSkeletonShimmer 1.3s infinite;
+}
+@keyframes materialCardSkeletonShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ---- Empty states ---- */
+.catalog-empty-state {
+  text-align: center; padding: var(--space-8) var(--space-5); border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md); background: var(--surface);
+}
+.catalog-empty-icon {
+  width: 52px; height: 52px; border-radius: 50%; background: var(--surface-elevated);
+  display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);
+  color: var(--color-gold);
+}
+.catalog-empty-state h3 { font-size: 1.15rem; margin-bottom: 6px; }
+.catalog-empty-state p { color: var(--text-secondary); font-size: 0.88rem; margin-bottom: var(--space-4); max-width: 420px; margin-left: auto; margin-right: auto; }
+
+@media (max-width: 640px) {
+  .catalog-toolbar { flex-direction: column; align-items: stretch; }
+  .material-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+
+/* ---- Material-name intelligent-defaults suggestion (Add Material form) ---- */
+.material-suggestion-box {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  background: var(--surface-elevated); border: 1px solid var(--color-gold);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3);
+}
+.material-suggestion-text { font-size: 0.85rem; color: var(--text-secondary); }
+.material-suggestion-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.material-suggestion-actions .btn-small { padding: 6px 12px; font-size: 0.8rem; }
+
+/* --- MobileAppPage.css --- */
+.mobile-app-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .mobile-app-grid { grid-template-columns: 1fr; }
+}
+
+.mobile-app-qr-card { text-align: center; }
+
+.mobile-app-qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  padding: 8px;
+  /* Intentionally fixed white, not a theme token - a QR code needs
+     reliable high contrast to scan correctly, so this stays white
+     regardless of theme (the QR image itself is generated on a white
+     background; this padding just avoids a hard edge against it in
+     dark mode). Every other surface in this file uses theme tokens. */
+  background: #fff;
+  margin: 8px 0 16px;
+}
+
+.mobile-app-qr-fallback {
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px auto 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 16px;
+}
+
+.mobile-app-url-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.mobile-app-url-row input {
+  flex: 1;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--light-bg);
+}
+
+.mobile-app-qr-note {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 12px;
+}
+
+.mobile-app-steps {
+  padding-left: 20px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.mobile-app-steps li { margin-bottom: 6px; }
+
+.mobile-app-note {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin-top: 10px;
+}
+
+/* --- Client Portal (Family 137, features 1 and 3) ---
+   Public, unauthenticated pages - deliberately not using the internal
+   app's Sidebar/Navbar shell. Reuses the same design tokens as the
+   rest of the app (no new palette/typography), just a simple centered
+   container instead of the internal layout chrome. */
+.client-portal-page {
+  min-height: 100vh;
+  background: var(--surface-elevated);
+  padding: var(--space-6) var(--space-4);
+}
+
+.client-portal-container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.client-portal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--space-5);
+}
+
+.client-portal-logo {
+  height: 32px;
+}
+
+.client-portal-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.client-portal-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--space-4);
+}
+
+.client-portal-summary-item .label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.client-portal-summary-item .value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.client-portal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.client-portal-footer-note {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin-top: var(--space-6);
+}
