@@ -1,7 +1,0 @@
-# Shell scripts must stay LF - CRLF line endings genuinely break them
-# on Linux/macOS (confirmed: setup.sh/start_all.sh once had CRLF and
-# failed a basic bash syntax check because of it).
-*.sh text eol=lf
-
-# Batch files must stay CRLF - Windows' own cmd.exe expects it.
-*.bat text eol=crlf
