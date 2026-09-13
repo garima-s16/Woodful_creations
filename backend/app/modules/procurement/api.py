@@ -114,6 +114,27 @@ def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="This supplier has purchase history and cannot be deleted.")
     if db.query(SupplierMaterial).filter(SupplierMaterial.supplier_id == supplier_id).first():
         raise HTTPException(status_code=400, detail="This supplier is linked to materials and cannot be deleted. Remove those links first.")
+    # Defect repair (F138 P2): Material.supplier_id ("primary supplier",
+    # nullable FK, distinct from the SupplierMaterial link table already
+    # checked above - see Material's own docstring) was never checked
+    # here, so a supplier set as a material's primary supplier with no
+    # SupplierMaterial row and no Purchase yet could be hard-deleted,
+    # leaving that material's supplier_id pointing at a row that no
+    # longer exists. Same block-with-clear-message treatment as every
+    # other in-use check on this endpoint.
+    if db.query(Material).filter(Material.supplier_id == supplier_id).first():
+        raise HTTPException(status_code=400, detail="This supplier is set as a material's primary supplier and cannot be deleted. Change that material's primary supplier first.")
+    # Defect repair (F138 P2): SupplierDecision.recommended_supplier_id/
+    # selected_supplier_id are a real, persisted decision record (P0.2.3)
+    # - a decision can exist with no Purchase yet (record_supplier_decision
+    # doesn't require one), so the Purchase check above alone doesn't
+    # cover it. Never hard-delete a supplier a decision record still
+    # references either way.
+    from app.modules.procurement.models import SupplierDecision
+    if db.query(SupplierDecision).filter(
+        (SupplierDecision.selected_supplier_id == supplier_id) | (SupplierDecision.recommended_supplier_id == supplier_id)
+    ).first():
+        raise HTTPException(status_code=400, detail="This supplier is referenced by a recorded supplier decision and cannot be deleted.")
     supplier_name = supplier.name
     db.delete(supplier)
     db.commit()
@@ -597,13 +618,24 @@ def _serialize_requirement(db: Session, requirement: ProcurementRequirement) -> 
 
 @procurement_requirements_router.get("/", response_model=List[ProcurementRequirementResponse])
 def list_procurement_requirements(order_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+                                   response: Response = None,
+                                   limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                                    db: Session = Depends(get_db), auth=Depends(require_role("master"))):
+    # Defect repair (F138 P1): ProcurementRequirement is a persisted,
+    # never-pruned procurement decision record (see its own docstring)
+    # that only accumulates over time - an unfiltered call (no order_id
+    # or status) previously fetched every requirement ever created with
+    # no limit at all. Paginated the same way every other transactional-
+    # history list in this codebase already is (see list_purchases).
     query = db.query(ProcurementRequirement)
     if order_id:
         query = query.filter(ProcurementRequirement.order_id == order_id)
     if status:
         query = query.filter(ProcurementRequirement.status == status)
-    rows = query.order_by(ProcurementRequirement.created_at.desc()).all()
+    total = query.count()
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+    rows = query.order_by(ProcurementRequirement.created_at.desc()).offset(offset).limit(limit).all()
     return [_serialize_requirement(db, r) for r in rows]
 
 

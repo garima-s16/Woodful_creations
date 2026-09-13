@@ -1,13 +1,50 @@
 import axios from 'axios';
 
-// 127.0.0.1, not "localhost": on some Windows setups, "localhost"
-// resolves to the IPv6 loopback (::1) first, and if the backend is
-// only listening on IPv4, the browser silently waits out a long OS-
-// level connection timeout before ever falling back to IPv4 - a
-// well-documented cause of "the app takes forever to load" that has
-// nothing to do with the backend itself being slow. 127.0.0.1 skips
-// that resolution step entirely.
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+// "localhost", not 127.0.0.1 - deliberately matching the frontend's own
+// host (also "localhost", see start_frontend.sh/.bat and CRA's default
+// dev server), not just its origin.
+//
+// Defect repair: this used to default to 127.0.0.1 specifically to
+// route around a real Windows quirk (see the IPv6 note below) - but
+// that traded a latency problem for a much worse correctness bug.
+// Browsers scope a cookie's SameSite behavior to the "site" (registrable
+// domain + scheme), and "localhost" and "127.0.0.1" are two different
+// sites even though both mean loopback - a request from a page served
+// on http://localhost:3000 to an API on http://127.0.0.1:8000 is
+// CROSS-SITE, not just cross-origin. The auth cookie is set with
+// SameSite=Lax (COOKIE_SAMESITE, see backend/app/platform/config.py) -
+// correct and unchanged - and SameSite=Lax cookies are never attached
+// to a cross-site XHR/fetch request, only to a top-level navigation.
+// The Set-Cookie from POST /api/auth/login was still honored (login
+// showed success), but every following API call - XHR, not a page
+// navigation - silently went out with NO cookie attached at all,
+// which is exactly the "logs in for a second, then every request
+// comes back 401 and the app bounces back to /login" symptom this
+// was reported as. Same host on both sides makes every request
+// same-site (a different PORT alone does not change the site), so the
+// cookie attaches normally again.
+//
+// The original Windows IPv6 concern (some Windows setups resolve
+// "localhost" to the IPv6 loopback ::1 first, and a backend listening
+// on IPv4 only would leave the browser to fall back to IPv4 after that
+// first attempt) is real, but the correct fix for it is on the SERVER
+// side, not by giving the two ends of the app different "site"
+// identities: start_backend.sh/.bat now bind uvicorn to "::" (dual-
+// stack), which - on both Windows (default since Vista) and Linux
+// (default on virtually every distro) - accepts both ::1 and
+// 127.0.0.1 connections on the one socket, so whichever address
+// family "localhost" resolves to first, the backend answers
+// immediately; there is no fallback delay to route around anymore.
+// If IPv6 is ever genuinely disabled at the OS level on a given
+// machine (rare, and not the default anywhere relevant here), the fix
+// is a REACT_APP_API_URL override (see below), not reverting this
+// default for everyone else.
+//
+// REACT_APP_API_URL remains a full override for any deployment (a
+// real domain in staging/production, a different port, a machine
+// where the above genuinely doesn't apply) - this default only governs
+// local development with nothing set.
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // withCredentials sends/receives the HttpOnly auth cookie automatically.
 // No token is ever read from or written to localStorage/sessionStorage.
@@ -18,11 +55,163 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Single-flight guard for the "an authenticated session just turned
+// out to be invalid" event dispatched below. Many widgets can all get
+// their 401 back in the same tick (e.g. a whole dashboard's worth of
+// requests, all rejected together because the token expired while the
+// page was open) - only the FIRST one should actually do anything;
+// the rest are the exact same fact arriving redundantly, not N
+// separate reasons to log out. Reset once a fresh login succeeds (see
+// resetSessionInvalidationGuard, called from LoginPage) so a later,
+// genuinely new invalidation of THAT session can still be caught.
+let sessionInvalidationHandled = false;
+
+export function resetSessionInvalidationGuard() {
+  sessionInvalidationHandled = false;
+}
+
+// The one route that legitimately checks "is there a session at all"
+// as its whole purpose (see App.jsx's bootstrap effect) - a 401 from
+// this call is an expected, ordinary outcome (not logged in yet), and
+// App.jsx already handles it precisely: dispatch(sessionCheckFinished
+// (null)) followed by ProtectedRoute's own <Navigate to="/login" />.
+// That is a normal, single, soft client-side redirect - this
+// interceptor must not ALSO force a hard window.location redirect for
+// the same 401, which would race the two against each other and throw
+// away the SPA's own state for no reason.
+const AUTH_BOOTSTRAP_PATH = '/api/auth/me';
+
+// Defect repair (F138 P3): sensible, deliberate timeouts by request
+// shape instead of one flat number for everything. The 30s default set
+// on the client above already covers ordinary CRUD reasonably; the one
+// documented exception is a large report/export/download
+// (responseType: 'blob') - a real file, potentially large, generated
+// server-side on demand, which deserves more room on a slow connection
+// than a routine list/get. Only applied when the caller hasn't already
+// set an explicit timeout of their own (authAPI.me's dedicated 8s stays
+// untouched, since responseType isn't 'blob' there anyway).
+client.interceptors.request.use((config) => {
+  if (config.responseType === 'blob' && config.timeout === undefined) {
+    config.timeout = 90000;
+  }
+  return config;
+});
+
+// Defect repair (F138 P3): network-aware GET handling - in-flight
+// request de-duplication plus a small, bounded automatic retry with
+// backoff. Deliberately GET-only. Retrying a POST/PUT/PATCH/DELETE
+// automatically is NOT safe to do blindly here: if the original
+// request actually reached the server and only the response was lost
+// (a real possibility on a flaky connection, not just a hypothetical),
+// silently retrying it risks creating a duplicate business record
+// (a second order, a second payment). That decision has to stay a
+// deliberate, explicit, per-feature choice - see utils/utils.js's
+// queueWrite/replayQueue, which documents the identical principle for
+// the offline write queue - never a blanket axios behavior applied to
+// every mutation in the app.
+const GET_RETRY_LIMIT = 2; // 3 attempts total, bounded - never unbounded, never a retry storm
+const GET_RETRY_BASE_DELAY_MS = 500; // attempt 2 waits ~500ms, attempt 3 waits ~1000ms
+
+function isRetryableGetFailure(error) {
+  if ((error.config?.method || '').toLowerCase() !== 'get') return false;
+  if (!error.response) return true; // no response at all: network error, timeout, connection refused, DNS failure
+  // 502/503/504 are transient infrastructure failures a moment later
+  // likely to succeed. Deliberately NOT 500 (a real application error
+  // that retrying won't fix), NOT 429 (retrying immediately would only
+  // add to the very load the rate limit exists to shed), and NOT
+  // 401/403 (an authorization outcome, not a transient failure - see
+  // the session-invalidation handling below, which already treats a
+  // 401 as authoritative and must not be raced by a retry loop here).
+  return [502, 503, 504].includes(error.response.status);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Identical concurrent GETs (same method+url+params, fired from two
+// widgets/components in the same tick - e.g. two components both
+// wanting the same reference data at once) collapse into ONE real
+// network request sharing one promise, rather than each firing its
+// own. Never applied to mutations (see rawRequest below - only GET is
+// routed through this wrapper).
+const inFlightGets = new Map();
+
+function getRequestKey(url, config) {
+  const params = config?.params ? JSON.stringify(config.params) : '';
+  return `${url}?${params}`;
+}
+
+const rawGet = client.get.bind(client);
+
+async function networkAwareGet(url, config = {}) {
+  const key = getRequestKey(url, config);
+  const existing = inFlightGets.get(key);
+  if (existing) {
+    return existing;
+  }
+  const promise = (async () => {
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      try {
+        return await rawGet(url, config);
+      } catch (error) {
+        if (attempt >= GET_RETRY_LIMIT || !isRetryableGetFailure(error)) {
+          throw error;
+        }
+        attempt += 1;
+        await delay(GET_RETRY_BASE_DELAY_MS * attempt);
+      }
+    }
+  })();
+  inFlightGets.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightGets.delete(key);
+  }
+}
+
+// Every existing `client.get(...)` call site in this file (and
+// anywhere else `client`/the named *API objects are used) goes through
+// this same method on this same shared instance, so both the
+// deduplication and the bounded retry apply uniformly without having
+// to individually rewrite ~150 call sites.
+client.get = networkAwareGet;
+
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && window.location.pathname !== '/login') {
-      window.location.href = '/login';
+    const status = error.response?.status;
+    const onLoginPage = window.location.pathname === '/login';
+    const isBootstrapCheck = error.config?.url === AUTH_BOOTSTRAP_PATH;
+
+    if (status === 401 && !onLoginPage && !isBootstrapCheck) {
+      // A 401 from any OTHER authenticated endpoint - reached only
+      // after bootstrap has already confirmed a session exists - means
+      // get_current_user (app/platform/security.py) has determined,
+      // server-side and just now, that this specific request's token
+      // is genuinely no longer valid: expired, issued before a
+      // password reset, or the account was deleted. It is never a
+      // permissions/role problem (that is a 403, not a 401) and never
+      // a transient network hiccup (axios only reaches this branch for
+      // a real HTTP 401 response - a timeout or dropped connection has
+      // no error.response at all and is left alone below). So this
+      // really is confirmation the session is invalid - the question
+      // is only how many times to act on it when several requests
+      // discover the same thing at once.
+      if (!sessionInvalidationHandled) {
+        sessionInvalidationHandled = true;
+        // Dispatched as a browser event, not a direct Redux import
+        // here, to keep this plain axios module decoupled from the
+        // store - see App.jsx, which listens for this once, dispatches
+        // the existing `logout` action (clears isAuthenticated/user),
+        // and lets the SPA's own <ProtectedRoute> perform its normal
+        // React Router redirect to /login - not a hard page reload,
+        // and not a second, independent redirect path racing it.
+        window.dispatchEvent(new CustomEvent('woodful:session-invalid'));
+      }
     }
     return Promise.reject(error);
   }
@@ -36,24 +225,16 @@ export const authAPI = {
   // it settles), so it should fail fast rather than share the
   // general-purpose 30s client timeout meant for larger data
   // operations elsewhere in the app.
-  me: () => client.get('/api/auth/me', { timeout: 8000 }),
+  me: () => client.get(AUTH_BOOTSTRAP_PATH, { timeout: 8000 }),
   forgotPassword: (identifier) => client.post('/api/auth/forgot-password', { identifier }),
   resetPassword: (token, newPassword) => client.post('/api/auth/reset-password', { token, new_password: newPassword }),
 };
 
-// Family 137, features 1 and 3 - the public client-portal endpoints.
-// No auth header/cookie is required (or checked) by the backend here -
-// access is governed entirely by the token in the URL - but reusing
-// the same configured axios instance (base URL, timeout, interceptors)
-// is still correct and harmless: an internal user's session cookie
-// riding along on these requests changes nothing, since the backend
-// never looks at it for this router.
-export const clientPortalAPI = {
-  getEstimate: (token) => client.get(`/api/client-portal/estimates/${token}`),
-  approveEstimate: (token, data) => client.post(`/api/client-portal/estimates/${token}/approve`, data),
-  requestEstimateChanges: (token, data) => client.post(`/api/client-portal/estimates/${token}/request-changes`, data),
-  getOrder: (token) => client.get(`/api/client-portal/orders/${token}`),
-};
+// Defect repair (P1-13): clientPortalAPI (Family 137 features 1 and 3 -
+// the public, unauthenticated client-portal endpoints) removed.
+// Woodful is internal-only now and the backend no longer serves
+// /api/client-portal/* at all (see backend app/api/routes.py) - these
+// calls would only ever 404.
 
 export const dashboardAPI = {
   stock: () => client.get('/api/dashboard/stock'),
@@ -412,9 +593,6 @@ export const ordersAPI = {
   // Family 137, feature 8 - Approved Specification / Sample Lock.
   listApprovedSpecifications: (id) => client.get(`/api/orders/${id}/approved-specifications`),
   approveSpecification: (id, data) => client.post(`/api/orders/${id}/approved-specifications`, data),
-  // Family 137, feature 3 - My Order link. Staff-triggered generation;
-  // returns { url } once - the raw token is never retrievable again.
-  generateClientLink: (id) => client.post(`/api/orders/${id}/client-link`),
   // Family 137, feature 2 - Visual Build Timeline (Milestone +
   // ProductionJob status, reuses compute_order_health for risk).
   buildTimeline: (id) => client.get(`/api/orders/${id}/build-timeline`),
@@ -585,9 +763,6 @@ export const estimatesAPI = {
   costDrift: (id) => client.get(`/api/estimates/${id}/cost-drift`),
   // Family 137, feature 6 - Smart Estimate / Margin Optimization.
   marginOptimization: (id, data) => client.post(`/api/estimates/${id}/margin-optimization`, data),
-  // Family 137, feature 1 - Client Approval Hub. Staff-triggered
-  // generation; returns { url } once.
-  generateClientLink: (id) => client.post(`/api/estimates/${id}/client-link`),
 };
 
 export const clientActivitiesAPI = {

@@ -106,7 +106,14 @@ _MIGRATION_LOCK_KEY = 8825170392  # arbitrary, fixed - see comment above
 
 
 def _alembic_config() -> Config:
-    backend_dir = Path(__file__).resolve().parent.parent.parent.parent
+    # Defect repair: this used to walk FOUR parents from
+    # backend/app/platform/database.py, landing one directory too high -
+    # at the project root, sibling to backend/ - instead of on backend/
+    # itself, where alembic.ini and alembic/ actually live. Three
+    # parents (platform -> app -> backend) is correct - see the
+    # identical fix and full explanation in app/platform/config.py's
+    # _BACKEND_ROOT.
+    backend_dir = Path(__file__).resolve().parent.parent.parent
     cfg = Config(str(backend_dir / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     return cfg

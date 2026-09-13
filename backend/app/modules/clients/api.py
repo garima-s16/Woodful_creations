@@ -164,6 +164,13 @@ def delete_client(client_id: int, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="This client has estimates and cannot be deleted.")
     client_name = client.name
     db.query(ClientActivity).filter(ClientActivity.client_id == client_id).delete()
+    # Defect repair (F138 P2): ClientProductRate.client_id is a
+    # non-nullable FK with no cascade/back-reference on Client - a
+    # client-specific rate override left dangling here once the client
+    # it belongs to no longer exists is meaningless, not preserved
+    # business history (unlike Order/Estimate, already blocked above),
+    # so it's cleaned up the same way ClientActivity already is.
+    db.query(ClientProductRate).filter(ClientProductRate.client_id == client_id).delete()
     db.delete(client)
     db.commit()
     log_action(db, request, user_id=auth.get("user_id"), action="delete_client", module_name="clients",
@@ -311,12 +318,25 @@ activity_router = APIRouter(prefix="/api/client-activities", tags=["client-activ
 
 
 @activity_router.get("/", response_model=List[ClientActivityResponse])
-def list_client_activities(client_id: Optional[int] = Query(None), db: Session = Depends(get_db),
-                            auth=Depends(get_current_user)):
+def list_client_activities(client_id: Optional[int] = Query(None), response: Response = None,
+                            limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
+                            db: Session = Depends(get_db), auth=Depends(get_current_user)):
+    # Defect repair (F138 P1): ClientActivity is a communication log
+    # that only grows (see its own docstring) - called with no
+    # client_id (e.g. a business-wide activity feed), this previously
+    # fetched every activity ever logged for every client, unbounded.
+    # Paginated the same way every other transactional-history list in
+    # this codebase already is (see list_purchases); a single client's
+    # own activity list stays effectively complete in practice (200 is
+    # far more than one client accumulates), so this doesn't change
+    # normal per-client usage.
     query = db.query(ClientActivity)
     if client_id:
         query = query.filter(ClientActivity.client_id == client_id)
-    return query.order_by(ClientActivity.date.desc()).all()
+    total = query.count()
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+    return query.order_by(ClientActivity.date.desc()).offset(offset).limit(limit).all()
 
 
 @activity_router.get("/follow-ups")

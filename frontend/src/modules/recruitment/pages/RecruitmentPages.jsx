@@ -433,4 +433,36 @@ function InterviewsPage() {
   );
 }
 
-export { CandidatesPage, CandidateDetailPage, InterviewsPage };
+// --- RecruitmentHub.jsx ---
+// Woodful navigation/module-structure consolidation: Candidates and
+// Interviews used to be two separate primary Sidebar destinations.
+// They are now one "Recruitment" workspace reached from a single nav
+// item (/recruitment) - a thin tab switcher over the exact same two
+// page components above (same components, same API calls, same
+// role-gating; only the selected tab is mounted, so no duplicate
+// network traffic). /candidates, /candidates/:id, and /interviews
+// keep working exactly as before.
+const RECRUITMENT_TABS = ['Candidates', 'Interviews'];
+
+function RecruitmentHub() {
+  const [tab, setTab] = useState('Candidates');
+  return (
+    <div className="page recruitment-hub">
+      <div className="page-header">
+        <div>
+          <h1>Recruitment</h1>
+          <p className="page-summary">Candidates and their interviews in one place.</p>
+        </div>
+      </div>
+      <div className="tab-bar">
+        {RECRUITMENT_TABS.map((t) => (
+          <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)} type="button">{t}</button>
+        ))}
+      </div>
+      {tab === 'Candidates' && <CandidatesPage />}
+      {tab === 'Interviews' && <InterviewsPage />}
+    </div>
+  );
+}
+
+export { CandidatesPage, CandidateDetailPage, InterviewsPage, RecruitmentHub };

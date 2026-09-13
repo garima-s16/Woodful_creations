@@ -1557,7 +1557,7 @@ def test_employee_can_set_status_and_block_reason_together(client, test_user, db
     _create_and_login_employee_user(client, db_session, employee["id"], "blockreasonuser", "blockreasonuser@example.com")
 
     resp = client.put(f"/api/daily-tasks/{task['id']}", json={
-        "status": "On Hold", "delay_reason": "Waiting for laminate",
+        "status": "BLOCKED", "delay_reason": "Waiting for laminate",
     })
     assert resp.status_code == 200
     assert resp.json()["delay_reason"] == "Waiting for laminate"
@@ -1571,7 +1571,7 @@ def test_employee_notified_when_task_blocked(client, test_user, db_session):
     }).json()
     _create_and_login_employee_user(client, db_session, employee["id"], "blocknotifuser", "blocknotifuser@example.com")
 
-    client.put(f"/api/daily-tasks/{task['id']}", json={"status": "On Hold", "delay_reason": "Material unavailable"})
+    client.put(f"/api/daily-tasks/{task['id']}", json={"status": "BLOCKED", "delay_reason": "Material unavailable"})
 
     notifications = client.get("/api/notifications/").json()
     assert any(n["notification_type"] == "TASK_BLOCKED" for n in notifications)

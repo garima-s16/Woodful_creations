@@ -673,6 +673,26 @@ if %ERRORLEVEL%==0 (
 REM ----------------------------------------------------------------------
 echo.
 echo ======================================================================
+echo AUTH SESSION CONTRACT (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR - static checks)
+echo ======================================================================
+REM Zero-dependency (plain node, no node_modules/npm install required) -
+REM see frontend\scripts\verify_auth_session_contract.js's own docstring.
+
+where node >nul 2>nul
+if %ERRORLEVEL%==0 (
+    node frontend\scripts\verify_auth_session_contract.js > "%TEMP_DIR%\auth_contract.log" 2>&1
+    if "!ERRORLEVEL!"=="0" (
+        call :record PASS "Auth session contract (static checks)" "see %TEMP_DIR%\auth_contract.log for the full breakdown"
+    ) else (
+        call :record FAIL "Auth session contract (static checks)" "see %TEMP_DIR%\auth_contract.log for details"
+    )
+) else (
+    call :record BLOCKED "Auth session contract (static checks)" "node not found on PATH"
+)
+
+REM ----------------------------------------------------------------------
+echo.
+echo ======================================================================
 echo BROWSER / MOBILE WEB (responsive layout, not a native app)
 echo ======================================================================
 

@@ -235,16 +235,32 @@ def _tool_get_overtime_status(db: Session, args: dict, user_role: str) -> Tuple[
 
 
 def _tool_get_low_stock_materials(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
-    """Reuses ChatService._low_stock directly - the exact same query
-    the deterministic 'low stock' keyword match already uses - rather
-    than duplicate it. This tool exists for phrasings that keyword
-    list doesn't catch (Gemini is only ever reached when deterministic
-    parsing found nothing), not as a second implementation of the same
-    check. Passes the real caller's user_role through so a master user
-    gets the same privileged "View Purchase History" action links
-    they'd see from the deterministic path, not a degraded response."""
-    from app.modules.ai.orchestration import ChatService
-    text, _suggestions, records = ChatService._low_stock(db, user_role)
+    """Reuses inventory/services.py's _low_stock directly - the exact
+    same query the deterministic 'low stock' keyword match in
+    orchestration.py already uses (via that same module-level import) -
+    rather than duplicate it. This tool exists for phrasings that
+    keyword list doesn't catch (Gemini is only ever reached when
+    deterministic parsing found nothing), not as a second
+    implementation of the same check. Passes the real caller's
+    user_role through so a master user gets the same privileged "View
+    Purchase History" action links they'd see from the deterministic
+    path, not a degraded response.
+
+    Defect repair (F138 P19): previously called `ChatService._low_stock`,
+    but _low_stock is a plain function orchestration.py imports at
+    module level (`from app.modules.inventory.services import
+    ..., _low_stock, ...`) and references as a bare name inside
+    ChatService._dispatch - it was never assigned as an attribute of
+    the ChatService class itself. That call raised AttributeError at
+    runtime for every request that reached this tool (a genuine Gemini
+    tool call, or the learned-intent fast path in
+    ChatService._check_learned_intent, which explicitly whitelists
+    "get_low_stock_materials" as one of only two eligible tools).
+    Fixed to import and call the real function directly, matching how
+    every other tool in this file does its own local model/service
+    import."""
+    from app.modules.inventory.services import _low_stock
+    text, _suggestions, records = _low_stock(db, user_role)
     return text, records
 
 

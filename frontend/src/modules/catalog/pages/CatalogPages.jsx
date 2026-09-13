@@ -164,6 +164,15 @@ function ProductsPage() {
           <p className="page-summary">The catalog every Estimate and Order line item references.</p>
         </div>
         <div className="page-actions">
+          {/* IA consolidation: Rate Master is no longer a separate
+              primary Sidebar item - it supports Products/Estimates
+              pricing, so it's reached from here instead. Same
+              existing RateCardsPage/route, just a contextual entry
+              point. isMaster-gated to match the visibility Rate
+              Master already had as a sidebar item (it only ever
+              appeared there for master users) - moving it under
+              Products must not widen who can discover it. */}
+          {isMaster && <button className="btn-secondary" onClick={() => navigate('/rate-master')}>Rates</button>}
           {isMaster && <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Add Product</button>}
           {isMaster && <button className="btn-secondary" onClick={() => navigate('/products/import')}>Import Excel</button>}
           <a className="btn-secondary" href={reportsAPI.downloadUrl('products.xlsx')} target="_blank" rel="noreferrer">Export Excel</a>

@@ -319,6 +319,22 @@ function ProductionJobDetailPage() {
             {job.business_id && <span className="business-id-badge">{job.business_id}</span>}
           </div>
         </div>
+        {/* IA consolidation: Material Issues is no longer a separate
+            primary Sidebar item - it's a transaction between Inventory
+            and Production, so it's reached contextually from here (and
+            from Inventory's own "Issues" tab). Same existing
+            IssuesPage/route and issuesAPI.create - reuses the exact
+            prefill idiom IssuesPage already supports for other pages
+            (location.state.openCreate/prefill), so this job's order (if
+            any) is pre-selected rather than left for the user to find. */}
+        <div className="page-actions">
+          <button
+            type="button" className="btn-secondary"
+            onClick={() => navigate('/issues', { state: { openCreate: true, prefill: job.order_id ? { order_id: job.order_id } : {} } })}
+          >
+            Record Material Issue
+          </button>
+        </div>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}

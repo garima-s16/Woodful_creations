@@ -69,6 +69,27 @@ function ClientDetailPage() {
     }
   }, [clientId, canViewFinancials]);
 
+  useEffect(() => {
+    // Defect repair (F138 P4.2): clientId changing means the route now
+    // points at a different client record, not a background refresh of
+    // the one already on screen - reset per-client state so the
+    // previous client's data (orders, payments, activities, insights...)
+    // can never flash under the new client's URL while the new client's
+    // data is still in flight. This is the opposite case from load()
+    // itself (called again after a same-client mutation below), which
+    // must keep showing existing data and never clear optimistically.
+    setClient(null);
+    setOrders([]);
+    setEstimates([]);
+    setPayments([]);
+    setActivities([]);
+    setProductRates([]);
+    setRelationshipTimeline(null);
+    setTimelineError('');
+    setInsights(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
+
   useEffect(load, [load]);
 
   // Products is company-wide reference data for the add-product-rate

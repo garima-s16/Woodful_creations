@@ -60,6 +60,14 @@ _scheduler_stop_event = threading.Event()
 _scheduler_thread = None
 
 
+# Defect repair (F138 P9.2): arbitrary, fixed lock key for this
+# scheduler's per-cycle advisory lock - deliberately distinct from
+# app.platform.database._MIGRATION_LOCK_KEY (8825170392) so the two
+# locks can never collide/serialize against each other despite both
+# being pg_advisory_lock calls scoped to this same app.
+_SCHEDULER_LOCK_KEY = 8825170393
+
+
 def _automation_scheduler_loop():
     """Family 131 section 23 - "auto-generated" notifications: calls the
     exact same AutomationService.run_all/NotificationService.run_all_checks
@@ -77,17 +85,62 @@ def _automation_scheduler_loop():
     its own SessionLocal() session matches how the rest of the app
     already talks to the database. Sleeps in short slices so shutdown
     (see the "shutdown" event below) doesn't have to wait out a full
-    interval."""
+    interval.
+
+    Defect repair (F138 P9.2): a horizontally-scaled deployment runs
+    this same daemon thread inside every instance, each on its own
+    independent timer. Before this fix, every instance's cycle ran
+    unconditionally, so N instances meant N concurrent
+    AutomationService.run_all/NotificationService.run_all_checks calls
+    hitting the database on every cycle - not a correctness bug on its
+    own (NotificationService.notify's dedup_key check, and now its
+    backing partial unique index - see F138 P9.1 - already make a
+    duplicate notification from two concurrent callers impossible), but
+    wasted, redundant work that multiplies with the fleet size for no
+    benefit, and a needless source of extra DB load/lock contention
+    during every scheduled cycle. Fixed the same way
+    run_startup_migrations() already serializes concurrent migration
+    attempts across instances (see app/platform/database.py): a
+    Postgres session-level advisory lock, keyed to this scheduler
+    specifically (_SCHEDULER_LOCK_KEY, distinct from the migration
+    lock's key so the two never interact). Unlike the migration lock,
+    this uses pg_try_advisory_lock (non-blocking) rather than
+    pg_advisory_lock - an instance that doesn't get the lock this cycle
+    must never sit blocked waiting for it; it should simply skip this
+    cycle's work (some other instance is already doing it) and try
+    again next interval. Skipped entirely for SQLite (tests/local dev),
+    which has no advisory-lock concept and, like
+    run_startup_migrations(), was never the multi-instance scenario
+    this protects against - a single local process always runs every
+    cycle."""
     from app.modules.communications.automation import AutomationService
     from app.modules.communications.services import NotificationService
 
     interval_seconds = max(60, settings.AUTOMATION_SCHEDULER_INTERVAL_MINUTES * 60)
+    is_sqlite = settings.DATABASE_URL.startswith("sqlite")
     logger.info("Automation scheduler started (every %s minute(s)).", settings.AUTOMATION_SCHEDULER_INTERVAL_MINUTES)
     while not _scheduler_stop_event.is_set():
         db = SessionLocal()
         try:
-            AutomationService.run_all(db, trigger_event="scheduled_job")
-            NotificationService.run_all_checks(db)
+            if is_sqlite:
+                # No multi-instance concern on SQLite - always run.
+                AutomationService.run_all(db, trigger_event="scheduled_job")
+                NotificationService.run_all_checks(db)
+            else:
+                got_lock = db.execute(
+                    text("SELECT pg_try_advisory_lock(:key)"), {"key": _SCHEDULER_LOCK_KEY}
+                ).scalar()
+                if got_lock:
+                    try:
+                        AutomationService.run_all(db, trigger_event="scheduled_job")
+                        NotificationService.run_all_checks(db)
+                    finally:
+                        db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SCHEDULER_LOCK_KEY})
+                else:
+                    # Another instance already holds the lock and is
+                    # running this cycle - skip ours rather than block,
+                    # matching the non-blocking contract above.
+                    logger.debug("Automation scheduler cycle skipped (another instance holds the lock).")
         except Exception:
             # One bad cycle must never kill the loop - the on-demand path
             # (opening the notification panel) still works even if a

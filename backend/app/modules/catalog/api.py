@@ -200,6 +200,14 @@ def delete_product(product_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="This product has order history and cannot be deleted. Mark it inactive instead.")
     if db.query(EstimateLineItem).filter(EstimateLineItem.product_id == product_id).first():
         raise HTTPException(status_code=400, detail="This product is referenced by an estimate and cannot be deleted. Mark it inactive instead.")
+    # Defect repair (F138 P2): ClientProductRate.product_id is a
+    # nullable FK with no cascade/back-reference on Product - a
+    # customer-specific rate override left dangling here once its
+    # product no longer exists is meaningless, not preserved business
+    # history (unlike OrderItem/EstimateLineItem, already blocked
+    # above), so it's cleaned up rather than left orphaned.
+    from app.modules.clients.models import ClientProductRate
+    db.query(ClientProductRate).filter(ClientProductRate.product_id == product_id).delete()
     product_name = product.name
     db.delete(product)
     db.commit()

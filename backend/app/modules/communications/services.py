@@ -16,6 +16,7 @@ from app.platform.config import settings
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
+from sqlalchemy.exc import IntegrityError
 from app.modules.communications.models import Notification
 from app.modules.inventory.models import Material
 from app.modules.procurement.models import Purchase
@@ -137,7 +138,22 @@ class NotificationService:
         function rather than adding a parallel email trigger. A failed
         email never blocks or rolls back the notification itself (do
         not corrupt the related record merely because email failed) -
-        caught and logged, not raised."""
+        caught and logged, not raised.
+
+        Defect repair (F138 P9.1): the dedup_key lookup below is a
+        fast-path check only, not the actual guarantee - two concurrent
+        callers (two requests, or the on-demand check racing the
+        background scheduler) can both pass it before either has
+        inserted, and would otherwise both create a live notification
+        for the same situation. The real guarantee is the database's
+        own partial unique index on (dedup_key WHERE is_read=false) -
+        see Notification's docstring - enforced here via the same
+        try-commit/except IntegrityError/rollback-and-fetch idiom
+        hr/services.py's create_employee already uses for its own
+        unique-code races: if the insert loses the race, that's not a
+        real error, it just means someone else's insert already
+        satisfied this exact request, so we return their row instead of
+        ours."""
         if dedup_key:
             existing = db.query(Notification).filter(
                 Notification.dedup_key == dedup_key, Notification.is_read.is_(False)
@@ -152,7 +168,22 @@ class NotificationService:
             business_id=generate_business_id(db),
         )
         db.add(notification)
-        db.commit()
+        if dedup_key:
+            try:
+                db.commit()
+            except IntegrityError:
+                # Lost the race to another concurrent caller inserting
+                # the same unread dedup_key - not a real failure, fetch
+                # and return the row that won instead of raising.
+                db.rollback()
+                existing = db.query(Notification).filter(
+                    Notification.dedup_key == dedup_key, Notification.is_read.is_(False)
+                ).first()
+                if existing:
+                    return existing
+                raise  # genuinely unexpected - some other constraint fired
+        else:
+            db.commit()
         db.refresh(notification)
 
         if recipient_email:

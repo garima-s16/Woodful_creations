@@ -368,6 +368,35 @@ def delete_material(material_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="This material has purchase history and cannot be deleted. Mark it inactive instead.")
     if db.query(Issue).filter(Issue.material_id == material_id).first():
         raise HTTPException(status_code=400, detail="This material has issue history and cannot be deleted. Mark it inactive instead.")
+    # Defect repair (F138 P2): StockAdjustment/StockTransfer are real,
+    # immutable stock-transaction history exactly like Purchase/Issue
+    # above (see StockAdjustment/StockTransfer's own docstrings) - a
+    # material could previously be hard-deleted with adjustment or
+    # transfer records still pointing at it even when it had never had
+    # a Purchase or Issue (e.g. an opening-stock correction, or a pure
+    # location move), leaving those audit rows referencing a material
+    # that no longer exists.
+    if db.query(StockAdjustment).filter(StockAdjustment.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material has stock adjustment history and cannot be deleted. Mark it inactive instead.")
+    if db.query(StockTransfer).filter(StockTransfer.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material has stock transfer history and cannot be deleted. Mark it inactive instead.")
+    # Defect repair (F138 P2): a material still used in a Product's BOM
+    # (ProductMaterial) or referenced by a persisted ProcurementRequirement
+    # is real, cross-module "in use" data (per the material docstring's
+    # own "BOM, procurement" list) - Material carries no cascade/back-
+    # reference for either, so neither was ever checked here.
+    from app.modules.catalog.models import ProductMaterial
+    from app.modules.procurement.models import ProcurementRequirement, PersonalCartItem
+    if db.query(ProductMaterial).filter(ProductMaterial.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material is used in a product's bill of materials and cannot be deleted. Remove it from that BOM first.")
+    if db.query(ProcurementRequirement).filter(ProcurementRequirement.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material has a recorded procurement requirement and cannot be deleted.")
+    # PersonalCartItem is a personal, disposable draft list (not
+    # business history - see its own docstring), so it's cleaned up
+    # here rather than blocking deletion over someone's stray cart
+    # line, the same "explicit cleanup, don't block" treatment already
+    # used for ClientActivity in clients/api.py's delete_client.
+    db.query(PersonalCartItem).filter(PersonalCartItem.material_id == material_id).delete()
     material_name = material.name
     db.delete(material)
     db.commit()
@@ -771,15 +800,26 @@ def list_adjustments(material_id: Optional[int] = Query(None), db: Session = Dep
 
 
 @stock_transactions_router.get("/ledger", response_model=List[StockLedgerEntryResponse])
-def list_ledger_entries(material_id: int = Query(...), db: Session = Depends(get_db),
-                         auth=Depends(get_current_user)):
+def list_ledger_entries(material_id: int = Query(...), response: Response = None,
+                         limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
+                         db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """The real, immutable transaction history for a material - every
     Receipt/Issue/Adjustment that has ever affected its stock, in
     order, each traceable back to the actual Purchase/Issue/
-    StockAdjustment record that caused it."""
-    return db.query(StockLedgerEntry).filter(
-        StockLedgerEntry.material_id == material_id
-    ).order_by(StockLedgerEntry.created_at.asc()).all()
+    StockAdjustment record that caused it.
+
+    Defect repair (F138 P1): this is a genuinely growing, never-pruned
+    ledger (StockLedgerEntry is "never updated or deleted once
+    written" - see its own docstring) that was previously fetched with
+    no limit at all - a long-lived, frequently-moved material's full
+    history loaded on every request. Paginated the same way every
+    other transactional-history list in this codebase already is (see
+    list_purchases), oldest-first order preserved unchanged."""
+    query = db.query(StockLedgerEntry).filter(StockLedgerEntry.material_id == material_id)
+    total = query.count()
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+    return query.order_by(StockLedgerEntry.created_at.asc()).offset(offset).limit(limit).all()
 
 
 @stock_transactions_router.get("/locations/{material_id}", response_model=MaterialLocationStockResponse)

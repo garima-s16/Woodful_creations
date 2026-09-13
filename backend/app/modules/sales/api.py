@@ -22,7 +22,6 @@ from app.modules.sales.schemas import ApprovedSpecificationCreate, ApprovedSpeci
 from app.modules.sales.schemas import CostDriftLineItem, CostDriftResponse
 from app.modules.sales.schemas import MarginOptimizationRequest, MarginOptimizationResponse, MarginOptimizationSuggestion
 from app.modules.sales.schemas import DeliveryPromiseRecord
-from app.modules.clients.portal_api import generate_client_access_token, build_client_link_email_footer
 from app.modules.clients.services import ClientEmailPreview, ClientEmailSendRequest, ClientEmailSendResult
 from app.modules.sales.exports import generate_order_estimate_pdf, generate_invoice_pdf
 from app.modules.communications.services import EmailService
@@ -154,6 +153,7 @@ def _serialize_order(order, role: str, db: Session = None):
 def list_orders(response: Response, status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
                  priority: Optional[str] = Query(None),
                  overdue_only: bool = Query(False),
+                 active_only: bool = Query(False),
                  upcoming_delivery_within_days: Optional[int] = Query(None, ge=1, le=365),
                  limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
                  sort: Optional[str] = Query(None, description="Set to 'risk' to sort by delivery-risk severity"),
@@ -170,6 +170,19 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
         query = query.filter(Order.client_id == client_id)
     if priority:
         query = query.filter(Order.priority == priority)
+    if active_only:
+        # Defect repair (P1-8) - for a "pick a project to assign this
+        # to" dropdown (Employee Detail's task/production-job forms
+        # and similar pickers elsewhere), not a report. Same
+        # active-order definition already used by the dashboard's
+        # active_order_ids (app/modules/reporting/api.py) - a
+        # Completed order is never a valid assignment target anyway,
+        # so this both bounds the result AND keeps the picker itself
+        # meaningful, rather than a caller silently relying on the
+        # generic `limit` default (100) and truncating an
+        # unfiltered, irrelevantly-ordered list once the business has
+        # more than 100 orders total.
+        query = query.filter(Order.project_status != "Completed")
     if overdue_only:
         # Same rule the frontend used to apply client-side: balance still
         # outstanding and the order was placed more than 30 days ago.
@@ -490,22 +503,18 @@ APPROVED_SPEC_MAX_PHOTO_BYTES = 8 * 1024 * 1024
 
 @orders_router.post("/{order_id}/client-link")
 def generate_order_client_link(order_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 3 - Client 'My Order' Link. Staff-triggered:
-    the human decides when a client gets this link, matching Family
-    137's human-in-control principle. Returns the full URL once - the
-    raw token is never stored or retrievable again, only its hash
-    (see clients/portal_api.py); if it's lost, generate a new one
-    (the old one keeps working too, since links are not single-use -
-    generating a new link does not revoke prior ones)."""
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    raw_token = generate_client_access_token(
-        db, subject_type="order", subject_id=order.id, purpose="my_order",
-        created_by_user_id=auth.get("user_id"),
+    """Family 137, feature 3 - Client 'My Order' Link.
+
+    Defect repair (P1-13): disabled - Woodful is internal-only, and
+    the public client-portal router this link would point to is no
+    longer registered (see clients/portal_api.py). Returns 410 Gone
+    rather than 404, since this specific endpoint still exists and is
+    reachable by staff; it deliberately no longer mints a token or a
+    URL that would only 404 for whoever received it."""
+    raise HTTPException(
+        status_code=410,
+        detail="Client links are disabled - Woodful is an internal-only system.",
     )
-    db.commit()
-    return {"url": f"{settings.FRONTEND_URL}/my-order/{raw_token}"}
 
 
 @orders_router.get("/{order_id}/approved-specifications", response_model=List[ApprovedSpecificationResponse])
@@ -797,11 +806,10 @@ def preview_order_email(order_id: int, kind: str = Query("order", pattern="^(ord
             f"Regards,\nWoodful Creations"
         )
         attachment_filename = f"Order-{order.order_code}.pdf"
-    # Family 137, feature 3: the actual sent email will have a personal
-    # order-tracking link appended after whatever body text is
-    # confirmed here (see send_order_email) - not shown in this
-    # editable preview, since a real token is only ever generated at
-    # actual send time, never just for previewing.
+    # Defect repair (P1-13): this preview used to note that the actual
+    # sent email would have a client-portal tracking link appended -
+    # send_order_email no longer does that (Woodful is internal-only),
+    # so the body shown here now matches exactly what gets sent.
     return ClientEmailPreview(
         recipient_email=client.email, client_has_email=bool(client.email),
         subject=subject, body=body, attachment_filename=attachment_filename,
@@ -818,17 +826,14 @@ def send_order_email(order_id: int, data: ClientEmailSendRequest, request: Reque
     if not data.recipient_email or "@" not in data.recipient_email:
         raise HTTPException(status_code=400, detail="A valid recipient email is required")
 
-    # Family 137, feature 3 - My Order link: every order-related email
-    # (confirmation or invoice) carries the persistent order-tracking
-    # link, per the spec's "use the same persistent order link in
-    # relevant future communications, including order approval/
-    # confirmation, invoice notes, payment-related communications".
-    raw_token = generate_client_access_token(
-        db, subject_type="order", subject_id=order.id, purpose="my_order",
-        created_by_user_id=auth.get("user_id"),
-    )
-    client_link_url = f"{settings.FRONTEND_URL}/my-order/{raw_token}"
-    data.body = data.body + build_client_link_email_footer(client_link_url, "Track your order")
+    # Defect repair (P1-13): Family 137 feature 3's persistent
+    # order-tracking link used to be appended to every order-related
+    # email here. Woodful is internal-only now and the public
+    # client-portal route that link pointed to is no longer served
+    # (see clients/portal_api.py), so nothing is generated or
+    # appended anymore - the email still sends normally with whatever
+    # body/attachment staff prepared, just without a link that would
+    # only 404 for the client who received it.
 
     if kind == "invoice":
         payments = db.query(Payment).filter(Payment.order_id == order.id).order_by(Payment.date).all()
@@ -1868,23 +1873,14 @@ def get_margin_optimization(
 
 @estimates_router.post("/{estimate_id}/client-link")
 def generate_estimate_client_link(estimate_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 1 - Client Approval Hub. Staff-triggered,
-    same rationale as generate_order_client_link above. Only
-    meaningful once the estimate is actually ready for the client to
-    decide on - callers should move the estimate to "sent" (the
-    normal update-estimate endpoint) around the same time they share
-    this link, though this endpoint itself does not enforce that
-    ordering, since staff may reasonably generate the link first and
-    send the estimate a moment later."""
-    estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
-    if not estimate:
-        raise HTTPException(status_code=404, detail="Estimate not found")
-    raw_token = generate_client_access_token(
-        db, subject_type="estimate", subject_id=estimate.id, purpose="estimate_approval",
-        created_by_user_id=auth.get("user_id"),
+    """Family 137, feature 1 - Client Approval Hub.
+
+    Defect repair (P1-13): disabled - same reasoning and behavior as
+    generate_order_client_link above."""
+    raise HTTPException(
+        status_code=410,
+        detail="Client links are disabled - Woodful is an internal-only system.",
     )
-    db.commit()
-    return {"url": f"{settings.FRONTEND_URL}/review-estimate/{raw_token}"}
 
 
 @estimates_router.get("/{estimate_id}/email-preview", response_model=ClientEmailPreview)
@@ -1916,24 +1912,24 @@ def send_estimate_email(estimate_id: int, data: ClientEmailSendRequest, request:
     if not data.recipient_email or "@" not in data.recipient_email:
         raise HTTPException(status_code=400, detail="A valid recipient email is required")
 
-    # Family 137, feature 1 - Client Approval Hub: every estimate email
-    # carries the persistent review/approval link, and sending it is
+    # Family 137, feature 1 - Client Approval Hub: sending this email is
     # what actually puts the estimate in front of the client to decide
     # on - so a still-"draft" estimate moves to "sent" here, the same
-    # validated transition the manual status-update endpoint uses.
+    # validated transition the manual status-update endpoint uses. This
+    # part is unchanged by the P1-13 defect repair below - it reflects
+    # a real, internal state transition, independent of any client-
+    # portal link.
     if estimate.status == "draft":
         error = validate_estimate_status_transition(estimate.status, "sent")
         if not error:
             estimate.status = "sent"
             db.add(estimate)
-    client_link_url = None
-    if estimate.status in ("sent", "changes_requested"):
-        raw_token = generate_client_access_token(
-            db, subject_type="estimate", subject_id=estimate.id, purpose="estimate_approval",
-            created_by_user_id=auth.get("user_id"),
-        )
-        client_link_url = f"{settings.FRONTEND_URL}/review-estimate/{raw_token}"
-        data.body = data.body + build_client_link_email_footer(client_link_url, "Review and respond to this estimate")
+
+    # Defect repair (P1-13): the persistent review/approval link used
+    # to be generated and appended here. Woodful is internal-only now
+    # and the public client-portal route it pointed to is no longer
+    # served (see clients/portal_api.py), so no token is minted and no
+    # link is appended - the estimate PDF still emails normally.
 
     pdf_buffer = generate_estimate_pdf(estimate)
     email_service = EmailService()

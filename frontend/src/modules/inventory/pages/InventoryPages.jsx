@@ -41,11 +41,22 @@ function InventoryPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
+  // Defect repair (F138 P4.3): the Stock/Purchases/Issues tabs below
+  // previously had no error state at all - a load failure silently
+  // wiped whatever was already showing down to "No materials match
+  // these filters." / "No purchases recorded yet." / "No issues
+  // recorded yet." with no indication anything had gone wrong and no
+  // way to retry, unlike the Movements tab's ledgerError/onRetryLedger
+  // right below, which already follows this codebase's established
+  // error/onRetry-on-Table convention.
+  const [materialsError, setMaterialsError] = useState(false);
 
   const [purchases, setPurchases] = useState([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [purchasesError, setPurchasesError] = useState(false);
   const [pendingDeletePurchase, setPendingDeletePurchase] = useState(null);
   const [deletingPurchase, setDeletingPurchase] = useState(false);
+  const [issuesError, setIssuesError] = useState(false);
   const [issues, setIssues] = useState([]);
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -91,20 +102,23 @@ function InventoryPage() {
 
   const loadMaterials = useCallback(() => {
     setMaterialsLoading(true);
-    materialsAPI.list({ active_only: true }).then((res) => setMaterials(res.data)).catch(() => setMaterials([]))
+    setMaterialsError(false);
+    materialsAPI.list({ active_only: true }).then((res) => setMaterials(res.data)).catch(() => { setMaterials([]); setMaterialsError(true); })
       .finally(() => setMaterialsLoading(false));
   }, []);
 
   const loadPurchases = useCallback(() => {
     if (!isMaster) return;
     setPurchasesLoading(true);
-    purchasesAPI.list().then((res) => setPurchases(res.data)).catch(() => setPurchases([]))
+    setPurchasesError(false);
+    purchasesAPI.list().then((res) => setPurchases(res.data)).catch(() => { setPurchases([]); setPurchasesError(true); })
       .finally(() => setPurchasesLoading(false));
   }, [isMaster]);
 
   const loadIssues = useCallback(() => {
     setIssuesLoading(true);
-    issuesAPI.list().then((res) => setIssues(res.data)).catch(() => setIssues([])).finally(() => setIssuesLoading(false));
+    setIssuesError(false);
+    issuesAPI.list().then((res) => setIssues(res.data)).catch(() => { setIssues([]); setIssuesError(true); }).finally(() => setIssuesLoading(false));
   }, []);
 
   useEffect(loadOverview, [loadOverview]);
@@ -129,11 +143,12 @@ function InventoryPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setMaterialsLoading(true);
+      setMaterialsError(false);
       const params = { active_only: true };
       if (search) params.search = search;
       if (categoryFilter) params.category = categoryFilter;
       if (statusFilter === 'LOW STOCK' || statusFilter === 'OUT OF STOCK') params.low_stock_only = true;
-      materialsAPI.list(params).then((res) => setMaterials(res.data)).catch(() => setMaterials([]))
+      materialsAPI.list(params).then((res) => setMaterials(res.data)).catch(() => { setMaterials([]); setMaterialsError(true); })
         .finally(() => setMaterialsLoading(false));
     }, 300);
     return () => clearTimeout(timer);
@@ -265,12 +280,20 @@ function InventoryPage() {
     setActionLoading(true);
     setError('');
     try {
+      // unit is a display-only "computed" field (see its definition
+      // below, and handleReceive's identical comment above) - never
+      // actually written into formData by Form.js, so it must be
+      // derived here too from the same source, or the request would
+      // carry it as missing/blank and fail record_issue's unit-match
+      // validation even though the form visibly showed the right unit.
+      const selectedMaterial = materials.find((m) => String(m.id) === String(formData.material_id));
       await issuesAPI.create({
         ...formData,
         material_id: Number(formData.material_id),
         order_id: formData.order_id ? Number(formData.order_id) : null,
         location_id: formData.location_id ? Number(formData.location_id) : null,
         date: new Date(formData.date).toISOString(),
+        unit: selectedMaterial?.unit || '',
       });
       setShowIssue(false);
       refreshAll();
@@ -308,7 +331,7 @@ function InventoryPage() {
 
       {tab === 'Stock' && (
         <StockTab
-          materials={visibleStock} loading={materialsLoading} isMaster={isMaster}
+          materials={visibleStock} loading={materialsLoading} error={materialsError} onRetry={() => loadMaterials()} isMaster={isMaster}
           search={search} setSearch={setSearch}
           categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categories={categories}
           locationFilter={locationFilter} setLocationFilter={setLocationFilter} locations={locations}
@@ -335,7 +358,7 @@ function InventoryPage() {
 
       {tab === 'Purchases' && isMaster && (
         <PurchasesTab
-          purchases={purchases} loading={purchasesLoading}
+          purchases={purchases} loading={purchasesLoading} error={purchasesError} onRetry={loadPurchases}
           materials={materials} suppliers={suppliers}
           onOpen={(p) => navigate(`/purchases/${p.id}`)}
           onReceiveStock={() => openReceive()}
@@ -354,7 +377,7 @@ function InventoryPage() {
 
       {tab === 'Issues' && (
         <IssuesTab
-          issues={issues} loading={issuesLoading} isMaster={isMaster}
+          issues={issues} loading={issuesLoading} error={issuesError} onRetry={loadIssues} isMaster={isMaster}
           materials={materials} orders={orders}
           onIssueStock={() => openIssue()}
         />
@@ -469,7 +492,20 @@ function InventoryPage() {
             { name: 'material_id', label: 'Material', type: 'select', required: true, options: materials.map((m) => ({ value: m.id, label: `${m.name} (${m.current_stock} in stock)` })) },
             { name: 'order_id', label: 'Order (Project)', type: 'select', options: orders.map((o) => ({ value: o.id, label: o.order_code })) },
             { name: 'quantity_issued', label: 'Quantity Issued', type: 'number', required: true },
-            { name: 'unit', label: 'Unit', required: true, placeholder: 'Sheets' },
+            {
+              name: 'unit', label: 'Unit', type: 'computed',
+              // Defect repair (F138 P21 API-contract audit): this was a
+              // free-typed text field seeded once from the pre-selected
+              // material's unit, so switching the Material dropdown
+              // after opening (or typing something else) could easily
+              // leave it out of sync - and record_issue's own strict
+              // exact-match validation against the material's real unit
+              // (see inventory/services.py) then rejects the submission.
+              // Locked the same way the Receive Stock form's own unit
+              // field already is: always the currently-selected
+              // material's actual unit, never independently editable.
+              compute: (formData) => materials.find((m) => String(m.id) === String(formData.material_id))?.unit || '',
+            },
             { name: 'location_id', label: 'Issue From Location', type: 'select', options: locations.map((l) => ({ value: l.id, label: l.full_path })), placeholder: 'Primary location' },
             { name: 'issued_to', label: 'Issued To' },
             { name: 'department', label: 'Department' },
@@ -546,7 +582,7 @@ function RecentMovementsTable({ rows }) {
 // A3 - Stock (main operational list)
 // ---------------------------------------------------------------------
 function StockTab({
-  materials, loading, isMaster, search, setSearch, categoryFilter, setCategoryFilter, categories,
+  materials, loading, error, onRetry, isMaster, search, setSearch, categoryFilter, setCategoryFilter, categories,
   locationFilter, setLocationFilter, locations, statusFilter, setStatusFilter, supplierName,
   onOpenMaterial, onAdjust, onTransfer, onViewLedger, onViewLocations, onReceive, onIssue,
 }) {
@@ -598,7 +634,7 @@ function StockTab({
           <option value="OUT OF STOCK">Out of Stock</option>
         </select>
       </div>
-      <Table columns={columns} data={materials} loading={loading} onRowClick={onOpenMaterial}
+      <Table columns={columns} data={materials} loading={loading} error={error} onRetry={onRetry} onRowClick={onOpenMaterial}
         emptyMessage="No materials match these filters." />
     </>
   );
@@ -647,7 +683,7 @@ function MovementsTab({ recent, materials, ledgerMaterialId, onSelectMaterial, l
 // ---------------------------------------------------------------------
 // A5 - Purchases / Stock In (master only, per existing backend RBAC)
 // ---------------------------------------------------------------------
-function PurchasesTab({ purchases, loading, materials, suppliers, onOpen, onReceiveStock, onDelete }) {
+function PurchasesTab({ purchases, loading, error, onRetry, materials, suppliers, onOpen, onReceiveStock, onDelete }) {
   return (
     <>
       <div className="page-actions" style={{ marginBottom: 'var(--space-4)' }}>
@@ -676,6 +712,8 @@ function PurchasesTab({ purchases, loading, materials, suppliers, onOpen, onRece
         ]}
         data={purchases}
         loading={loading}
+        error={error}
+        onRetry={onRetry}
         onRowClick={onOpen}
         emptyMessage="No purchases recorded yet."
       />
@@ -686,7 +724,7 @@ function PurchasesTab({ purchases, loading, materials, suppliers, onOpen, onRece
 // ---------------------------------------------------------------------
 // A6 - Issues / Stock Out
 // ---------------------------------------------------------------------
-function IssuesTab({ issues, loading, isMaster, materials, orders, onIssueStock }) {
+function IssuesTab({ issues, loading, error, onRetry, isMaster, materials, orders, onIssueStock }) {
   return (
     <>
       {isMaster && (
@@ -705,6 +743,8 @@ function IssuesTab({ issues, loading, isMaster, materials, orders, onIssueStock 
         ]}
         data={issues}
         loading={loading}
+        error={error}
+        onRetry={onRetry}
         emptyMessage="No issues recorded yet."
       />
     </>
@@ -842,8 +882,12 @@ function MaterialsPage() {
       setMaterials(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
     }).catch(() => {
-      setMaterials([]);
-      setTotalCount(0);
+      // Defect repair (F138 P4.2): a failed refetch (pagination, filter
+      // change, retry) used to wipe the already-loaded materials list to
+      // [] here, so a transient blip during a background reload blanked
+      // an already-populated catalog down to "No materials match your
+      // filters." The previously-loaded page of materials/totalCount is
+      // left in place; only the error banner above is shown.
       setError('Could not load materials. Check that the backend server is running and reachable.');
     }).finally(() => setPageLoading(false));
   };

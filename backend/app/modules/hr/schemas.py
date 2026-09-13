@@ -487,6 +487,29 @@ class SalaryAdvanceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    class Config:
+        # Defect repair: every sibling *Response schema in this file
+        # (EmployeeResponse, AttendanceResponse, LeaveResponse,
+        # SalarySlipResponse, WorkingWeekdayResponse,
+        # CompanyHolidayResponse, OvertimeRequestResponse) declares
+        # this, because _serialize()/route handlers call
+        # SalaryAdvanceResponse.model_validate(advance) directly on the
+        # SQLAlchemy SalaryAdvance ORM instance, not a dict - without
+        # from_attributes, pydantic v2 rejects a non-dict, non-model
+        # input outright ("Input should be a valid dictionary or
+        # instance of SalaryAdvanceResponse"), so every salary-advance
+        # endpoint (list/create/get/approve/reject/recover) would raise
+        # a ValidationError on its very first successful DB write. This
+        # was the one *Response class in this file missing it.
+        # employee_name isn't a real column (hr/api.py's _serialize()
+        # fills it in afterward from advance.employee.name) and
+        # outstanding_amount is a @property, not a Column, on the
+        # SalaryAdvance model (see hr/models.py) - both still resolve
+        # correctly via plain getattr, exactly like every sibling
+        # schema above already relies on for their own computed/
+        # relationship fields.
+        from_attributes = True
+
 
 class OvertimeRequestCreate(BaseModel):
     """Covers both the employee-initiated request AND a Master

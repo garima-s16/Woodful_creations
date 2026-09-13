@@ -297,22 +297,32 @@ function DashboardPage() {
       setDelayedProduction(res.data);
     }).catch(() => {});
 
-    Promise.all([
-      purchasesAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
-      paymentsAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
-      purchasesAPI.list({ pending_payment_only: true, limit: 4 }).then((r) => r.data).catch(() => []),
-    ]).then(([recentPurchases, recentPayments, pendingPurchasesData]) => {
-      const feed = [
-        ...recentPurchases.map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${formatCurrency(p.invoice_total)}`, date: p.date })),
-        ...recentPayments.map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
-      ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
-      setActivity(feed);
+    // Defect repair (P1-4): purchases/payments endpoints are
+    // Depends(require_role("master")) server-side - a non-master
+    // (employee) user firing these unconditionally was guaranteed 3
+    // wasted round-trips per dashboard load, every one of them a 403.
+    // Gated behind isPrivileged like the other master-only widgets.
+    if (isPrivileged) {
+      Promise.all([
+        purchasesAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
+        paymentsAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
+        purchasesAPI.list({ pending_payment_only: true, limit: 4 }).then((r) => r.data).catch(() => []),
+      ]).then(([recentPurchases, recentPayments, pendingPurchasesData]) => {
+        const feed = [
+          ...recentPurchases.map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${formatCurrency(p.invoice_total)}`, date: p.date })),
+          ...recentPayments.map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
+        ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
+        setActivity(feed);
 
-      // Purchases still pending payment to the supplier - its own
-      // bounded, filtered request now, not derived from the same
-      // unbounded list used for the activity feed above.
-      setPendingPurchases(pendingPurchasesData);
-    });
+        // Purchases still pending payment to the supplier - its own
+        // bounded, filtered request now, not derived from the same
+        // unbounded list used for the activity feed above.
+        setPendingPurchases(pendingPurchasesData);
+      });
+    } else {
+      setActivity([]);
+      setPendingPurchases([]);
+    }
   }, [isPrivileged]);
 
   const allCriticalSettled = criticalSettled.stock && criticalSettled.orders && criticalSettled.staff;

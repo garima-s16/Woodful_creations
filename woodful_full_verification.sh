@@ -528,6 +528,26 @@ else
 fi
 
 # ----------------------------------------------------------------------
+section "AUTH SESSION CONTRACT (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR - static checks)"
+# ----------------------------------------------------------------------
+# Zero-dependency (plain node, no node_modules/npm install required) -
+# see frontend/scripts/verify_auth_session_contract.js's own docstring.
+# Covers Requirement 10's frontend A-D: API default host consistency,
+# no localStorage/sessionStorage JWT storage, a single optional 401
+# not forcing a global logout, and genuine session invalidation still
+# redirecting to /login.
+if command -v node &>/dev/null; then
+    AUTH_CONTRACT_OUT=$(node frontend/scripts/verify_auth_session_contract.js 2>&1)
+    if [ $? -eq 0 ]; then
+        record "Auth session contract (static checks)" "PASS" "$(echo "$AUTH_CONTRACT_OUT" | tail -1)"
+    else
+        record "Auth session contract (static checks)" "FAIL" "$(echo "$AUTH_CONTRACT_OUT" | grep '^\[FAIL\]' | tr '\n' ' ')"
+    fi
+else
+    record "Auth session contract (static checks)" "BLOCKED" "node not found on PATH"
+fi
+
+# ----------------------------------------------------------------------
 section "BROWSER / MOBILE WEB (responsive layout, not a native app)"
 # ----------------------------------------------------------------------
 

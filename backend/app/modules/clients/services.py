@@ -641,10 +641,18 @@ def parse_uploaded_workbook(file_bytes: bytes) -> List[dict]:
             col_index = resolved
             break
     if header_row_idx is None:
+        # Defect repair (F138 P21 API-contract audit): this message
+        # named only "Client Name and Phone" even though
+        # REQUIRED_COLUMNS (and _resolve_header_row's own check above)
+        # also requires "Client Type *" - a file missing only that
+        # column was rejected with a message that didn't say why,
+        # leaving the uploader to guess. Built from REQUIRED_COLUMNS
+        # itself so this can never drift from what's actually enforced.
+        required_names = ", ".join(col.rstrip(" *") for col in REQUIRED_COLUMNS)
         raise ValueError(
             "Couldn't find the expected column headers in this file. "
-            "Please use the downloaded template, or make sure Client Name and Phone "
-            "have a recognizable header and aren't duplicated."
+            f"Please use the downloaded template, or make sure {required_names} "
+            "each have a recognizable header and aren't duplicated."
         )
 
     rows = []

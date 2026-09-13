@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  HomeIcon, MaterialIcon, ProductIcon, PurchaseIcon, IssueIcon, SupplierIcon, ClientIcon, EstimateIcon, LocationIcon, MobileAppIcon,
-  OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, ExpenseIcon, EmployeeIcon, AttendanceIcon,
-  LeaveIcon, SalaryIcon, CandidateIcon, InterviewIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, AnalyticsIcon, InventoryIcon,
+  HomeIcon, MaterialIcon, ProductIcon, PurchaseIcon, ClientIcon, EstimateIcon, MobileAppIcon,
+  OrderIcon, PaymentIcon, TaskIcon, ProductionIcon, EmployeeIcon, AttendanceIcon,
+  CandidateIcon, SettingsIcon, UserIcon, AuditIcon, ChevronIcon, InventoryIcon,
 } from './icons';
 import '../styles/layout.css';
 
@@ -16,65 +16,84 @@ function Sidebar({ isOpen, user, onClose }) {
     {
       name: 'Home',
       items: [
-        { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
-        { path: '/business-decisions', label: 'Business Attention', icon: AnalyticsIcon },
-        { path: '/analytics', label: 'Analytics', icon: AnalyticsIcon },
-        // Family 137, features 11/12 - Owner Daily/Weekly Business
-        // Briefing + Forward Cash-Flow Forecast. Master-only, matching
-        // the require_role("master") gate on both endpoints.
-        ...(isTrueMaster ? [{ path: '/owner-briefing', label: 'Owner Briefing', icon: AnalyticsIcon }] : []),
+        // Dashboard -> Home rename: same existing DashboardPage
+        // implementation, now the single Home/Command Centre nav
+        // destination at /home (see App.jsx - /dashboard still
+        // exists only as a redirect to /home for old links).
+        //
+        // Business Attention (/business-decisions), Analytics
+        // (/analytics), and Owner Briefing (/owner-briefing) are no
+        // longer separate Sidebar destinations - Home is the single
+        // command centre now. Their pages, routes, and backend APIs
+        // are untouched and still reachable directly; only these
+        // three nav entries are removed.
+        { path: '/home', label: 'Home', icon: HomeIcon },
       ],
     },
     {
+      // IA consolidation (Woodful navigation/module-structure task):
+      // Locations, Material Issues, and Suppliers are no longer
+      // separate primary nav items here. Locations and Material Issues
+      // are already full tabs inside this same InventoryPage workspace
+      // ("Locations"/"Issues" tabs, ALL_TABS in InventoryPages.jsx) -
+      // no new page, no new API, no duplicate data. Suppliers is
+      // reached from Purchases (a "Suppliers" quick-link was added to
+      // PurchasesPage). None of the underlying pages/routes/models
+      // were deleted - /locations, /issues, /suppliers still work
+      // directly.
       name: 'Inventory',
       items: [
-        // The single operational home for inventory. The
-        // existing Materials/Locations/Purchases/Issues pages stay put
-        // for direct navigation; this is just the new
-        // unified entry point that sits above them.
         { path: '/inventory', label: 'Inventory', icon: InventoryIcon },
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
-        { path: '/locations', label: 'Locations', icon: LocationIcon },
         ...(isTrueMaster ? [
           { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
-          { path: '/procurement-requirements', label: 'Procurement Requirements', icon: PurchaseIcon },
+          { path: '/procurement-requirements', label: 'Procurement', icon: PurchaseIcon },
         ] : []),
-        { path: '/issues', label: 'Material Issues', icon: IssueIcon },
-        { path: '/suppliers', label: 'Suppliers', icon: SupplierIcon },
       ],
     },
     {
+      // Rate Master is no longer a separate primary nav item - it
+      // supports Products/Estimates pricing (a "Rates" quick-link was
+      // added to ProductsPage) and /rate-master still works directly.
       name: 'Sales',
       items: [
         { path: '/clients', label: 'Clients', icon: ClientIcon },
         { path: '/products', label: 'Products', icon: ProductIcon },
-        ...(isTrueMaster ? [{ path: '/rate-master', label: 'Rate Master', icon: ProductIcon }] : []),
         { path: '/estimates', label: 'Estimates', icon: EstimateIcon },
         { path: '/orders', label: 'Orders', icon: OrderIcon },
         ...(isTrueMaster ? [{ path: '/payments', label: 'Payments', icon: PaymentIcon }] : []),
       ],
     },
     {
+      // Project Expenses is no longer a separate primary nav item - it
+      // already lives inside every Order's own "Expenses" tab
+      // (OrderDetailPage); /project-expenses still works directly for
+      // a full cross-order list.
       name: 'Projects & Production',
       items: [
         { path: '/daily-tasks', label: 'Tasks', icon: TaskIcon },
         { path: '/production-jobs', label: 'Production Jobs', icon: ProductionIcon },
-        ...(isTrueMaster ? [{ path: '/project-expenses', label: 'Project Expenses', icon: ExpenseIcon }] : []),
       ],
     },
     {
       name: 'People',
       items: [
         { path: '/employees', label: 'Employees', icon: EmployeeIcon },
-        { path: '/attendance', label: 'Attendance', icon: AttendanceIcon },
-        { path: '/leaves', label: 'Leave', icon: LeaveIcon },
-        { path: '/company-holidays', label: 'Company Holidays', icon: LeaveIcon },
-        { path: '/salary-slips', label: 'Salary', icon: SalaryIcon },
-        { path: '/salary-advances', label: 'Salary Advances', icon: SalaryIcon },
-        ...(isTrueMaster ? [
-          { path: '/candidates', label: 'Candidates', icon: CandidateIcon },
-          { path: '/interviews', label: 'Interviews', icon: InterviewIcon },
-        ] : []),
+        // Attendance, Leave, and Company Holidays combined into one
+        // workspace (see AttendanceLeaveHub in WorkforcePages.jsx) -
+        // the same three existing pages, unchanged, switched between
+        // by one internal tab bar. /attendance, /leaves, and
+        // /company-holidays still work directly too. Salary Slips and
+        // Salary Advances are reached from each Employee's own
+        // "Salary" tab (already built into EmployeeDetailPage) rather
+        // than a standalone nav item; /salary-slips and
+        // /salary-advances still work directly.
+        { path: '/attendance-leave', label: 'Attendance & Leave', icon: AttendanceIcon },
+        // Candidates and Interviews combined the same way (see
+        // RecruitmentHub in RecruitmentPages.jsx). Master-only,
+        // matching the require_role("master") gate already on every
+        // candidates/interviews backend endpoint.
+        ...(isTrueMaster ? [{ path: '/recruitment', label: 'Recruitment', icon: CandidateIcon }] : []),
       ],
     },
     ...(isTrueMaster ? [{

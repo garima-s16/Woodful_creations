@@ -447,6 +447,12 @@ function PurchasesPage() {
           <p className="page-summary">Record material receipts from suppliers and keep purchase history in one place.</p>
         </div>
         <div className="page-actions">
+          {/* IA consolidation: Suppliers is no longer a separate
+              primary Sidebar item - it's reached from here instead,
+              since supplier management is part of the Purchases
+              workflow. Same existing SuppliersPage/route, just a
+              contextual entry point. */}
+          <button className="btn-secondary" onClick={() => navigate('/suppliers')}>Suppliers</button>
           <a className="btn-secondary" href={reportsAPI.downloadUrl('purchases.xlsx')} target="_blank" rel="noreferrer">Export</a>
           {isPrivileged && <a className="btn-secondary" href={purchaseImportAPI.templateUrl}>Download Template</a>}
           {isPrivileged && <button className="btn-secondary" onClick={() => navigate('/purchases/import')}>Import Excel</button>}
@@ -563,13 +569,24 @@ function PurchaseDetailPage() {
 
   useEffect(load, [load]);
 
+  const [receiving, setReceiving] = useState(false);
   const handleReceive = async () => {
+    // Defect repair (F138 P25): this business-critical mutation
+    // (marking a purchase received) had no in-flight guard on its own
+    // button, unlike every other action button on this same page
+    // (handleBulkCreate/handlePreview/handleCommit above, all
+    // disabled={loading}) - a double-click or an impatient second
+    // click during a slow network round trip could fire
+    // purchasesAPI.receive() twice.
+    setReceiving(true);
     setError('');
     try {
       await purchasesAPI.receive(purchaseId);
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to mark this purchase as received');
+    } finally {
+      setReceiving(false);
     }
   };
 
@@ -596,7 +613,7 @@ function PurchaseDetailPage() {
         </div>
         {purchase.receipt_status === 'Ordered' && (
           <div className="detail-header-actions">
-            <button className="btn-primary" onClick={handleReceive}>Mark Received</button>
+            <button className="btn-primary" onClick={handleReceive} disabled={receiving}>{receiving ? 'Marking...' : 'Mark Received'}</button>
           </div>
         )}
       </div>

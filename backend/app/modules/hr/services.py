@@ -1451,7 +1451,7 @@ def employee_needs_attention(db: Session, employee_id: int, can_view_documents: 
             })
 
     if employee.status == "Active":
-        onboarding = employee_lifecycle(db, employee_id, "onboarding")
+        onboarding = employee_onboarding_progress_readonly(db, employee_id)
         incomplete = [i for i in onboarding["items"] if not i["is_complete"]] if onboarding else []
         if incomplete:
             items.append({
@@ -1462,19 +1462,102 @@ def employee_needs_attention(db: Session, employee_id: int, can_view_documents: 
     return {"label": "FACT", "total": len(items), "items": items}
 
 
+def _onboarding_live_facts(db: Session, employee) -> dict:
+    from app.modules.documents.api import GenericDocument
+
+    has_documents = db.query(GenericDocument).filter(
+        GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee.id,
+    ).count() > 0
+    return {
+        "record_created": True,
+        "documents_submitted": has_documents,
+        "role_assigned": bool(employee.designation),
+        "manager_assigned": bool(employee.manager),
+    }
+
+
+def employee_onboarding_progress_readonly(db: Session, employee_id: int) -> Optional[dict]:
+    """Defect repair (P1-9, "Employee 360 GET causing DB writes"): a
+    pure-read projection of onboarding progress for summary/aggregate
+    callers - employee_overview (the Employee 360 Overview tab) and
+    employee_needs_attention - that only ever need is_complete per
+    catalog item to compute a count, never a real row id to toggle.
+    This never writes to the database, unlike employee_lifecycle
+    below (the dedicated GET /lifecycle checklist tab's own backing
+    function, which legitimately provisions real, toggleable rows
+    because managing that checklist IS its purpose) - so opening an
+    employee's 360 Overview, or the needs-attention check that feeds
+    dashboards/other summaries, can never itself have the side effect
+    of inserting or updating rows.
+
+    Auto-derivable items (see ONBOARDING_AUTO_ITEMS) are still
+    recomputed fresh from live Employee/Documents data on every call,
+    exactly like employee_lifecycle does - only the "persist it back"
+    step is skipped here, since a summary reader never needs that.
+    A manual (non-auto) item that has never been opened via the
+    checklist tab yet has no row at all - reported as not complete,
+    which is simply true; nothing has ever marked it complete."""
+    from app.modules.hr.models import EmployeeLifecycleItem, ONBOARDING_ITEMS, ONBOARDING_AUTO_ITEMS
+
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        return None
+
+    existing_complete = {
+        i.item_key: i.is_complete for i in db.query(EmployeeLifecycleItem.item_key, EmployeeLifecycleItem.is_complete).filter(
+            EmployeeLifecycleItem.employee_id == employee_id, EmployeeLifecycleItem.phase == "onboarding",
+        ).all()
+    }
+    live_facts = _onboarding_live_facts(db, employee)
+
+    items = [
+        {
+            "item_key": key, "label": label,
+            "is_complete": live_facts[key] if key in ONBOARDING_AUTO_ITEMS else existing_complete.get(key, False),
+        }
+        for key, label in ONBOARDING_ITEMS
+    ]
+    return {"employee_id": employee_id, "phase": "onboarding", "items": items}
+
+
 def employee_lifecycle(db: Session, employee_id: int, phase: str) -> Optional[dict]:
-    """Section 13.9 - onboarding/offboarding checklist. Seeds the
-    fixed catalog for this employee/phase on first read (an employee
-    created before this feature existed is backfilled the same way,
-    the next time anyone opens their record). Offboarding items are
-    only seeded once the employee's status is actually "Inactive" - a
+    """Section 13.9 - onboarding/offboarding checklist. This is the
+    dedicated GET /lifecycle checklist tab's own backing function -
+    the one place in this module that legitimately provisions real
+    database rows on read, because managing this checklist (toggling
+    items via PUT .../lifecycle/{item_id}) is its entire purpose, and
+    that PUT route needs a real row id to update. Every OTHER caller
+    that only needs onboarding progress for a summary (employee_
+    overview, employee_needs_attention) uses
+    employee_onboarding_progress_readonly above instead, specifically
+    so opening the 360 Overview tab can never itself write to the
+    database (P1-9).
+
+    Seeds the fixed catalog for this employee/phase on first read (an
+    employee created before this feature existed - or before a given
+    deploy added a new catalog item - is backfilled the same way, the
+    next time anyone opens their checklist tab; new employees are
+    additionally pre-seeded at creation time now, and offboarding at
+    the moment status flips to Inactive - see create_employee/
+    update_employee in hr/api.py - so this lazy path is a fallback,
+    not the primary provisioning route). Offboarding items are only
+    seeded once the employee's status is actually "Inactive" - a
     still-active employee has no offboarding to track.
 
     Auto-derivable onboarding items (see ONBOARDING_AUTO_ITEMS) are
     recomputed from live Employee/Documents data on every read rather
     than trusted from the stored row, so "progress" always reflects
-    actual completion, not a stale checkbox."""
-    from app.modules.documents.api import GenericDocument
+    actual completion, not a stale checkbox.
+
+    Concurrency: two callers opening the SAME employee's checklist for
+    the very first time at once could both see no existing rows and
+    both try to seed - the table's own unique index
+    (ux_employee_lifecycle_items_employee_phase_key, see migration
+    0076) makes the loser's commit fail with an IntegrityError rather
+    than create duplicate rows; caught below by rolling back and
+    re-reading what the winner actually committed, instead of letting
+    a plain page-open occasionally 500."""
+    from sqlalchemy.exc import IntegrityError
     from app.modules.hr.models import (
         EmployeeLifecycleItem, ONBOARDING_ITEMS, OFFBOARDING_ITEMS, ONBOARDING_AUTO_ITEMS, LIFECYCLE_PHASES,
     )
@@ -1487,32 +1570,35 @@ def employee_lifecycle(db: Session, employee_id: int, phase: str) -> Optional[di
 
     catalog = ONBOARDING_ITEMS if phase == "onboarding" else OFFBOARDING_ITEMS
     catalog_keys = [key for key, _ in catalog]
-    existing = {
-        i.item_key: i for i in db.query(EmployeeLifecycleItem).filter(
-            EmployeeLifecycleItem.employee_id == employee_id, EmployeeLifecycleItem.phase == phase,
-        ).all()
-    }
+
+    def _load_existing():
+        return {
+            i.item_key: i for i in db.query(EmployeeLifecycleItem).filter(
+                EmployeeLifecycleItem.employee_id == employee_id, EmployeeLifecycleItem.phase == phase,
+            ).all()
+        }
+
+    existing = _load_existing()
 
     if phase == "offboarding" and employee.status != "Inactive" and not existing:
         return {"employee_id": employee_id, "phase": phase, "items": []}
 
-    for key, label in catalog:
-        if key not in existing:
-            row = EmployeeLifecycleItem(employee_id=employee_id, phase=phase, item_key=key, label=label)
-            db.add(row)
-            existing[key] = row
-    db.commit()
+    missing_keys = [key for key, _ in catalog if key not in existing]
+    if missing_keys:
+        for key, label in catalog:
+            if key in missing_keys:
+                db.add(EmployeeLifecycleItem(employee_id=employee_id, phase=phase, item_key=key, label=label))
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent request seeded the same rows first (see the
+            # docstring above) - its commit is authoritative; drop our
+            # own uncommitted inserts and re-read what actually landed.
+            db.rollback()
+        existing = _load_existing()
 
     if phase == "onboarding":
-        has_documents = db.query(GenericDocument).filter(
-            GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee_id,
-        ).count() > 0
-        live_facts = {
-            "record_created": True,
-            "documents_submitted": has_documents,
-            "role_assigned": bool(employee.designation),
-            "manager_assigned": bool(employee.manager),
-        }
+        live_facts = _onboarding_live_facts(db, employee)
         for key, value in live_facts.items():
             row = existing.get(key)
             if row is not None and row.is_complete != value:
@@ -1577,20 +1663,51 @@ def employee_activity_timeline(db: Session, employee_id: int, limit: int = 200,
 
     entries = []
 
-    for l in db.query(Leave).filter(Leave.employee_id == employee_id).all():
+    # Defect repair (P1-10): each source used to be loaded via a plain
+    # .all() with no bound at all - literally this employee's entire
+    # history in every one of these six tables, every single time this
+    # tab (or the 360 Overview aggregation that also touched it) was
+    # opened, even though the response only ever returns the most
+    # recent `limit` entries (default 200, capped 500) after merging
+    # and sorting everything in Python. A long-tenured, frequently-
+    # updated employee (audit log entries especially - one per field
+    # ever changed) would keep growing this query's cost forever with
+    # no relationship to what's actually displayed.
+    #
+    # The fix: order each source by its own date DESC and cap it at
+    # `limit` too, before merging. This is a standard top-K-per-source
+    # bound, not an approximation - the global top-`limit` most-recent
+    # entries across all sources can only ever be drawn from each
+    # source's own top-`limit` most-recent rows (an entry beyond that
+    # point in its own source is, by definition, older than `limit`
+    # more-recent rows from that same source alone, so it can never
+    # place in the merged top-`limit` either). Six sources x up to
+    # `limit` rows each is a small, fixed multiple of `limit` -
+    # bounded regardless of how much history actually exists - not the
+    # unbounded, ever-growing cost this replaces.
+    for l in (
+        db.query(Leave).filter(Leave.employee_id == employee_id)
+        .order_by(Leave.created_at.desc()).limit(limit).all()
+    ):
         entries.append({
             "type": "leave", "subtype": l.status.lower(), "date": l.created_at, "author": l.approved_by,
             "text": f"{l.leave_type} leave request ({l.start_date.date()} to {l.end_date.date()}, {float(l.days or 0)} day(s)) - {l.status}.",
             "path": "/leaves",
         })
 
-    for s in db.query(SalarySlip).filter(SalarySlip.employee_id == employee_id).all():
+    for s in (
+        db.query(SalarySlip).filter(SalarySlip.employee_id == employee_id)
+        .order_by(SalarySlip.created_at.desc()).limit(limit).all()
+    ):
         entries.append({
             "type": "salary_slip", "subtype": s.status, "date": s.created_at, "author": None,
             "text": f"Salary slip for {s.month} {s.year} - {s.status}.", "path": "/salary-slips",
         })
 
-    for a in db.query(SalaryAdvance).filter(SalaryAdvance.employee_id == employee_id).all():
+    for a in (
+        db.query(SalaryAdvance).filter(SalaryAdvance.employee_id == employee_id)
+        .order_by(SalaryAdvance.request_date.desc()).limit(limit).all()
+    ):
         if a.status == "Approved":
             text = f"Salary advance approved: {float(a.approved_amount or 0):,.2f}."
         elif a.status == "Rejected":
@@ -1603,15 +1720,23 @@ def employee_activity_timeline(db: Session, employee_id: int, limit: int = 200,
         })
 
     if can_view_documents:
-        for d in db.query(GenericDocument).filter(
-            GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee_id,
-        ).all():
+        for d in (
+            db.query(GenericDocument).filter(
+                GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee_id,
+            ).order_by(GenericDocument.created_at.desc()).limit(limit).all()
+        ):
             entries.append({
                 "type": "document", "subtype": "upload", "date": d.created_at, "author": d.uploaded_by,
                 "text": f"Document uploaded: {d.original_filename}" + (f" ({d.document_type})" if d.document_type else ""),
                 "path": f"/employees/{employee_id}",
             })
 
+    # Not bounded at the same limit=200/500 - the checklist catalogs
+    # are small, fixed-size constants (ONBOARDING_ITEMS +
+    # OFFBOARDING_ITEMS is 17 items total, see hr/models.py), so this
+    # can never grow unboundedly the way the other five sources could;
+    # a redundant .limit(limit) here would be dead weight, not a
+    # correctness fix.
     for i in db.query(EmployeeLifecycleItem).filter(
         EmployeeLifecycleItem.employee_id == employee_id, EmployeeLifecycleItem.is_complete.is_(True),
     ).all():
@@ -1620,7 +1745,10 @@ def employee_activity_timeline(db: Session, employee_id: int, limit: int = 200,
             "text": f"{i.phase.capitalize()} step completed: {i.label}.", "path": f"/employees/{employee_id}",
         })
 
-    for e in db.query(AuditLog).filter(AuditLog.module_name == "employees", AuditLog.record_id == employee_id).all():
+    for e in (
+        db.query(AuditLog).filter(AuditLog.module_name == "employees", AuditLog.record_id == employee_id)
+        .order_by(AuditLog.created_at.desc()).limit(limit).all()
+    ):
         entries.append({
             "type": "audit", "subtype": e.action, "date": e.created_at, "author": None,
             "text": _describe_employee_audit(e), "path": f"/employees/{employee_id}",
@@ -1665,7 +1793,11 @@ def employee_overview(db: Session, employee_id: int, is_privileged: bool,
         documents_count = db.query(GenericDocument).filter(
             GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee_id,
         ).count()
-    onboarding = employee_lifecycle(db, employee_id, "onboarding")
+    # Defect repair (P1-9): read-only, never writes - see
+    # employee_onboarding_progress_readonly's own docstring. The
+    # Employee 360 Overview GET must never have the side effect of
+    # inserting/updating employee_lifecycle_items rows.
+    onboarding = employee_onboarding_progress_readonly(db, employee_id)
     onboarding_complete = sum(1 for i in onboarding["items"] if i["is_complete"]) if onboarding else 0
     onboarding_total = len(onboarding["items"]) if onboarding else 0
 

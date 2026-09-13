@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { attendanceAPI, dailyTasksAPI, documentsAPI, employeesAPI, holidayImportAPI, holidaysAPI, leavesAPI, ordersAPI, productionJobsAPI, reportsAPI, salaryAdvancesAPI, salarySlipsAPI, usersAPI } from '../../../utils/api';
+import { attendanceAPI, dailyTasksAPI, documentsAPI, employeesAPI, holidayImportAPI, holidaysAPI, leavesAPI, ordersAPI, overtimeRequestsAPI, productionJobsAPI, reportsAPI, salaryAdvancesAPI, salarySlipsAPI, usersAPI } from '../../../utils/api';
 import { Alert, Card, ConfirmDialog, Form, KpiCard, Modal, Table } from '../../../components/common/UI';
 import { formatCurrency, statusClass, today } from '../../../utils/utils';
 import { DocumentsPanel } from '../../../components/Assistant';
@@ -369,15 +369,52 @@ function EmployeeDetailPage() {
     attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data)).catch(() => { setAttendance([]); setAttendanceError(true); });
     leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data)).catch(() => { setLeaves([]); setLeavesError(true); });
     dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data)).catch(() => { setTasks([]); setTasksError(true); });
-    // production_jobs doesn't support an employee_id filter server-side yet;
-    // filter client-side here rather than fetch nothing.
-    productionJobsAPI.list().then((res) => setProductionJobs(res.data.filter((j) => String(j.employee_id) === String(employeeId)))).catch(() => { setProductionJobs([]); setProductionJobsError(true); });
-    ordersAPI.list().then((res) => setOrders(res.data)).catch(() => setOrders([]));
+    // Defect repair (P1-7): production-jobs now supports a server-side
+    // employee_id filter - was previously the entire, ever-growing
+    // production_jobs table fetched and filtered down to one
+    // employee's jobs here in React.
+    productionJobsAPI.list({ employee_id: employeeId }).then((res) => setProductionJobs(res.data)).catch(() => { setProductionJobs([]); setProductionJobsError(true); });
+    // Defect repair (P1-8): this is only a "Project (Order)" picker
+    // for the task/production-job forms below, not a report - a
+    // Completed order is never a valid assignment target anyway.
+    // active_only scopes it to orders that can actually be assigned
+    // to, and an explicit limit means this call no longer silently
+    // relies on the generic list endpoint's own default page size
+    // (100) - which, unfiltered, would start missing older but still-
+    // active orders once the business has more than 100 orders total.
+    ordersAPI.list({ active_only: true, limit: 200 }).then((res) => setOrders(res.data)).catch(() => setOrders([]));
     if (canViewHrDetails) {
       employeesAPI.overview360(employeeId).then((res) => setOverview360(res.data)).catch(() => { setOverview360(null); setOverview360Error(true); });
       employeesAPI.relationships(employeeId).then((res) => setRelationships(res.data)).catch(() => setRelationships(null));
     }
   }, [employeeId, canViewHrDetails]);
+
+  useEffect(() => {
+    // Defect repair (F138 P4.2): employeeId changing (e.g. via the
+    // Direct Reports / Department Peers links on the Overview tab
+    // below, which point at /employees/:id while staying on this same
+    // route/component) means this is a different employee now, not a
+    // background refresh of the one already on screen - reset every
+    // employee-scoped state, including the tab-lazy calendar/salary/
+    // lifecycle/activity data, so the previous employee's information
+    // can never flash under the new employee's URL while the new
+    // employee's data is still loading. load() itself (called again
+    // for the SAME employeeId elsewhere) must keep doing the opposite
+    // and never clear already-good data.
+    setEmployee(null);
+    setAttendance([]);
+    setLeaves([]);
+    setTasks([]);
+    setProductionJobs([]);
+    setOverview360(null);
+    setRelationships(null);
+    setCalendar(null);
+    setSalarySlips(null);
+    setSalaryAdvances(null);
+    setLifecycle(null);
+    setActivityTimeline(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
 
   useEffect(load, [load]);
 
@@ -965,73 +1002,201 @@ function EmployeeDetailPage() {
   );
 }
 
-// --- AttendancePage.jsx ---
-function monthKey(dateStr) {
-  const d = new Date(dateStr);
+// --- AttendancePage.jsx (Attendance & Overtime Command Center) ---
+// Redesigned per the confirmed proposal: a calendar-first, backend-
+// aggregated view (attendance_period_summary/day_detail/team_grid/
+// exceptions - see hr/services.py) replacing the old plain "every
+// attendance record in a flat table" page. Every widget below loads
+// independently (F138 P4 - one slow/failing panel must never block a
+// sibling one), and every figure comes from a real backend calculation
+// - nothing here re-derives attendance math client-side (see each
+// service function's own docstring for the exact formula it owns).
+function currentMonthKey() {
+  const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function monthLabel(key) {
-  const [year, month] = key.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+function shiftMonthKey(key, delta) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function monthNameOnly(key) {
-  const [year, month] = key.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+function monthKeyToRange(key) {
+  const [y, m] = key.split('-').map(Number);
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0);
+  // Built from local Y/M/D rather than toISOString(), which converts
+  // to UTC first and can silently shift the date by a day depending
+  // on the viewer's timezone.
+  const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { start: toISO(start), end: toISO(end) };
 }
+
+function monthKeyLabel(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function monthKeyNameOnly(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+}
+
+// Same event-type -> color mapping already established for the
+// Employee 360 "Employee Calendar" widget above, reused here rather
+// than invented a second time.
+const ATTENDANCE_EVENT_TONE = {
+  present: 'var(--success)', half_day: 'var(--warning)', absent: 'var(--danger)',
+  leave: 'var(--warning)', holiday: 'var(--text-secondary)', week_off: 'var(--border-subtle)', work_day: 'var(--surface)',
+};
+const ATTENDANCE_EVENT_LABEL = {
+  present: 'Present', half_day: 'Half Day', absent: 'Absent', leave: 'Leave',
+  holiday: 'Holiday', week_off: 'Week Off', work_day: 'Unmarked working day',
+};
+
+const EXCEPTION_TYPE_LABEL = {
+  missing_attendance: 'Missing attendance', holiday_conflict: 'Holiday conflict', leave_conflict: 'Leave conflict',
+  missing_checkout: 'Missing checkout', shortfall: 'Hours shortfall', overtime_without_request: 'Unrequested overtime',
+  unapproved_overtime: 'Pending overtime approval',
+};
+const EXCEPTION_SEVERITY_CLASS = { high: 'status-danger', medium: 'status-warning', low: 'status-info' };
+
+const OVERTIME_STATUS_TABS = ['', 'Draft', 'Submitted', 'Approved', 'Rejected'];
 
 function AttendancePage() {
-  const [records, setRecords] = useState([]);
+  const { user } = useSelector((state) => state.auth);
+  const isPrivileged = user?.role === 'master';
+
   const [employees, setEmployees] = useState([]);
-  const [monthFilter, setMonthFilter] = useState('');
-  const [employeeFilter, setEmployeeFilter] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  // Which employee's Calendar/day-detail is being viewed - a Master
+  // can switch this; a non-master is always locked to themselves.
+  const [viewEmployeeId, setViewEmployeeId] = useState(isPrivileged ? '' : (user?.employee_id ? String(user.employee_id) : ''));
+  const effectiveEmployeeId = isPrivileged ? viewEmployeeId : (user?.employee_id ? String(user.employee_id) : '');
+
+  const [monthKey, setMonthKey] = useState(currentMonthKey());
+  const { start, end } = useMemo(() => monthKeyToRange(monthKey), [monthKey]);
+
+  const [activeTab, setActiveTab] = useState('calendar');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
 
-  const load = () => {
-    setPageLoading(true);
-    setLoadError(false);
-    attendanceAPI.list().then((res) => setRecords(res.data)).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
-    employeesAPI.list().then((res) => setEmployees(res.data));
+  // --- Calendar tab ---
+  const [periodSummary, setPeriodSummary] = useState(null);
+  const [periodLoading, setPeriodLoading] = useState(true);
+  const [periodError, setPeriodError] = useState(false);
+  const [dayDetail, setDayDetail] = useState(null); // { date, loading, error, data }
+
+  const loadPeriodSummary = useCallback(() => {
+    if (!effectiveEmployeeId) { setPeriodLoading(false); return; }
+    setPeriodLoading(true);
+    setPeriodError(false);
+    attendanceAPI.periodSummary(effectiveEmployeeId, start, end)
+      .then((res) => setPeriodSummary(res.data))
+      .catch(() => setPeriodError(true))
+      .finally(() => setPeriodLoading(false));
+  }, [effectiveEmployeeId, start, end]);
+
+  useEffect(() => { loadPeriodSummary(); }, [loadPeriodSummary]);
+
+  const openDayDetail = (dateStr) => {
+    if (!effectiveEmployeeId) return;
+    setDayDetail({ date: dateStr, loading: true, error: false, data: null });
+    attendanceAPI.dayDetail(effectiveEmployeeId, dateStr)
+      .then((res) => setDayDetail({ date: dateStr, loading: false, error: false, data: res.data }))
+      .catch(() => setDayDetail({ date: dateStr, loading: false, error: true, data: null }));
   };
+
+  // --- Team Grid tab (master only) ---
+  const [teamGrid, setTeamGrid] = useState(null);
+  const [teamGridLoading, setTeamGridLoading] = useState(false);
+  const [teamGridError, setTeamGridError] = useState(false);
+  const [departmentFilter, setDepartmentFilter] = useState('');
+
+  const loadTeamGrid = useCallback(() => {
+    if (!isPrivileged) return;
+    setTeamGridLoading(true);
+    setTeamGridError(false);
+    attendanceAPI.teamGrid(start, end, departmentFilter || undefined)
+      .then((res) => setTeamGrid(res.data))
+      .catch(() => setTeamGridError(true))
+      .finally(() => setTeamGridLoading(false));
+  }, [isPrivileged, start, end, departmentFilter]);
+
   useEffect(() => {
-    load();
-  }, []);
+    if (activeTab === 'team' && isPrivileged) loadTeamGrid();
+  }, [activeTab, isPrivileged, loadTeamGrid]);
 
-  // Backend only supports filtering by a single exact date, not a month
-  // range, so the monthly view groups/filters the already-fetched records
-  // on the client - still real data, just reorganized for this view.
-  const availableMonths = useMemo(() => {
-    const keys = new Set(records.map((r) => monthKey(r.date)));
-    return Array.from(keys).sort().reverse();
-  }, [records]);
+  // --- Exceptions tab ---
+  const [exceptions, setExceptions] = useState(null);
+  const [exceptionsLoading, setExceptionsLoading] = useState(false);
+  const [exceptionsError, setExceptionsError] = useState(false);
 
-  const filteredRecords = records.filter((r) => {
-    if (monthFilter && monthKey(r.date) !== monthFilter) return false;
-    if (employeeFilter && String(r.employee_id) !== employeeFilter) return false;
-    return true;
-  });
+  const loadExceptions = useCallback(() => {
+    if (!isPrivileged && !effectiveEmployeeId) { setExceptions({ exceptions: [] }); return; }
+    setExceptionsLoading(true);
+    setExceptionsError(false);
+    attendanceAPI.exceptions(start, end, isPrivileged ? undefined : effectiveEmployeeId)
+      .then((res) => setExceptions(res.data))
+      .catch(() => setExceptionsError(true))
+      .finally(() => setExceptionsLoading(false));
+  }, [isPrivileged, effectiveEmployeeId, start, end]);
 
-  const monthlySummary = useMemo(() => {
-    if (!monthFilter) return [];
-    const byEmployee = {};
-    records.filter((r) => monthKey(r.date) === monthFilter).forEach((r) => {
-      const emp = employees.find((e) => e.id === r.employee_id);
-      const name = emp?.name || `Employee ${r.employee_id}`;
-      if (!byEmployee[name]) byEmployee[name] = { name, days: 0, hours: 0, overtime: 0 };
-      byEmployee[name].days += 1;
-      byEmployee[name].hours += r.working_hours || 0;
-      byEmployee[name].overtime += r.overtime_hours || 0;
-    });
-    return Object.values(byEmployee);
-  }, [records, employees, monthFilter]);
+  useEffect(() => {
+    if (activeTab === 'exceptions') loadExceptions();
+  }, [activeTab, loadExceptions]);
 
-  const handleCreate = async (formData) => {
-    setLoading(true);
+  // --- Overtime Requests tab ---
+  const [overtimeRequests, setOvertimeRequests] = useState([]);
+  const [overtimeLoading, setOvertimeLoading] = useState(false);
+  const [overtimeError, setOvertimeError] = useState(false);
+  const [overtimeStatusFilter, setOvertimeStatusFilter] = useState('');
+  const [overtimeEmployeeFilter, setOvertimeEmployeeFilter] = useState('');
+
+  const loadOvertimeRequests = useCallback(() => {
+    setOvertimeLoading(true);
+    setOvertimeError(false);
+    const params = {};
+    if (overtimeStatusFilter) params.status = overtimeStatusFilter;
+    if (isPrivileged && overtimeEmployeeFilter) params.employee_id = overtimeEmployeeFilter;
+    overtimeRequestsAPI.list(params)
+      .then((res) => setOvertimeRequests(res.data))
+      .catch(() => setOvertimeError(true))
+      .finally(() => setOvertimeLoading(false));
+  }, [overtimeStatusFilter, overtimeEmployeeFilter, isPrivileged]);
+
+  useEffect(() => {
+    if (activeTab === 'overtime') loadOvertimeRequests();
+  }, [activeTab, loadOvertimeRequests]);
+
+  // Employees list - master only (employee selector + form options).
+  // A non-master never sees anyone else's data, so there is nothing
+  // for them to select here.
+  useEffect(() => {
+    if (!isPrivileged) return;
+    employeesAPI.list().then((res) => {
+      setEmployees(res.data);
+      setViewEmployeeId((prev) => prev || String(res.data[0]?.id || ''));
+    }).catch(() => {});
+  }, [isPrivileged]);
+
+  const departments = useMemo(
+    () => Array.from(new Set(employees.map((e) => e.department).filter(Boolean))).sort(),
+    [employees]
+  );
+
+  const refreshAfterMutation = () => {
+    loadPeriodSummary();
+    if (activeTab === 'team') loadTeamGrid();
+    if (activeTab === 'exceptions') loadExceptions();
+    if (activeTab === 'overtime') loadOvertimeRequests();
+  };
+
+  // --- Mark Attendance (existing single-record action, unchanged) ---
+  const [showMarkAttendance, setShowMarkAttendance] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const handleMarkAttendance = async (formData) => {
+    setActionLoading(true);
     setError('');
     try {
       await attendanceAPI.create({
@@ -1041,93 +1206,519 @@ function AttendancePage() {
         in_time: formData.in_time ? new Date(`${formData.date}T${formData.in_time}`).toISOString() : null,
         out_time: formData.out_time ? new Date(`${formData.date}T${formData.out_time}`).toISOString() : null,
       });
-      setShowAdd(false);
-      load();
+      setShowMarkAttendance(false);
+      refreshAfterMutation();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to mark attendance');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
-  const columns = [
-    { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
-    { key: 'employee_id', label: 'Employee', render: (v) => employees.find((e) => e.id === v)?.name || v },
-    { key: 'working_hours', label: 'Working Hours' }, { key: 'overtime_hours', label: 'Overtime' },
-    { key: 'attendance_status', label: 'Status' },
-  ];
+  // --- Adjust Overtime (the existing bulk "Manage Overtime" action -
+  // POST /api/attendance/overtime - had a working backend route but no
+  // frontend UI anywhere in the app; wired in here as part of this
+  // redesign since it's the Master's direct multi-date correction
+  // tool, distinct from the employee-initiated request workflow
+  // below). ---
+  const [showAdjustOvertime, setShowAdjustOvertime] = useState(false);
 
-  const fields = [
-    { name: 'date', label: 'Date', type: 'date', required: true },
-    { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
-    { name: 'in_time', label: 'In Time', type: 'time' },
-    { name: 'out_time', label: 'Out Time', type: 'time' },
-    { name: 'attendance_status', label: 'Status', type: 'select', options: [
-      { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
-      { value: 'Half Day', label: 'Half Day' }, { value: 'Leave', label: 'Leave' },
-    ] },
-    { name: 'remarks', label: 'Remarks' },
-  ];
+  const handleAdjustOvertime = async (formData) => {
+    setActionLoading(true);
+    setError('');
+    const dates = String(formData.dates || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    if (dates.length === 0) {
+      setError('Enter at least one date.');
+      setActionLoading(false);
+      return;
+    }
+    try {
+      await attendanceAPI.overtime({
+        employee_id: Number(formData.employee_id),
+        dates: dates.map((d) => new Date(d).toISOString()),
+        hours: formData.hours,
+        mode: formData.mode || 'add',
+      });
+      setShowAdjustOvertime(false);
+      refreshAfterMutation();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update overtime hours.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- Overtime Request workflow (Draft -> Submitted -> Approved/Rejected) ---
+  const [showRequestOvertime, setShowRequestOvertime] = useState(false);
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [cancelingRequest, setCancelingRequest] = useState(null);
+  const [actioningRequest, setActioningRequest] = useState(null); // { request, type: 'approve'|'reject' }
+
+  const handleCreateOrEditRequest = async (formData) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      if (editingRequest) {
+        await overtimeRequestsAPI.update(editingRequest.id, {
+          date: new Date(formData.date).toISOString(),
+          requested_hours: formData.requested_hours,
+          reason: formData.reason,
+          remarks: formData.remarks,
+        });
+      } else {
+        await overtimeRequestsAPI.create({
+          employee_id: isPrivileged ? Number(formData.employee_id) : Number(user.employee_id),
+          date: new Date(formData.date).toISOString(),
+          requested_hours: formData.requested_hours,
+          reason: formData.reason,
+          remarks: formData.remarks,
+        });
+      }
+      setShowRequestOvertime(false);
+      setEditingRequest(null);
+      loadOvertimeRequests();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to save this overtime request.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSubmitRequest = async (request) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await overtimeRequestsAPI.submit(request.id);
+      loadOvertimeRequests();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to submit this overtime request.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const confirmCancelRequest = async () => {
+    if (!cancelingRequest) return;
+    setActionLoading(true);
+    setError('');
+    try {
+      await overtimeRequestsAPI.remove(cancelingRequest.id);
+      setCancelingRequest(null);
+      loadOvertimeRequests();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to cancel this request.');
+      setCancelingRequest(null);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveRequest = async (formData) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await overtimeRequestsAPI.approve(actioningRequest.request.id, {
+        approved_hours: formData.approved_hours || undefined,
+        remarks: formData.remarks,
+      });
+      setActioningRequest(null);
+      loadOvertimeRequests();
+      loadPeriodSummary();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to approve this request.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (formData) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await overtimeRequestsAPI.reject(actioningRequest.request.id, { rejection_reason: formData.rejection_reason });
+      setActioningRequest(null);
+      loadOvertimeRequests();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to reject this request.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const attendanceExportUrl = (overtimeOnly = false) => {
     const params = new URLSearchParams();
-    if (employeeFilter) params.set('employee_id', employeeFilter);
-    if (monthFilter) {
-      const [year] = monthFilter.split('-');
-      params.set('month', monthNameOnly(monthFilter));
-      params.set('year', year);
-    }
+    if (effectiveEmployeeId) params.set('employee_id', effectiveEmployeeId);
+    params.set('month', monthKeyNameOnly(monthKey));
+    params.set('year', monthKey.split('-')[0]);
     if (overtimeOnly) params.set('overtime_only', 'true');
-    const qs = params.toString();
-    return reportsAPI.downloadUrl(`attendance.xlsx${qs ? `?${qs}` : ''}`);
+    return reportsAPI.downloadUrl(`attendance.xlsx?${params.toString()}`);
   };
+
+  const canGoNextMonth = monthKey < currentMonthKey() || true; // future months are allowed (planning ahead), never blocked
+
+  const viewingEmployeeName = isPrivileged
+    ? (employees.find((e) => String(e.id) === String(viewEmployeeId))?.name || '')
+    : (user?.full_name || user?.username || 'My');
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Attendance</h1>
-          <p className="page-summary">Log daily attendance and track Half Day/Absent records for payroll.</p>
+          <h1>Attendance &amp; Overtime</h1>
+          <p className="page-summary">Calendar, exceptions, and the overtime request workflow - all backed by real, aggregated data.</p>
         </div>
         <div className="page-actions">
-          <a className="btn-secondary" href={attendanceExportUrl()} target="_blank" rel="noreferrer">
-            {employeeFilter || monthFilter ? 'Export Filtered' : 'Export All'}
-          </a>
-          <a className="btn-secondary" href={attendanceExportUrl(true)} target="_blank" rel="noreferrer">
-            Export Overtime
-          </a>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Mark Attendance</button>
+          <a className="btn-secondary" href={attendanceExportUrl()} target="_blank" rel="noreferrer">Export Attendance</a>
+          <a className="btn-secondary" href={attendanceExportUrl(true)} target="_blank" rel="noreferrer">Export Overtime</a>
+          {isPrivileged && <button className="btn-secondary" onClick={() => setShowMarkAttendance(true)}>Mark Attendance</button>}
+          {isPrivileged && <button className="btn-secondary" onClick={() => setShowAdjustOvertime(true)}>Adjust Overtime</button>}
+          <button className="btn-primary" onClick={() => { setEditingRequest(null); setShowRequestOvertime(true); }}>Request Overtime</button>
         </div>
       </div>
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <form className="page-search" onSubmit={(e) => e.preventDefault()}>
-        <select className="form-input" value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}>
-          <option value="">All Months</option>
-          {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-        </select>
-        <select className="form-input" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)}>
-          <option value="">All Employees</option>
-          {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
-      </form>
 
-      {monthFilter && monthlySummary.length > 0 && (
-        <Card title={`${monthLabel(monthFilter)} Summary`}>
-          <Table
-            columns={[
-              { key: 'name', label: 'Employee' }, { key: 'days', label: 'Days Recorded' },
-              { key: 'hours', label: 'Total Working Hours', render: (v) => v.toFixed(1) },
-              { key: 'overtime', label: 'Total Overtime', render: (v) => v.toFixed(1) },
-            ]}
-            data={monthlySummary}
-          />
+      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+
+      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={() => setMonthKey((k) => shiftMonthKey(k, -1))} aria-label="Previous month">&larr;</button>
+          <strong>{monthKeyLabel(monthKey)}</strong>
+          <button className="btn-secondary" onClick={() => setMonthKey((k) => shiftMonthKey(k, 1))} aria-label="Next month" disabled={!canGoNextMonth}>&rarr;</button>
+        </div>
+        {isPrivileged && (activeTab === 'calendar') && (
+          <select className="form-input" style={{ maxWidth: 240 }} value={viewEmployeeId} onChange={(e) => setViewEmployeeId(e.target.value)}>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      <div className="tab-bar">
+        <button className={activeTab === 'calendar' ? 'tab active' : 'tab'} onClick={() => setActiveTab('calendar')}>Calendar</button>
+        {isPrivileged && <button className={activeTab === 'team' ? 'tab active' : 'tab'} onClick={() => setActiveTab('team')}>Team Grid</button>}
+        <button className={activeTab === 'exceptions' ? 'tab active' : 'tab'} onClick={() => setActiveTab('exceptions')}>Exceptions</button>
+        <button className={activeTab === 'overtime' ? 'tab active' : 'tab'} onClick={() => setActiveTab('overtime')}>Overtime Requests</button>
+      </div>
+
+      {activeTab === 'calendar' && (
+        <>
+          {!effectiveEmployeeId ? (
+            <Card><div className="card-body"><p className="detail-meta-value">No employee record is linked to your account, so there is nothing to show here.</p></div></Card>
+          ) : periodLoading ? (
+            <Card><div className="card-body"><p className="detail-meta-value">Loading...</p></div></Card>
+          ) : periodError ? (
+            <Card><div className="card-body">
+              <p className="detail-meta-value">Could not load this month's attendance.</p>
+              <button className="btn-secondary" onClick={loadPeriodSummary}>Retry</button>
+            </div></Card>
+          ) : periodSummary && (
+            <>
+              <div className="kpi-row">
+                <KpiCard label="Scheduled Hours" value={periodSummary.summary.scheduled_hours} />
+                <KpiCard label="Worked Hours" value={periodSummary.summary.worked_hours} />
+                <KpiCard label="Payable Hours" value={periodSummary.summary.payable_hours} />
+                <KpiCard label="Overtime Hours" value={periodSummary.summary.overtime_hours} />
+                <KpiCard label="Shortfall Hours" value={periodSummary.summary.shortfall_hours} tone={periodSummary.summary.shortfall_hours > 0 ? 'warning' : 'default'} />
+                <KpiCard label="Attendance %" value={periodSummary.summary.attendance_percent != null ? `${periodSummary.summary.attendance_percent}%` : '-'} />
+              </div>
+
+              <Card title={`${viewingEmployeeName}'s Calendar`}>
+                <div className="card-body">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(40px, 1fr))', gap: 4, marginBottom: 'var(--space-3)' }}>
+                    {/* Leading blank cells so the 1st of the month lines up under its real weekday. */}
+                    {Array.from({ length: new Date(periodSummary.days[0].date).getDay() }).map((_, i) => <div key={`pad-${i}`} />)}
+                    {periodSummary.days.map((d) => (
+                      <button
+                        key={d.date}
+                        type="button"
+                        onClick={() => openDayDetail(d.date)}
+                        title={`${d.date}: ${ATTENDANCE_EVENT_LABEL[d.event_type] || d.event_type}${d.holiday_name ? ` (${d.holiday_name})` : ''}${d.overtime_hours ? ` · ${d.overtime_hours}h OT` : ''}`}
+                        style={{
+                          padding: 4, textAlign: 'center', fontSize: '0.75rem', borderRadius: 4,
+                          background: ATTENDANCE_EVENT_TONE[d.event_type] || 'var(--surface)',
+                          border: d.has_missing_checkout ? '2px solid var(--danger)' : '1px solid var(--border-subtle)',
+                          cursor: 'pointer', color: 'inherit', font: 'inherit', position: 'relative',
+                        }}
+                      >
+                        {new Date(d.date).getDate()}
+                        {d.overtime_hours > 0 && <div style={{ fontSize: '0.65rem', fontWeight: 700 }}>+{d.overtime_hours}h</div>}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {Object.entries(ATTENDANCE_EVENT_LABEL).map(([key, label]) => (
+                      <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: ATTENDANCE_EVENT_TONE[key], display: 'inline-block' }} />
+                        {label}
+                      </span>
+                    ))}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, border: '2px solid var(--danger)', display: 'inline-block' }} />
+                      Missing checkout
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === 'team' && isPrivileged && (
+        <Card title="Team Attendance Grid">
+          <div className="card-body">
+            <div style={{ marginBottom: 'var(--space-3)' }}>
+              <select className="form-input" style={{ maxWidth: 240 }} value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
+                <option value="">All Departments</option>
+                {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            {teamGridLoading ? (
+              <p className="detail-meta-value">Loading...</p>
+            ) : teamGridError ? (
+              <>
+                <p className="detail-meta-value">Could not load the team grid.</p>
+                <button className="btn-secondary" onClick={loadTeamGrid}>Retry</button>
+              </>
+            ) : teamGrid && teamGrid.employees.length === 0 ? (
+              <p className="detail-meta-value">No active employees found.</p>
+            ) : teamGrid && (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Employee</th>
+                      {teamGrid.employees[0].days.map((d) => (
+                        <th key={d.date} scope="col" style={{ textAlign: 'center', fontSize: '0.7rem', padding: '4px 2px' }}>{new Date(d.date).getDate()}</th>
+                      ))}
+                      <th scope="col">Attendance %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamGrid.employees.map((emp) => (
+                      <tr key={emp.employee_id}>
+                        <td style={{ whiteSpace: 'nowrap' }}>{emp.employee_name}</td>
+                        {emp.days.map((d) => (
+                          <td key={d.date} style={{ padding: 2, textAlign: 'center' }}>
+                            <div
+                              title={`${d.date}: ${ATTENDANCE_EVENT_LABEL[d.event_type] || d.event_type}${d.overtime_hours ? ` · ${d.overtime_hours}h OT` : ''}${d.shortfall_hours ? ` · ${d.shortfall_hours}h short` : ''}`}
+                              style={{
+                                width: 20, height: 20, margin: '0 auto', borderRadius: 3,
+                                background: ATTENDANCE_EVENT_TONE[d.event_type] || 'var(--surface)',
+                                border: d.has_missing_checkout ? '2px solid var(--danger)' : '1px solid var(--border-subtle)',
+                              }}
+                            />
+                          </td>
+                        ))}
+                        <td>{emp.summary.attendance_percent != null ? `${emp.summary.attendance_percent}%` : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </Card>
       )}
 
-      <Table columns={columns} data={filteredRecords} loading={pageLoading} error={loadError} onRetry={load} emptyMessage="No attendance recorded yet. Record today's attendance to get started." emptyAction={{ label: 'Mark Attendance', onClick: () => setShowAdd(true) }} />
-      <Modal isOpen={showAdd} title="Mark Attendance" onClose={() => setShowAdd(false)}>
-        <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Mark Attendance"
-          initialValues={{ date: today() }} />
+      {activeTab === 'exceptions' && (
+        <Table
+          columns={[
+            ...(isPrivileged ? [{ key: 'employee_name', label: 'Employee' }] : []),
+            { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+            { key: 'type', label: 'Type', render: (v) => EXCEPTION_TYPE_LABEL[v] || v },
+            { key: 'message', label: 'Details' },
+            { key: 'severity', label: 'Severity', render: (v) => <span className={`status-badge ${EXCEPTION_SEVERITY_CLASS[v] || 'status-info'}`}>{v}</span> },
+          ]}
+          data={exceptions?.exceptions || []}
+          loading={exceptionsLoading}
+          error={exceptionsError}
+          onRetry={loadExceptions}
+          emptyMessage="No exceptions for this period - nothing needs attention."
+        />
+      )}
+
+      {activeTab === 'overtime' && (
+        <>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+            <select className="form-input" style={{ maxWidth: 200 }} value={overtimeStatusFilter} onChange={(e) => setOvertimeStatusFilter(e.target.value)}>
+              {OVERTIME_STATUS_TABS.map((s) => <option key={s || 'all'} value={s}>{s || 'All Statuses'}</option>)}
+            </select>
+            {isPrivileged && (
+              <select className="form-input" style={{ maxWidth: 240 }} value={overtimeEmployeeFilter} onChange={(e) => setOvertimeEmployeeFilter(e.target.value)}>
+                <option value="">All Employees</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            )}
+          </div>
+          <Table
+            loading={overtimeLoading}
+            error={overtimeError}
+            onRetry={loadOvertimeRequests}
+            columns={[
+              ...(isPrivileged ? [{ key: 'employee_name', label: 'Employee' }] : []),
+              { key: 'date', label: 'Date', render: (v) => new Date(v).toLocaleDateString() },
+              { key: 'requested_hours', label: 'Requested' },
+              { key: 'approved_hours', label: 'Approved', render: (v) => (v != null ? v : '-') },
+              { key: 'status', label: 'Status', render: (v) => <span className={`status-badge ${statusClass(v)}`}>{v}</span> },
+              { key: 'reason', label: 'Reason' },
+              {
+                key: 'actions', label: '',
+                render: (v, row) => {
+                  const canManage = isPrivileged || String(row.employee_id) === String(user?.employee_id);
+                  return (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {row.status === 'Draft' && canManage && (
+                        <>
+                          <button className="btn-link" onClick={() => { setEditingRequest(row); setShowRequestOvertime(true); }}>Edit</button>
+                          <button className="btn-link" onClick={() => handleSubmitRequest(row)}>Submit</button>
+                          <button className="btn-link" style={{ color: 'var(--danger)' }} onClick={() => setCancelingRequest(row)}>Cancel</button>
+                        </>
+                      )}
+                      {row.status === 'Submitted' && isPrivileged && (
+                        <>
+                          <button className="btn-link" onClick={() => setActioningRequest({ request: row, type: 'approve' })}>Approve</button>
+                          <button className="btn-link" style={{ color: 'var(--danger)' }} onClick={() => setActioningRequest({ request: row, type: 'reject' })}>Reject</button>
+                        </>
+                      )}
+                    </div>
+                  );
+                },
+              },
+            ]}
+            data={overtimeRequests}
+            emptyMessage={isPrivileged ? 'No overtime requests for this filter.' : "You haven't requested any overtime yet."}
+          />
+        </>
+      )}
+
+      {/* --- Day Detail drawer --- */}
+      <Modal isOpen={!!dayDetail} title={dayDetail ? new Date(dayDetail.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''} onClose={() => setDayDetail(null)} size="wide">
+        {dayDetail?.loading && <p className="detail-meta-value">Loading...</p>}
+        {dayDetail?.error && <p className="detail-meta-value">Could not load this day's detail.</p>}
+        {dayDetail?.data && (
+          <>
+            <div className="kpi-row" style={{ marginBottom: 'var(--space-4)' }}>
+              <KpiCard label="Status" value={ATTENDANCE_EVENT_LABEL[dayDetail.data.event_type] || dayDetail.data.event_type} />
+              <KpiCard label="Scheduled" value={`${dayDetail.data.scheduled_hours}h`} />
+              <KpiCard label="Worked" value={`${dayDetail.data.worked_hours}h`} />
+              <KpiCard label="Overtime" value={`${dayDetail.data.overtime_hours}h`} />
+              <KpiCard label="Shortfall" value={`${dayDetail.data.shortfall_hours}h`} />
+            </div>
+            {dayDetail.data.holiday_name && <p className="detail-meta-value">Holiday: {dayDetail.data.holiday_name}</p>}
+            <h3 style={{ fontSize: '0.95rem', marginTop: 'var(--space-4)' }}>Timeline</h3>
+            {dayDetail.data.timeline.length === 0 ? (
+              <p className="detail-meta-value">No timed work items for this day.</p>
+            ) : (
+              <ul style={{ paddingLeft: 18 }}>
+                {dayDetail.data.timeline.map((entry) => (
+                  <li key={`${entry.type}-${entry.id}`} style={{ marginBottom: 4 }}>
+                    <strong>{new Date(entry.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}-{new Date(entry.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
+                    {' - '}{entry.description || entry.operation_name}
+                    {entry.order_code && ` (${entry.order_code})`}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {dayDetail.data.unscheduled_work.length > 0 && (
+              <>
+                <h3 style={{ fontSize: '0.95rem', marginTop: 'var(--space-4)' }}>Other work (no fixed time)</h3>
+                <ul style={{ paddingLeft: 18 }}>
+                  {dayDetail.data.unscheduled_work.map((entry) => (
+                    <li key={`${entry.type}-${entry.id}`}>
+                      {entry.description || entry.operation_name}
+                      {entry.order_code && ` (${entry.order_code})`}
+                      {' - '}{entry.status}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </Modal>
+
+      <Modal isOpen={showMarkAttendance} title="Mark Attendance" onClose={() => setShowMarkAttendance(false)}>
+        <Form
+          fields={[
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
+            { name: 'in_time', label: 'In Time', type: 'time' },
+            { name: 'out_time', label: 'Out Time', type: 'time' },
+            {
+              name: 'attendance_status', label: 'Status', type: 'select', options: [
+                { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
+                { value: 'Half Day', label: 'Half Day' }, { value: 'Leave', label: 'Leave' },
+              ],
+            },
+            { name: 'remarks', label: 'Remarks' },
+          ]}
+          onSubmit={handleMarkAttendance} loading={actionLoading} submitText="Mark Attendance"
+          initialValues={{ date: today() }}
+        />
+      </Modal>
+
+      <Modal isOpen={showAdjustOvertime} title="Adjust Overtime" onClose={() => setShowAdjustOvertime(false)}>
+        <Form
+          fields={[
+            { name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) },
+            { name: 'dates', label: 'Dates', required: true, placeholder: 'YYYY-MM-DD, YYYY-MM-DD, ...', hint: 'Comma-separated - one or more dates.' },
+            { name: 'hours', label: 'Hours', type: 'number', required: true },
+            {
+              name: 'mode', label: 'Mode', type: 'select', options: [
+                { value: 'add', label: 'Add to existing overtime' },
+                { value: 'set', label: 'Set (replace) overtime' },
+              ],
+            },
+          ]}
+          onSubmit={handleAdjustOvertime} loading={actionLoading} submitText="Apply"
+          initialValues={{ mode: 'add' }}
+        />
+      </Modal>
+
+      <Modal isOpen={showRequestOvertime} title={editingRequest ? 'Edit Overtime Request' : 'Request Overtime'} onClose={() => { setShowRequestOvertime(false); setEditingRequest(null); }}>
+        <Form
+          fields={[
+            ...(isPrivileged && !editingRequest ? [{ name: 'employee_id', label: 'Employee', type: 'select', required: true, options: employees.map((e) => ({ value: e.id, label: e.name })) }] : []),
+            { name: 'date', label: 'Date', type: 'date', required: true },
+            { name: 'requested_hours', label: 'Hours', type: 'number', required: true },
+            { name: 'reason', label: 'Reason', type: 'textarea' },
+            { name: 'remarks', label: 'Remarks', type: 'textarea' },
+          ]}
+          onSubmit={handleCreateOrEditRequest} loading={actionLoading} submitText={editingRequest ? 'Save' : 'Save as Draft'}
+          initialValues={editingRequest ? {
+            date: editingRequest.date.slice(0, 10), requested_hours: String(editingRequest.requested_hours),
+            reason: editingRequest.reason || '', remarks: editingRequest.remarks || '',
+          } : { date: today() }}
+        />
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={!!cancelingRequest}
+        title="Cancel Overtime Request"
+        message="This will permanently withdraw this draft request."
+        confirmLabel="Cancel Request"
+        onConfirm={confirmCancelRequest}
+        onCancel={() => setCancelingRequest(null)}
+        loading={actionLoading}
+      />
+
+      <Modal isOpen={actioningRequest?.type === 'approve'} title="Approve Overtime Request" onClose={() => setActioningRequest(null)}>
+        <Form
+          fields={[
+            { name: 'approved_hours', label: 'Approved Hours', type: 'number', placeholder: actioningRequest ? `Default: ${actioningRequest.request.requested_hours}` : '' },
+            { name: 'remarks', label: 'Remarks', type: 'textarea' },
+          ]}
+          onSubmit={handleApproveRequest} loading={actionLoading} submitText="Approve"
+        />
+      </Modal>
+
+      <Modal isOpen={actioningRequest?.type === 'reject'} title="Reject Overtime Request" onClose={() => setActioningRequest(null)}>
+        <Form
+          fields={[{ name: 'rejection_reason', label: 'Reason', type: 'textarea' }]}
+          onSubmit={handleRejectRequest} loading={actionLoading} submitText="Reject"
+        />
       </Modal>
     </div>
   );
@@ -1729,4 +2320,49 @@ function HolidayImportPage() {
   );
 }
 
-export { EmployeesPage, EmployeeDetailPage, AttendancePage, LeavesPage, CompanyHolidaysPage, HolidayImportPage };
+// --- AttendanceLeaveHub.jsx ---
+// Woodful navigation/module-structure consolidation: Attendance,
+// Leave, and Company Holidays used to be three separate primary
+// Sidebar destinations. They are now one "Attendance & Leave"
+// workspace reached from a single nav item (/attendance-leave). This
+// is a thin tab switcher over the exact same three page components
+// above - same components, same API calls, same data-loading, same
+// role checks. Nothing here is a second implementation of any of
+// them, and only the selected tab is mounted at a time, so switching
+// tabs never fetches more than one tab's data at once (no new/
+// duplicate network traffic versus visiting each page directly).
+// /attendance, /leaves, and /company-holidays keep working exactly as
+// before - this hub does not replace or redirect them.
+//
+// Known trade-off (disclosed, not hidden): each of the three pages
+// still renders its own full page header ("Attendance & Overtime" /
+// "Leave Requests" / "Company Holidays") below this hub's tab bar,
+// since none of their internals were changed to avoid regressing
+// already-complex, working components. This means a little more
+// vertical space than a from-scratch single-header design would use,
+// but preserves every existing visual element and behavior untouched.
+const ATTENDANCE_LEAVE_TABS = ['Attendance', 'Leave', 'Holiday Calendar'];
+
+function AttendanceLeaveHub() {
+  const [tab, setTab] = useState('Attendance');
+  return (
+    <div className="page attendance-leave-hub">
+      <div className="page-header">
+        <div>
+          <h1>Attendance &amp; Leave</h1>
+          <p className="page-summary">Attendance, leave requests, and the company holiday calendar in one place.</p>
+        </div>
+      </div>
+      <div className="tab-bar">
+        {ATTENDANCE_LEAVE_TABS.map((t) => (
+          <button key={t} className={tab === t ? 'tab active' : 'tab'} onClick={() => setTab(t)} type="button">{t}</button>
+        ))}
+      </div>
+      {tab === 'Attendance' && <AttendancePage />}
+      {tab === 'Leave' && <LeavesPage />}
+      {tab === 'Holiday Calendar' && <CompanyHolidaysPage />}
+    </div>
+  );
+}
+
+export { EmployeesPage, EmployeeDetailPage, AttendancePage, LeavesPage, CompanyHolidaysPage, HolidayImportPage, AttendanceLeaveHub };

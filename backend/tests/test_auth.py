@@ -229,6 +229,157 @@ def test_successful_reset_invalidates_other_outstanding_tokens(client, test_user
     assert stale.status_code == 400
 
 
+# --- Session stability (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR) ---
+"""Regression coverage for the "login 200, then every request 401"
+defect: the root cause (see frontend/src/utils/api.js and
+frontend/.env.example) was a browser-only SameSite/cross-site cookie
+behavior that a server-side TestClient can never reproduce - httpx's
+cookie jar has no concept of SameSite at all, so these tests cannot
+catch that specific regression directly. What they DO pin down is
+everything the fix must NOT have broken along the way: the cookie is
+still genuinely set on login, still genuinely valid across repeated
+requests, still genuinely rejected once it should be (expired,
+malformed, deactivated account, or a password reset since issued), and
+CORS is still configured correctly for local dev - i.e. every part of
+the auth contract this defect repair touched or relied on."""
+from datetime import timedelta
+from app.platform.config import settings
+from app.platform.security import create_access_token
+
+
+def test_login_sets_the_auth_cookie(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+    assert settings.COOKIE_NAME in resp.cookies
+    # The JWT itself must never appear in the JSON body - it lives only
+    # in the HttpOnly cookie, so page JavaScript can never read it.
+    assert "token" not in resp.json()
+    assert "access_token" not in resp.json()
+
+
+def test_me_works_immediately_after_login(client, test_user):
+    _login(client, test_user)
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "test@example.com"
+
+
+def test_same_cookie_stays_valid_across_multiple_protected_requests(client, test_user):
+    """C + D combined: the exact same session cookie, reused for
+    several genuinely different protected requests in a row, must keep
+    working every time - a valid JWT does not randomly become invalid
+    between requests within the same backend process."""
+    _login(client, test_user)
+    for _ in range(5):
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 200
+    # A different protected endpoint, not just /me repeated - proves
+    # the cookie is genuinely usable app-wide, not special-cased.
+    resp = client.get("/api/users/")
+    assert resp.status_code == 200
+
+
+def test_expired_jwt_returns_401(client, test_user):
+    _login(client, test_user)
+    expired_token = create_access_token(
+        {"user_id": test_user.id, "email": test_user.email, "role": test_user.role, "employee_id": test_user.employee_id},
+        expires_delta=timedelta(minutes=-5),
+    )
+    client.cookies.set(settings.COOKIE_NAME, expired_token)
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+
+
+def test_malformed_jwt_returns_401(client, test_user):
+    client.cookies.set(settings.COOKIE_NAME, "not-a-real-jwt-token-at-all")
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+
+
+def test_deactivated_account_is_rejected_mid_session(client, test_user, db_session):
+    """An admin deactivating a user mid-session must take effect on the
+    very next request, not only at that user's next login attempt -
+    see get_current_user's own docstring."""
+    _login(client, test_user)
+    assert client.get("/api/auth/me").status_code == 200
+
+    test_user.is_active = False
+    db_session.add(test_user)
+    db_session.commit()
+
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 403
+
+
+def test_password_reset_invalidates_the_previously_issued_session(client, test_user, db_session):
+    """A reset is the user's own "invalidate whatever else might have
+    this account" signal - a cookie issued before the reset must stop
+    working immediately after, even though it hasn't expired."""
+    import hashlib
+    import secrets
+    from app.modules.auth.auth import PasswordResetToken
+
+    _login(client, test_user)
+    assert client.get("/api/auth/me").status_code == 200
+
+    raw_token = secrets.token_urlsafe(32)
+    db_session.add(PasswordResetToken(
+        user_id=test_user.id, token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+        expires_at=datetime.utcnow() + timedelta(minutes=30),
+    ))
+    db_session.commit()
+
+    reset_resp = client.post("/api/auth/reset-password", json={"token": raw_token, "new_password": "PostResetPass123!"})
+    assert reset_resp.status_code == 200
+
+    # Same client, same (now stale) cookie still attached from the
+    # login above - the reset-password call itself needed no auth and
+    # never touched it.
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+
+
+def test_cors_allows_credentialed_requests_from_the_configured_dev_frontend(client):
+    """The actual preflight a browser sends before a credentialed
+    cross-origin request - confirms allow_credentials is genuinely on
+    and the configured dev frontend origin is genuinely allowed, not
+    just that CORS_ORIGINS happens to contain the right string."""
+    resp = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert resp.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_origins_and_cookie_defaults_match_the_local_dev_frontend():
+    """Direct config-level pin for Requirements 1-3: the backend's own
+    defaults (no .env override) must already agree with the frontend's
+    default host and must not silently weaken cookie security to do
+    it."""
+    assert "http://localhost:3000" in settings.cors_origins_list
+    assert settings.FRONTEND_URL == "http://localhost:3000"
+    assert settings.COOKIE_SAMESITE == "lax"
+    # Dev-only default - production is separately enforced to True by
+    # Settings' own model_validator (see test below).
+    assert settings.COOKIE_SECURE is False
+
+
+def test_settings_is_a_true_singleton_for_the_process_lifetime():
+    """Requirement 6: SECRET_KEY (and everything else) must load once
+    and never regenerate mid-process - get_settings() is @lru_cache'd
+    and called once at import time (see app/platform/config.py's
+    module-level `settings = get_settings()`), so every caller anywhere
+    in the app must be looking at the exact same Settings instance,
+    not a fresh one re-read from the environment on each call."""
+    from app.platform.config import get_settings
+    assert get_settings() is get_settings()
+    assert get_settings() is settings
+
+
 def test_attempt_count_increments_on_repeated_probing_of_same_token(client, test_user, db_session):
     """attempt_count must genuinely track repeated attempts against one
     already-issued token, not only reach 1 on eventual success -

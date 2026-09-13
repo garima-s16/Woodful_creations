@@ -53,6 +53,24 @@ class ProcurementService:
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
 
+        # Defect repair (F138 P13.1): Purchase.unit is a separate,
+        # free-text field from Material.unit, and this quantity is
+        # added straight into Material.current_stock/total_purchased
+        # with no conversion step anywhere in the codebase - a purchase
+        # recorded in a unit that doesn't match the material's declared
+        # unit (e.g. material tracked in "Sheet" but a purchase entered
+        # in "Kg") would silently add that quantity as if it were the
+        # same unit. With no unit-conversion model to reconcile such a
+        # mismatch (a real one is a separate, larger feature - out of
+        # scope here), the only correct behavior is to reject it
+        # outright rather than silently reinterpret the number.
+        if data.unit.strip().lower() != (material.unit or "").strip().lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unit mismatch: this purchase is recorded in '{data.unit}' but {material.name} "
+                       f"is tracked in '{material.unit}'. Record the purchase in the material's own unit.",
+            )
+
         purchase_code = generate_unique_code(db, Purchase, "purchase_code", "PUR-")
 
         taxable_value = (data.quantity * data.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

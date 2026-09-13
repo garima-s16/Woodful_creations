@@ -1,9 +1,8 @@
 """Reporting domain API routes: dashboard, analytics, global
 search, and business-decision queries. Combines the former
 dashboard.py, analytics.py, search.py, and business_decisions.py."""
-from datetime import datetime
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, case
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from app.platform.database import get_db
 from app.platform.security import get_current_user
@@ -11,7 +10,7 @@ from app.modules.inventory.models import Material
 from app.modules.procurement.models import Purchase
 from app.modules.operations.models import Issue
 from app.modules.sales.models import Order
-from app.modules.hr.models import Employee, Attendance
+from app.modules.hr.models import Employee
 from app.modules.operations.models import DailyTask
 from app.modules.operations.models import ProductionJob
 from app.modules.sales.services import OrderService
@@ -45,8 +44,21 @@ def at_risk_orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_cur
     here - quantities and dates only, so this is visible to every
     authenticated user, matching "EMPLOYEE/USER can view stock/
     material and client/order status" rather than the Master-only
-    redaction the stock/orders dashboards apply to money figures."""
-    at_risk = StockService.calculate_at_risk_orders(db)
+    redaction the stock/orders dashboards apply to money figures.
+
+    Defect repair (P1-6): the widget this feeds only ever renders the
+    first 4 orders (DashboardPage.jsx slices client-side), but the
+    unlimited call used to build and return the full business-wide
+    at-risk list - every open order with a shortage, each with a full
+    materials + supplier_options breakdown - on every dashboard load
+    for every user. limit=TOP_ORDERS_LIMIT (same bound already used
+    for the "top orders" list a few widgets over) skips the supplier-
+    options enrichment and result-assembly work for every order beyond
+    what's actually shown; at_risk_order_count reflects the (now
+    bounded) returned list, consistent with every other bounded
+    dashboard widget on this page."""
+    TOP_AT_RISK_LIMIT = 10
+    at_risk = StockService.calculate_at_risk_orders(db, limit=TOP_AT_RISK_LIMIT)
     return {
         "at_risk_order_count": len(at_risk),
         "orders": at_risk,
@@ -219,9 +231,24 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
 
 @dashboard_router.get("/staff")
 def staff_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    is_privileged = auth.get("role", "user") in ("master",)
-    own_employee_id = auth.get("employee_id")
-    employees = db.query(Employee).filter(Employee.status == "Active").all()
+    # Defect repair (P1-5): this route backs the main Dashboard's
+    # "staff" widget, which only ever reads active_employees,
+    # pending_tasks, completed_tasks and production_status_summary
+    # (see DashboardPage.jsx) - fired on every dashboard load, for
+    # every signed-in user. The per-employee performance breakdown
+    # (employee_performance/total_overtime/task_status_summary) is a
+    # separate concern belonging to the Analytics "Workforce" tab,
+    # which already gets it from its own route (GET
+    # /api/analytics/workforce -> services.workforce_analytics). That
+    # duplicate computation here was pulling the ENTIRE attendance
+    # table (every clock-in/out row, for every employee, since the
+    # business opened - the table has no upper bound and only grows)
+    # into Python on every single dashboard page view, plus a
+    # per-employee task GROUP BY and a Python loop over every active
+    # employee, purely to build a payload the dashboard widget threw
+    # away unused. None of that runs here anymore; this route now only
+    # computes the four fields the dashboard actually renders.
+    employees_count = db.query(func.count(Employee.id)).filter(Employee.status == "Active").scalar() or 0
 
     # Task status counts: one GROUP BY instead of loading every DailyTask
     # ever created (grows forever) just to count in Python.
@@ -233,69 +260,11 @@ def staff_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user
         db.query(ProductionJob.status, func.count(ProductionJob.id)).group_by(ProductionJob.status).all()
     )
 
-    total_overtime = db.query(func.sum(Attendance.overtime_hours)).scalar() or 0
-
-    # Per-employee task/attendance figures: two GROUP BY queries (fixed
-    # cost regardless of employee count), not a query-per-employee
-    # (N+1 on e.attendance_records) or a Python scan of every task per
-    # employee (O(employees x tasks) - the previous version re-scanned
-    # the full task list once per employee).
-    today = datetime.utcnow().date()
-    task_rows = (
-        db.query(
-            DailyTask.employee_id,
-            func.count(DailyTask.id).label("total"),
-            func.coalesce(func.sum(case((DailyTask.status == "DONE", 1), else_=0)), 0).label("completed"),
-            func.coalesce(func.sum(case(
-                ((DailyTask.date < today) & (DailyTask.status != "DONE"), 1), else_=0
-            )), 0).label("overdue"),
-        )
-        .group_by(DailyTask.employee_id)
-        .all()
-    )
-    tasks_by_employee = {r.employee_id: r for r in task_rows}
-
-    # working_hours is a Python-only property (computed from in_time/
-    # out_time - see the model's own comment on why it can't just be a
-    # column), so it cannot be passed to func.sum() as a SQL
-    # expression - that would raise at query-compile time, every
-    # single call, which is exactly what was happening here before
-    # this fix. overtime_hours (a real column) is aggregated in SQL
-    # above and reused per-employee below; working_hours is summed in
-    # Python instead, from one single fetch of the raw in_time/out_time
-    # columns - still one query total, not a query per employee.
-    hours_rows = db.query(Attendance.employee_id, Attendance.in_time, Attendance.out_time, Attendance.overtime_hours).all()
-    attendance_by_employee: dict = {}
-    for employee_id, in_time, out_time, overtime in hours_rows:
-        bucket = attendance_by_employee.setdefault(employee_id, {"hours": 0.0, "overtime": 0.0})
-        if in_time and out_time:
-            bucket["hours"] += (out_time - in_time).total_seconds() / 3600
-        bucket["overtime"] += float(overtime or 0)
-
-    performance = []
-    for e in employees:
-        t = tasks_by_employee.get(e.id)
-        a = attendance_by_employee.get(e.id)
-        total_tasks = t.total if t else 0
-        completed = t.completed if t else 0
-        overdue = t.overdue if t else 0
-        performance.append({
-            "employee_id": e.id, "employee": e.name, "department": e.department,
-            "tasks": total_tasks, "completed": completed, "overdue": overdue,
-            "completion_percent": round(completed / total_tasks, 4) if total_tasks else 0,
-            "hours": round(a["hours"], 2) if a else 0, "overtime": round(a["overtime"], 2) if a else 0,
-        })
-
     return {
-        "active_employees": len(employees),
+        "active_employees": employees_count,
         "pending_tasks": task_status_summary.get("TO DO", 0) + task_status_summary.get("DOING", 0),
         "completed_tasks": task_status_summary.get("DONE", 0),
-        "total_overtime": round(float(total_overtime), 2) if is_privileged else None,
-        "task_status_summary": [{"status": s, "count": c} for s, c in task_status_summary.items()],
         "production_status_summary": [{"status": s, "count": c} for s, c in production_status_summary.items()],
-        "employee_performance": performance if is_privileged else [
-            p for p in performance if p["employee_id"] == own_employee_id
-        ],
     }
 
 

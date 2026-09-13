@@ -24,7 +24,7 @@ function MobileBottomNav({ onOpenMenu }) {
 
   return (
     <nav className="mobile-bottom-nav">
-      <NavLink to="/dashboard" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+      <NavLink to="/home" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
         <HomeIcon className="mobile-nav-icon" />
         <span>Home</span>
       </NavLink>

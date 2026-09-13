@@ -507,7 +507,15 @@ function BusinessDecisionCentrePage() {
       <div className="page-header">
         <h1>Business Attention</h1>
       </div>
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {error && (
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <Alert type="error" message={error} onClose={() => setError('')} />
+          {/* Defect repair (F138 P4.3): this primary list load had no
+              retry affordance on failure - matching the loadError/Retry
+              convention used elsewhere (e.g. ClientDetailPage, MaterialPages). */}
+          <button type="button" className="btn-secondary" onClick={load}>Retry</button>
+        </div>
+      )}
 
       {data && (
         <div className="secondary-metrics" style={{ marginBottom: 'var(--space-5)' }}>
@@ -579,21 +587,29 @@ function OwnerBriefingPage() {
   const [period, setPeriod] = useState('daily');
   const [briefing, setBriefing] = useState(null);
   const [cashFlow, setCashFlow] = useState(null);
-  const [error, setError] = useState('');
+  const [briefingError, setBriefingError] = useState('');
+  const [cashFlowError, setCashFlowError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Defect repair (F138 P4.1): briefing and cash-flow forecast are two
+  // independent widgets on this page (see the separate `{briefing &&
+  // ...}` / `{cashFlow && ...}` sections below) - firing them through
+  // one Promise.all meant either endpoint failing blanked the WHOLE
+  // page with a single error, even when the other had already
+  // succeeded. Each now loads and fails independently, same pattern
+  // as DashboardPage's per-widget loading.
   const load = (p) => {
     setLoading(true);
-    setError('');
-    Promise.all([
-      dashboardAPI.ownerBriefing(p),
-      dashboardAPI.cashFlowForecast(p === 'weekly' ? 6 : 2),
-    ]).then(([briefingRes, cashRes]) => {
-      setBriefing(briefingRes.data);
-      setCashFlow(cashRes.data);
-    }).catch((err) => {
-      setError(err.response?.status === 403 ? 'You do not have permission to view the owner briefing.' : 'Unable to load the owner briefing right now.');
-    }).finally(() => setLoading(false));
+    setBriefingError('');
+    setCashFlowError('');
+    let settled = 0;
+    const markSettled = () => { settled += 1; if (settled === 2) setLoading(false); };
+    dashboardAPI.ownerBriefing(p).then((res) => setBriefing(res.data))
+      .catch((err) => setBriefingError(err.response?.status === 403 ? 'You do not have permission to view the owner briefing.' : 'Unable to load the owner briefing right now.'))
+      .finally(markSettled);
+    dashboardAPI.cashFlowForecast(p === 'weekly' ? 6 : 2).then((res) => setCashFlow(res.data))
+      .catch((err) => setCashFlowError(err.response?.status === 403 ? 'You do not have permission to view the cash-flow forecast.' : 'Unable to load the cash-flow forecast right now.'))
+      .finally(markSettled);
   };
   useEffect(() => { load(period); }, [period]);
 
@@ -604,7 +620,8 @@ function OwnerBriefingPage() {
       <div className="page-header">
         <h1>Owner Briefing</h1>
       </div>
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {briefingError && <Alert type="error" message={briefingError} onClose={() => setBriefingError('')} />}
+      {cashFlowError && <Alert type="error" message={cashFlowError} onClose={() => setCashFlowError('')} />}
 
       <div className="page-actions" style={{ marginBottom: 'var(--space-4)' }}>
         {['daily', 'weekly'].map((p) => (

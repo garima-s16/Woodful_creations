@@ -3,23 +3,50 @@
 // and SimpleBarChart. Combines all former components/common/*.js(x) files.
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { formatCurrency, statusClass } from '../../utils/utils';
+import { formatCurrency, statusClass, toSafeMessage } from '../../utils/utils';
 import { CartIcon, PlusIcon } from '../icons';
 import '../../styles/components.css';
 
 // --- Alert.js ---
+// Defect repair (F138 P15): three related hardening fixes.
+// (1) `onClose` is optional per this component's own contract (many
+//     callers pass an Alert with no dismiss behavior) but was invoked
+//     unconditionally on both the auto-dismiss timer and the close
+//     button's onClick - calling `undefined()` throws and crashes the
+//     page the instant a non-error alert's timer fires, or the moment
+//     someone clicks Dismiss, for any call site that omitted it.
+//     Every call is now optional-chained; the close button itself is
+//     only rendered at all when there is something for it to do.
+// (2) The auto-dismiss timer only ever fires while the component is
+//     still mounted (setTimeout is cleared on unmount/prop change via
+//     the existing cleanup), so there was never a real "setState after
+//     unmount" risk here - onClose is a caller-owned callback, not a
+//     local setState - but the guard in (1) still matters independent
+//     of mount state (a mounted Alert with no onClose at all).
+// (3) `message` is rendered directly as JSX children. Most callers
+//     pass a plain string, but some pass `err.response?.data?.detail`
+//     straight through - and FastAPI's default validation-error
+//     response shape (422) is an ARRAY of {loc, msg, type} objects, not
+//     a string. Rendering that directly throws "Objects are not valid
+//     as a React child" and takes the whole page down over what should
+//     have been a readable validation message. toSafeMessage (see
+//     utils/utils.js, alongside the new formatApiError callers should
+//     prefer going forward) coerces whatever shape came in to a plain
+//     string, so this component can never be the reason a page crashes
+//     - regardless of what any individual call site passes.
 const Alert = ({ type = 'info', message, onClose }) => {
   React.useEffect(() => {
-    if (type !== 'error') {
+    if (type !== 'error' && onClose) {
       const timer = setTimeout(onClose, 5000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [type, onClose]);
 
   return (
     <div className={`alert alert-${type}`} role={type === 'error' ? 'alert' : 'status'}>
-      <div className="alert-content">{message}</div>
-      <button className="alert-close" onClick={onClose} aria-label="Dismiss">&times;</button>
+      <div className="alert-content">{toSafeMessage(message)}</div>
+      {onClose && <button className="alert-close" onClick={onClose} aria-label="Dismiss">&times;</button>}
     </div>
   );
 };

@@ -154,6 +154,14 @@ def create_employee(data: EmployeeCreate, request: Request, db: Session = Depend
         log_action(db, request, user_id=auth.get("user_id"), action="create_employee", module_name="employees",
                    record_id=employee.id, new_value={"name": employee.name, "designation": employee.designation,
                                                        "department": employee.department, "status": employee.status})
+        # Defect repair (P1-9): pre-seed the onboarding checklist here,
+        # at the one moment an employee record is genuinely created -
+        # this route already writes, so there is nothing to lose by
+        # provisioning the checklist now, and it means the very first
+        # time anyone opens this employee's 360 Overview or checklist
+        # tab, real rows already exist rather than relying on a GET to
+        # lazily create them (see employee_lifecycle's own docstring).
+        employee_lifecycle(db, employee.id, "onboarding")
         return employee
     raise HTTPException(status_code=500, detail="Unable to generate a unique employee code, please try again")
 
@@ -190,6 +198,17 @@ def update_employee(employee_id: int, data: EmployeeUpdate, request: Request, db
         # not on every no-op save.
         log_action(db, request, user_id=auth.get("user_id"), action="update_employee", module_name="employees",
                    record_id=employee.id, old_value=old_snapshot, new_value=new_snapshot)
+    # Defect repair (P1-9): re-sync the checklist here, at an actual
+    # write, rather than relying on the next GET to do it. designation/
+    # manager (auto-derived onboarding items) and status (whether
+    # offboarding should now be tracked at all) can all change via
+    # this route - keeping the persisted checklist current the moment
+    # they do (not just in the read-only summary computed for GETs)
+    # means the checklist tab's own rows stay accurate without ever
+    # depending on someone happening to open it.
+    employee_lifecycle(db, employee.id, "onboarding")
+    if employee.status == "Inactive":
+        employee_lifecycle(db, employee.id, "offboarding")
     return employee
 
 

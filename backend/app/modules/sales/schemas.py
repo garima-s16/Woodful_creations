@@ -276,6 +276,19 @@ class OrderCreate(OrderBase):
             raise ValueError("Order value cannot be negative.")
         return v
 
+    # Defect repair (F138 P5): advance had no lower-bound check at all -
+    # only the upper bound (advance cannot exceed order_value) is
+    # enforced in sales/api.py's create_order. A negative advance would
+    # pass that check untouched (it is never > order_value) and corrupt
+    # total_received/balance from the moment the order is created (see
+    # Order.recompute_totals). Same style as discount/order_value above.
+    @field_validator("advance")
+    @classmethod
+    def advance_must_not_be_negative(cls, v):
+        if v < 0:
+            raise ValueError("Advance cannot be negative.")
+        return v
+
     @field_validator("priority")
     @classmethod
     def priority_must_be_valid(cls, v):

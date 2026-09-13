@@ -27,10 +27,6 @@ function EstimateDetailPage() {
   const [sentMessage, setSentMessage] = useState('');
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState('');
-  // Family 137, feature 1 - Client Approval Hub.
-  const [clientLink, setClientLink] = useState('');
-  const [clientLinkError, setClientLinkError] = useState('');
-  const [generatingLink, setGeneratingLink] = useState(false);
   // Family 137, feature 9 - Cost-Drift Alert.
   const [costDrift, setCostDrift] = useState(null);
 
@@ -54,6 +50,24 @@ function EstimateDetailPage() {
     }
   }, [estimateId, isPrivileged]);
 
+  useEffect(() => {
+    // Defect repair (F138 P4.2): estimateId changing (notably via
+    // handleRevise below, which navigates from this same page to the
+    // freshly-created next version's own /estimates/:id) means this is
+    // a different estimate now, not a background refresh of the one
+    // already on screen - reset per-estimate state so the previous
+    // version's data can't flash under the new estimate's URL while the
+    // new estimate is still loading. load() itself (called again for
+    // the SAME estimateId elsewhere) must keep doing the opposite and
+    // never clear already-good data.
+    setEstimate(null);
+    setClient(null);
+    setOrder(null);
+    setVersions([]);
+    setCostDrift(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimateId]);
+
   useEffect(load, [load]);
 
   const handleRevise = async () => {
@@ -66,22 +80,6 @@ function EstimateDetailPage() {
       setError(err.response?.data?.detail || 'Failed to create a new version');
     } finally {
       setRevising(false);
-    }
-  };
-
-  const handleGenerateClientLink = async () => {
-    setGeneratingLink(true);
-    setClientLinkError('');
-    try {
-      const res = await estimatesAPI.generateClientLink(estimateId);
-      setClientLink(res.data.url);
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(res.data.url).catch(() => {});
-      }
-    } catch (err) {
-      setClientLinkError(err.response?.data?.detail || 'Failed to generate the client link.');
-    } finally {
-      setGeneratingLink(false);
     }
   };
 
@@ -138,25 +136,11 @@ function EstimateDetailPage() {
           {isPrivileged && (
             <button className="btn-secondary" onClick={() => setShowSendEmail(true)}>Send to Client</button>
           )}
-          {isPrivileged && (
-            <button className="btn-secondary" onClick={handleGenerateClientLink} disabled={generatingLink}>
-              {generatingLink ? 'Generating...' : 'Get Client Approval Link'}
-            </button>
-          )}
           <a className="btn-secondary" href={reportsAPI.downloadUrl(`estimates/${estimate.id}/quote.pdf`)} target="_blank" rel="noreferrer">
             Download Quote PDF
           </a>
         </div>
       </div>
-
-      {clientLinkError && <Alert type="error" message={clientLinkError} onClose={() => setClientLinkError('')} />}
-      {clientLink && (
-        <Alert
-          type="success"
-          message={`Link copied to clipboard: ${clientLink}`}
-          onClose={() => setClientLink('')}
-        />
-      )}
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       {sentMessage && <Alert type="success" message={sentMessage} onClose={() => setSentMessage('')} />}
@@ -363,10 +347,6 @@ function OrderDetailPage() {
   const [showApproveSpecForm, setShowApproveSpecForm] = useState(false);
   const [approvingSpec, setApprovingSpec] = useState(false);
   const [approveSpecError, setApproveSpecError] = useState('');
-  // Family 137, feature 3 - My Order link.
-  const [orderClientLink, setOrderClientLink] = useState('');
-  const [orderClientLinkError, setOrderClientLinkError] = useState('');
-  const [generatingOrderLink, setGeneratingOrderLink] = useState(false);
   // Family 137, feature 2 - Visual Build Timeline.
   const [buildTimeline, setBuildTimeline] = useState(null);
   // Family 137, feature 12 - Capacity-Aware Delivery Promise. The
@@ -404,22 +384,6 @@ function OrderDetailPage() {
       setApproveSpecError(err.response?.data?.detail || 'Failed to record the approved specification.');
     } finally {
       setApprovingSpec(false);
-    }
-  };
-
-  const handleGenerateOrderClientLink = async () => {
-    setGeneratingOrderLink(true);
-    setOrderClientLinkError('');
-    try {
-      const res = await ordersAPI.generateClientLink(orderId);
-      setOrderClientLink(res.data.url);
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(res.data.url).catch(() => {});
-      }
-    } catch (err) {
-      setOrderClientLinkError(err.response?.data?.detail || 'Failed to generate the client link.');
-    } finally {
-      setGeneratingOrderLink(false);
     }
   };
 
@@ -698,22 +662,8 @@ function OrderDetailPage() {
           {canViewFinancials && (
             <button className="btn-secondary" onClick={() => setSendEmailKind('invoice')}>Send Invoice</button>
           )}
-          {canViewFinancials && (
-            <button className="btn-secondary" onClick={handleGenerateOrderClientLink} disabled={generatingOrderLink}>
-              {generatingOrderLink ? 'Generating...' : 'Get My Order Link'}
-            </button>
-          )}
         </div>
       </div>
-
-      {orderClientLinkError && <Alert type="error" message={orderClientLinkError} onClose={() => setOrderClientLinkError('')} />}
-      {orderClientLink && (
-        <Alert
-          type="success"
-          message={`Link copied to clipboard: ${orderClientLink}`}
-          onClose={() => setOrderClientLink('')}
-        />
-      )}
 
       <div className="kpi-row">
         {canViewFinancials && (

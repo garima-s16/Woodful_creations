@@ -191,7 +191,7 @@ LOOKUPS = {
     Machine: ["CNC Router", "CO2 Laser", "Panel Saw", "Edge Bander", "Cold Press", "PU Paint Setup"],
     ProjectStatus: ["Enquiry", "Designing", "Approved", "Material Purchase", "Cutting",
                      "Edge Banding", "Assembly", "Painting", "Ready for Dispatch",
-                     "Installation", "Completed", "On Hold"],
+                     "Installation", "Completed", "On Hold", "Cancelled"],
     Priority: ["Low", "Medium", "High", "Urgent"],
     PaymentMode: ["Cash", "UPI", "Bank", "Credit Card"],
     LeadSource: ["Instagram", "Facebook", "Architect", "Referral", "Google", "Walk-in", "Existing Client"],

@@ -30,6 +30,7 @@ EMPLOYEE_SELF_SERVICE_FIELDS = {"status", "completed_qty", "blocker_reason"}
 
 @production_jobs_router.get("/", response_model=List[ProductionJobResponse])
 def list_production_jobs(order_id: Optional[int] = Query(None), machine: Optional[str] = Query(None),
+                          employee_id: Optional[int] = Query(None),
                           date: Optional[datetime] = Query(None),
                           open_longer_than_days: Optional[int] = Query(None, ge=1, le=365),
                           limit: Optional[int] = Query(None, ge=1, le=500), offset: int = Query(0, ge=0),
@@ -40,6 +41,14 @@ def list_production_jobs(order_id: Optional[int] = Query(None), machine: Optiona
         query = query.filter(ProductionJob.order_id == order_id)
     if machine:
         query = query.filter(ProductionJob.machine == machine)
+    if employee_id:
+        # Defect repair (P1-7) - Employee Detail's Production tab used
+        # to fetch productionJobsAPI.list() with NO filter at all (the
+        # entire, ever-growing production_jobs table) and filter down
+        # to one employee's jobs in React, because this server-side
+        # filter did not exist yet (see WorkforcePages.jsx). Same
+        # pattern as order_id/machine above.
+        query = query.filter(ProductionJob.employee_id == employee_id)
     if date:
         query = query.filter(ProductionJob.date == date)
     if open_longer_than_days is not None:

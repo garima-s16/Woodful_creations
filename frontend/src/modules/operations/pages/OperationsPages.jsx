@@ -287,6 +287,23 @@ function TaskDetailPage() {
     dailyTasksAPI.listComments(taskId).then((res) => setComments(res.data)).catch(() => { setComments([]); setCommentsError(true); });
   }, [taskId]);
 
+  useEffect(() => {
+    // Defect repair (F138 P4.2): taskId changing (via the "View
+    // previous task" hand-off link below, which points at
+    // /daily-tasks/:id while staying on this same route/component)
+    // means this is a different task now, not a background refresh of
+    // the one already on screen - reset per-task state so the previous
+    // task's details can't flash under the new task's URL while the
+    // new task is still loading. load() itself (called again for the
+    // SAME taskId elsewhere) must keep doing the opposite and never
+    // clear already-good data.
+    setTask(null);
+    setEmployee(null);
+    setOrder(null);
+    setComments([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
   useEffect(load, [load]);
 
   // Employees/orders lists are reference data for the reassign/relink

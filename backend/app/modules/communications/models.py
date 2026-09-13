@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text, Index
 from sqlalchemy.orm import relationship
 from app.platform.database import BaseModel
 from typing import List, Optional
@@ -22,7 +22,41 @@ class Notification(BaseModel):
     UNREAD notification with the same key and skips creating a duplicate
     if found. Cleared naturally once the notification is read/resolved,
     since resolved notifications no longer block a fresh one when the
-    same situation recurs later."""
+    same situation recurs later.
+
+    Defect repair (F138 P9.1): the "check for an existing unread row,
+    then insert if none found" description above is, on its own, a
+    classic SELECT-then-INSERT race - two concurrent requests (e.g. two
+    dashboard loads, or the on-demand check racing the background
+    scheduler) can both see "no existing row" and both insert, creating
+    two live notifications for the same situation. The partial unique
+    index below closes that race at the database level: it is
+    impossible for two UNREAD rows to ever share a dedup_key, no matter
+    how the check-then-insert in NotificationService.notify() is timed.
+    Scoped to is_read=false (not a plain unique constraint on dedup_key)
+    because that matches the actual dedup rule - a READ notification
+    must never block a fresh one for the same situation recurring
+    later. See NotificationService.notify() for the atomic
+    insert/IntegrityError-catch that relies on this index.
+
+    NOTE for the migrations owner: this index is declared here (so a
+    fresh `Base.metadata.create_all()`/test database gets it for free)
+    but an EXISTING database needs a real Alembic migration to add it -
+    model changes alone never alter an already-provisioned schema. The
+    exact migration needed:
+        op.create_index(
+            "ix_notifications_dedup_key_unread", "notifications", ["dedup_key"],
+            unique=True, postgresql_where=sa.text("is_read = false AND dedup_key IS NOT NULL"),
+            sqlite_where=sa.text("is_read = 0 AND dedup_key IS NOT NULL"),
+        )
+    using the idempotent create_index_if_missing() guard from
+    app/platform/database.py (migration_guards) rather than a bare
+    op.create_index, exactly like every other index this project adds
+    in a migration. Before adding it, any pre-existing duplicate
+    UNREAD rows sharing a dedup_key (possible today, since nothing
+    currently prevents them) must be reconciled - e.g. keep the
+    newest per dedup_key and mark the rest is_read=true - or the
+    CREATE UNIQUE INDEX itself will fail against real data."""
     __tablename__ = "notifications"
 
     business_id = Column(String(10), unique=True, index=True, nullable=True)
@@ -40,9 +74,39 @@ class Notification(BaseModel):
     related_entity_type = Column(String(30), nullable=True)
     related_entity_id = Column(Integer, nullable=True)
     action_path = Column(String(255), nullable=True)  # frontend deep link, e.g. "/materials/5"
-    dedup_key = Column(String(150), nullable=True, index=True)
+    # Defect repair (F138 P25 regression audit, item 20 - duplicate
+    # indexes): this column previously also carried index=True, which -
+    # on a schema built via Base.metadata.create_all() (the test
+    # suite's path) - created a SECOND, plain, full-table index on this
+    # same column alongside the explicit partial unique index declared
+    # in __table_args__ below. Every actual query against dedup_key in
+    # this codebase (NotificationService.notify/run_all_checks,
+    # AutomationService's dedup lookup - see communications/services.py
+    # and automation.py) always filters on is_read.is_(False) in the
+    # same query, which the partial index below already covers
+    # (postgresql_where/sqlite_where scoped to exactly that condition),
+    # so the plain index was never doing any additional useful work -
+    # only doubling the write-time index-maintenance cost of every
+    # notification insert/update. Removed; the partial unique index is
+    # now the single index on this column.
+    dedup_key = Column(String(150), nullable=True)
 
     recipient = relationship("User")
+
+    __table_args__ = (
+        # Defect repair (F138 P9.1) - see the class docstring above for
+        # the race this closes and the exact migration an existing
+        # database still needs to actually get this index. Partial
+        # (WHERE-scoped) unique index: only UNREAD rows with a non-null
+        # dedup_key are constrained, matching the dedup rule exactly -
+        # a read notification must never block re-creating one for the
+        # same situation recurring later.
+        Index(
+            "ix_notifications_dedup_key_unread", "dedup_key", unique=True,
+            postgresql_where=(is_read.is_(False) & dedup_key.isnot(None)),
+            sqlite_where=(is_read.is_(False) & dedup_key.isnot(None)),
+        ),
+    )
 
 
 class AutomationLog(BaseModel):

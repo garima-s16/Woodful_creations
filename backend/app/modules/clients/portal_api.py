@@ -14,7 +14,20 @@ Every response shape here is hand-picked, never a reused internal
 OrderResponse/EstimateResponse - the "do not expose internal ERP
 information" requirement is enforced by what these schemas simply do
 not have a field for, not by a redaction step that could be forgotten.
-"""
+
+Defect repair (P1-13): client_portal_router is intentionally NOT
+registered in app/api/routes.py anymore - Woodful is an internal-only
+tool, and this router's entire design (no auth dependency of any
+kind, reachable by anyone with a link) is exactly what that decision
+rules out. The functions below are kept in place rather than deleted:
+generate_client_access_token/build_client_link_email_footer are still
+imported by app/modules/sales/api.py, where they now raise/no-op (see
+that file's P1-13 comments) instead of silently minting links to a
+route that no longer serves any requests. This file, the
+ClientAccessToken/ClientActivity models, and the two migrations that
+created them are left untouched - restricted, not removed - so this
+is a one-line reversal (re-adding the router in routes.py) if that
+product decision is ever revisited, not a rebuild from scratch."""
 import hashlib
 import secrets
 from datetime import datetime

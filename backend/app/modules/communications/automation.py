@@ -891,7 +891,11 @@ class AutomationService:
                 notification_type="OPERATIONAL_SUMMARY", severity="INFO",
                 title=f"Operational summary - {today.strftime('%d %b %Y')}",
                 message=message, entity_type="operational_summary", entity_id=None, dedup_key=dedup_key,
-                action_taken="notify:OPERATIONAL_SUMMARY", action_path="/dashboard",
+                # Dashboard -> Home rename (frontend Sidebar.jsx/App.jsx):
+                # "/dashboard" is now only a redirect to "/home" - this
+                # deep link points straight at the final destination
+                # rather than bouncing through that redirect.
+                action_taken="notify:OPERATIONAL_SUMMARY", action_path="/home",
                 recipient_user_id=None,
             )
         except Exception as exc:

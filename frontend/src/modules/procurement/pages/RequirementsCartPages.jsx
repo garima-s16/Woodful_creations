@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { materialsAPI, ordersAPI, procurementRequirementsAPI, purchasesAPI } from '../../../utils/api';
-import { Alert, Card, Form, Modal, Table } from '../../../components/common/UI';
+import { Alert, Card, Form, Modal, Pagination, Table } from '../../../components/common/UI';
 import { formatCurrency, statusClass } from '../../../utils/utils';
 import { useDispatch, useSelector } from 'react-redux';
 import { clearCart, removeFromCart, updateQuantity } from '../../../redux/slices';
@@ -13,6 +13,15 @@ import { CartIcon, CloseIcon } from '../../../components/icons';
 import '../../../styles/modules.css';
 
 // --- ProcurementRequirementsPage.jsx ---
+// Defect repair (F138 P21 API-contract audit): the backend has always
+// paginated this endpoint (limit/offset, X-Total-Count header) since
+// ProcurementRequirement is a persisted, never-pruned record that only
+// accumulates over time - but this page never read the header or
+// requested a second page, so anything past the backend's default
+// 500-row cap was silently invisible with no indication more existed.
+// Fixed the same way MaterialsPage's own paginated list already is.
+const REQUIREMENTS_PAGE_SIZE = 25;
+
 function ProcurementRequirementsPage() {
   const navigate = useNavigate();
   const [requirements, setRequirements] = useState([]);
@@ -23,18 +32,29 @@ function ProcurementRequirementsPage() {
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const load = () => {
+  const load = (pageNum = 1) => {
     setPageLoading(true);
     setLoadError(false);
-    procurementRequirementsAPI.list().then((res) => setRequirements(res.data)).catch((err) => {
+    const offset = (pageNum - 1) * REQUIREMENTS_PAGE_SIZE;
+    procurementRequirementsAPI.list({ limit: REQUIREMENTS_PAGE_SIZE, offset }).then((res) => {
+      setRequirements(res.data);
+      setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
+    }).catch((err) => {
       setLoadError(true);
       setError(err.response?.status === 403 ? 'You do not have permission to view procurement requirements.' : 'Unable to load procurement requirements. Please try again.');
     }).finally(() => setPageLoading(false));
     ordersAPI.list().then((res) => setOrders(res.data)).catch(() => setOrders([]));
     materialsAPI.list().then((res) => setMaterials(res.data)).catch(() => setMaterials([]));
   };
-  useEffect(load, []);
+  useEffect(() => load(1), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goToPage = (pageNum) => {
+    setPage(pageNum);
+    load(pageNum);
+  };
 
   const handleCreate = async (formData) => {
     setLoading(true);
@@ -80,11 +100,14 @@ function ProcurementRequirementsPage() {
         ]}
         data={loadError ? [] : requirements}
         error={loadError}
-        onRetry={load}
+        onRetry={() => load(page)}
         loading={pageLoading}
         onRowClick={(row) => navigate(`/procurement-requirements/${row.id}`)}
         emptyMessage="No procurement requirements yet. Create one from an order's material shortage."
       />
+      {totalCount > REQUIREMENTS_PAGE_SIZE && (
+        <Pagination currentPage={page} totalPages={Math.ceil(totalCount / REQUIREMENTS_PAGE_SIZE)} onPageChange={goToPage} loading={pageLoading} />
+      )}
       <Modal isOpen={showAdd} title="Snapshot Shortage as Requirement" onClose={() => setShowAdd(false)}>
         <Form fields={fields} onSubmit={handleCreate} loading={loading} submitText="Create Requirement" />
       </Modal>
@@ -161,7 +184,16 @@ function ProcurementRequirementDetailPage() {
   };
 
   if (pageLoading) return <div className="page"><p>Loading...</p></div>;
-  if (loadError || !requirement) return <div className="page">{error && <Alert type="error" message={error} />}</div>;
+  if (loadError || !requirement) return (
+    <div className="page">
+      {error && <Alert type="error" message={error} />}
+      {/* Defect repair (F138 P4.3): this detail load had no retry
+          affordance on failure, unlike the loadError/Retry convention
+          used on every other detail page in this codebase (e.g.
+          ProcurementPages' Purchase/Supplier detail pages). */}
+      <button type="button" className="btn-secondary" style={{ marginTop: 'var(--space-4)' }} onClick={load}>Retry</button>
+    </div>
+  );
 
   const decisionFields = [
     { name: 'selected_supplier_id', label: 'Selected Supplier', type: 'select', required: true,

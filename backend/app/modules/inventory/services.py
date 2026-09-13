@@ -326,19 +326,30 @@ def _material_usage_summary(m: str, db: Session):
     if not material:
         return None
 
-    issues = db.query(Issue).filter(Issue.material_id == material.id).order_by(Issue.date.desc()).all()
-    if not issues:
+    # Defect repair (F138 P1): previously loaded every Issue row ever
+    # recorded against this material (a real, only-growing
+    # transactional table) just to compute a count and a per-order
+    # breakdown - a heavily-issued material could mean a very large
+    # fetch for a one-line chat summary. The count and per-order totals
+    # are now computed in SQL (count/group-by-sum), not a Python loop
+    # over every fetched row.
+    issue_count = db.query(func.count(Issue.id)).filter(Issue.material_id == material.id).scalar() or 0
+    if not issue_count:
         return f"{material.name} has never been issued.", [], []
 
-    by_order = {}
-    for i in issues:
-        key = i.order.order_code if i.order else "No project"
-        by_order[key] = by_order.get(key, 0) + float(i.quantity_issued)
+    order_totals = (
+        db.query(Order.order_code, func.sum(Issue.quantity_issued))
+        .select_from(Issue).outerjoin(Order, Issue.order_id == Order.id)
+        .filter(Issue.material_id == material.id)
+        .group_by(Order.order_code)
+        .all()
+    )
+    by_order = {(code or "No project"): float(total or 0) for code, total in order_totals}
     top_orders = sorted(by_order.items(), key=lambda kv: kv[1], reverse=True)[:3]
     top_summary = ", ".join(f"{code}: {qty:g} {material.unit}" for code, qty in top_orders)
 
     lines = [
-        f"{material.name}: {float(material.total_issued or 0):g} {material.unit} issued in total across {len(issues)} issue(s).",
+        f"{material.name}: {float(material.total_issued or 0):g} {material.unit} issued in total across {issue_count} issue(s).",
         f"Top consumers - {top_summary}.",
     ]
     records = [{
@@ -382,15 +393,24 @@ def _recent_purchases(db: Session):
 
 
 def _pending_purchases(db: Session):
-    purchases = db.query(Purchase).filter(Purchase.payment_status != "Paid").all()
-    if not purchases:
+    # Defect repair (F138 P1): previously loaded every pending-payment
+    # Purchase (a real, only-growing transactional table) into memory
+    # just to report a count and show 10 - now counts in SQL and pulls
+    # only the 10 rows actually shown, matching _recent_purchases'
+    # own limit(10) idiom above.
+    total = db.query(func.count(Purchase.id)).filter(Purchase.payment_status != "Paid").scalar() or 0
+    if not total:
         return "No purchases are currently pending payment to suppliers.", [], []
+    purchases = (
+        db.query(Purchase).filter(Purchase.payment_status != "Paid")
+        .order_by(Purchase.date.desc()).limit(10).all()
+    )
     records = [{
         "type": "Purchase", "label": p.purchase_code,
         "sublabel": f"{p.supplier.name if p.supplier else 'Supplier'} - {p.payment_status}",
         "path": "/purchases",
-    } for p in purchases[:10]]
-    return f"{len(purchases)} purchases are pending payment to suppliers.", [], records
+    } for p in purchases]
+    return f"{total} purchases are pending payment to suppliers.", [], records
 
 
 def _route_material_action(m: str, db: Session, user_role: str):
@@ -536,24 +556,38 @@ def _summarize_supplier(m: str, db: Session, user_role: str):
         return None
     supplier = suppliers[0]
 
-    purchases = db.query(Purchase).filter(Purchase.supplier_id == supplier.id).all()
-    if not purchases:
+    # Defect repair (F138 P1): previously loaded every Purchase this
+    # supplier has ever had (a real, only-growing transactional table)
+    # into memory just to derive counts/sums - a supplier active for
+    # years could mean thousands of rows fetched for a one-line chat
+    # summary. Every figure below is now a bulk SQL count/sum, not a
+    # Python loop over fetched rows.
+    total_count = db.query(func.count(Purchase.id)).filter(Purchase.supplier_id == supplier.id).scalar() or 0
+    if not total_count:
         return f"{supplier.name}: no purchases on record yet.", [], [{
             "type": "Supplier", "label": supplier.name, "sublabel": supplier.category or "",
             "path": f"/suppliers/{supplier.id}",
         }]
 
-    with_expected = [p for p in purchases if p.expected_delivery_date]
-    on_time = [p for p in with_expected if p.receipt_status == "Received"]
-    lines = [f"{supplier.name}: {len(purchases)} purchase(s) on record."]
-    if with_expected:
-        lines.append(f"{len(on_time)}/{len(with_expected)} with a tracked delivery date were fully received.")
+    with_expected_count = db.query(func.count(Purchase.id)).filter(
+        Purchase.supplier_id == supplier.id, Purchase.expected_delivery_date.isnot(None),
+    ).scalar() or 0
+    on_time_count = db.query(func.count(Purchase.id)).filter(
+        Purchase.supplier_id == supplier.id, Purchase.expected_delivery_date.isnot(None),
+        Purchase.receipt_status == "Received",
+    ).scalar() or 0
+    lines = [f"{supplier.name}: {total_count} purchase(s) on record."]
+    if with_expected_count:
+        lines.append(f"{on_time_count}/{with_expected_count} with a tracked delivery date were fully received.")
     if user_role in ("master",):
-        total_value = sum(float(p.invoice_total or 0) for p in purchases)
+        total_value = float(
+            db.query(func.coalesce(func.sum(Purchase.invoice_total), 0))
+            .filter(Purchase.supplier_id == supplier.id).scalar() or 0
+        )
         lines.append(f"Total purchase value Rs {total_value:,.2f}.")
 
     records = [{
-        "type": "Supplier", "label": supplier.name, "sublabel": f"{len(purchases)} purchases", "path": f"/suppliers/{supplier.id}",
+        "type": "Supplier", "label": supplier.name, "sublabel": f"{total_count} purchases", "path": f"/suppliers/{supplier.id}",
     }]
     return " ".join(lines), [], records
 
@@ -657,6 +691,20 @@ class StockService:
         material = db.query(Material).filter(Material.id == data.material_id).with_for_update().first()
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
+
+        # Defect repair (F138 P13.1): Issue.unit is a separate, free-text
+        # field from Material.unit, and this quantity is subtracted
+        # straight from Material.current_stock/total_issued with no
+        # conversion step anywhere in the codebase - same gap, same fix,
+        # as ProcurementService.record_purchase's unit check. With no
+        # unit-conversion model, a mismatched unit must be rejected, not
+        # silently subtracted as if it were the material's own unit.
+        if data.unit.strip().lower() != (material.unit or "").strip().lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unit mismatch: this issue is recorded in '{data.unit}' but {material.name} "
+                       f"is tracked in '{material.unit}'. Record the issue in the material's own unit.",
+            )
 
         issue_code = generate_unique_code(db, Issue, "issue_code", "ISS-")
 
@@ -1166,7 +1214,7 @@ class StockService:
         return {"order_id": order_id, "materials": results}
 
     @staticmethod
-    def calculate_at_risk_orders(db: Session) -> list:
+    def calculate_at_risk_orders(db: Session, limit: Optional[int] = None) -> list:
         """Business-wide version of calculate_order_material_requirements -
         which open orders have a real, current material shortage, computed
         once across the whole open-order book rather than by looping the
@@ -1185,6 +1233,20 @@ class StockService:
         calculate_order_material_requirements returns, so a dashboard
         card and the order detail page can share one frontend
         rendering path.
+
+        Defect repair (P1-6): `limit` is optional and defaults to None,
+        so every existing caller that needs the true, complete at-risk
+        set (the alerts/automation job, the operations at-risk flag
+        lookup) is unaffected. Only the dashboard widget - which has
+        never rendered more than its top 4 - passes a limit, so the
+        per-material supplier-options enrichment below (a real query)
+        and the final per-order result assembly only run for the
+        orders that will actually be shown, instead of for the whole
+        open-order book on every dashboard load. The shortage
+        calculation itself (which requires seeing every open order to
+        even know which ones are at risk and how to rank them) still
+        runs in full either way - that part was already bulk/N+1-free
+        and cannot be shortcut without changing which orders qualify.
         """
         open_orders = (
             db.query(Order)
@@ -1283,14 +1345,26 @@ class StockService:
                 "shortage": shortage, "recommended_purchase_quantity": shortage,
             })
 
+        # Rank every at-risk order by its total shortage before doing
+        # any further per-order enrichment - this in-memory sort costs
+        # nothing extra (no query) and is required to know which
+        # orders are the top N regardless of whether limit is used.
+        ranked_order_ids = sorted(
+            at_risk.keys(),
+            key=lambda oid: sum(m["shortage"] for m in at_risk[oid]),
+            reverse=True,
+        )
+        order_ids_to_build = ranked_order_ids[:limit] if limit is not None else ranked_order_ids
+
         all_shortage_material_ids = list({
-            m["material_id"] for materials in at_risk.values() for m in materials
+            m["material_id"] for oid in order_ids_to_build for m in at_risk[oid]
         })
         from app.modules.procurement.services import ProcurementService
         supplier_options = ProcurementService._supplier_options_for_materials(db, all_shortage_material_ids)
 
         results = []
-        for order_id, materials in at_risk.items():
+        for order_id in order_ids_to_build:
+            materials = at_risk[order_id]
             order = orders_by_id[order_id]
             for m in materials:
                 m["supplier_options"] = supplier_options.get(m["material_id"], [])
@@ -1303,5 +1377,7 @@ class StockService:
                 "total_shortage_lines": len(materials),
                 "materials": materials,
             })
-        results.sort(key=lambda r: sum(m["shortage"] for m in r["materials"]), reverse=True)
+        # order_ids_to_build is already ranked highest-shortage-first,
+        # so results is already in the same order the old unconditional
+        # results.sort(...) produced - no re-sort needed.
         return results

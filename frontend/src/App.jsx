@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { authAPI } from './utils/api';
@@ -13,20 +13,37 @@ import { MobileBottomNav } from './components/Navigation';
 import { ProtectedRoute } from './components/Infrastructure';
 import { LoadingShell } from './components/Infrastructure';
 import { OfflineBanner } from './components/Infrastructure';
-import { ChatWidget } from './components/Assistant';
 import { Footer } from './components/Navigation';
-import { CartDrawer } from './modules/procurement/pages/RequirementsCartPages';
 
 import { LoginPage, ForgotPasswordPage, ResetPasswordPage } from './modules/auth/pages/AuthPages';
 import { NotFoundPage } from './pages/SystemPages';
 
+// Defect repair (F138 P1): ChatWidget (components/Assistant.jsx, 600+
+// lines - the Cai assistant UI) and CartDrawer
+// (modules/procurement/pages/RequirementsCartPages.jsx) used to be
+// static imports here. Both only ever render inside AppLayout - i.e.
+// only after a successful login - so requiring their code before the
+// login page can even paint was pure waste on a slow connection.
+// Lazy-loading them splits that code into its own chunk, fetched only
+// once the authenticated shell actually mounts; a null Suspense
+// fallback is correct here (unlike a route page) since both are
+// floating overlays with no meaningful "loading" appearance of their
+// own - the rest of the already-rendered shell stays fully usable
+// while they load in.
+const ChatWidget = React.lazy(() => import('./components/Assistant').then(m => ({ default: m.ChatWidget })));
+const CartDrawer = React.lazy(() => import('./modules/procurement/pages/RequirementsCartPages').then(m => ({ default: m.CartDrawer })));
+
 const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password'];
-// These two carry a :token URL param, so they can't be exact-matched
-// against PUBLIC_ROUTES the way the fixed-path ones above are -
-// checked separately below wherever PUBLIC_ROUTES is checked.
-const PUBLIC_ROUTE_PREFIXES = ['/review-estimate/', '/my-order/'];
-const EstimateReviewPage = React.lazy(() => import('./modules/clients/pages/ClientPortalPages').then(m => ({ default: m.EstimateReviewPage })));
-const MyOrderPage = React.lazy(() => import('./modules/clients/pages/ClientPortalPages').then(m => ({ default: m.MyOrderPage })));
+// Defect repair (P1-13): this used to also list the two public,
+// token-based client-portal route prefixes (/review-estimate/,
+// /my-order/). Woodful is internal-only now and the backend no
+// longer serves /api/client-portal/* at all (see backend
+// app/api/routes.py) - those pages and their routes below are
+// removed, and this stays an empty array rather than being deleted
+// outright since both places below that check it are otherwise
+// generic and would need no change if a future prefix-matched public
+// route is ever added again.
+const PUBLIC_ROUTE_PREFIXES = [];
 const DashboardPage = React.lazy(() => import('./modules/reporting/pages/DashboardPage'));
 const BusinessDecisionCentrePage = React.lazy(() => import('./modules/reporting/pages/AnalyticsPages').then(m => ({ default: m.BusinessDecisionCentrePage })));
 const OwnerBriefingPage = React.lazy(() => import('./modules/reporting/pages/AnalyticsPages').then(m => ({ default: m.OwnerBriefingPage })));
@@ -64,6 +81,12 @@ const EmployeesPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages
 const EmployeeDetailPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.EmployeeDetailPage })));
 const AttendancePage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.AttendancePage })));
 const LeavesPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.LeavesPage })));
+// IA consolidation: AttendanceLeaveHub is the single "Attendance &
+// Leave" nav destination, combining Attendance/LeavesPage/
+// CompanyHolidaysPage (all three still lazy-loaded together as part
+// of the same WorkforcePages chunk they already belonged to - no new
+// chunk, no duplicate implementation).
+const AttendanceLeaveHub = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.AttendanceLeaveHub })));
 const DailyTasksPage = React.lazy(() => import('./modules/operations/pages/OperationsPages').then(m => ({ default: m.DailyTasksPage })));
 const TaskDetailPage = React.lazy(() => import('./modules/operations/pages/OperationsPages').then(m => ({ default: m.TaskDetailPage })));
 const ProductionJobsPage = React.lazy(() => import('./modules/operations/pages/ProductionPages').then(m => ({ default: m.ProductionJobsPage })));
@@ -74,9 +97,18 @@ const EstimateDetailPage = React.lazy(() => import('./modules/sales/pages/SalesD
 const CandidatesPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.CandidatesPage })));
 const CandidateDetailPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.CandidateDetailPage })));
 const InterviewsPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.InterviewsPage })));
+// IA consolidation: RecruitmentHub is the single "Recruitment" nav
+// destination, combining CandidatesPage/InterviewsPage (same
+// RecruitmentPages chunk, no duplicate implementation).
+const RecruitmentHub = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.RecruitmentHub })));
 const SalarySlipsPage = React.lazy(() => import('./modules/hr/pages/PayrollPages').then(m => ({ default: m.SalarySlipsPage })));
 const SalaryAdvancesPage = React.lazy(() => import('./modules/hr/pages/PayrollPages').then(m => ({ default: m.SalaryAdvancesPage })));
-const UsersPage = React.lazy(() => import('./modules/auth/pages/AuthPages').then(m => ({ default: m.UsersPage })));
+// Defect repair (F138 P1): now its own file (see UsersPage.jsx's own
+// comment) - this import previously pointed at AuthPages.jsx, the
+// same module LoginPage is statically imported from above, which
+// silently defeated this lazy() wrapper (webpack already had the
+// whole module in the main bundle because of that static import).
+const UsersPage = React.lazy(() => import('./modules/auth/pages/UsersPage'));
 const AuditLogsPage = React.lazy(() => import('./pages/SystemPages').then(m => ({ default: m.AuditLogsPage })));
 const AnalyticsPage = React.lazy(() => import('./modules/reporting/pages/AnalyticsPages').then(m => ({ default: m.AnalyticsPage })));
 const LearningCandidatesPage = React.lazy(() => import('./modules/ai/pages/LearningCandidatesPage'));
@@ -153,8 +185,15 @@ function AppLayout({ children }) {
       </div>
       <Footer />
       <MobileBottomNav onOpenMenu={() => setSidebarOpen((v) => !v)} />
-      <ChatWidget />
-      <CartDrawer open={isCartOpen} onClose={() => dispatch(closeCart())} />
+      {/* Defect repair (F138 P1): null fallback is deliberate - these
+          are floating overlays (chat bubble, cart drawer), not page
+          content, so there is nothing meaningful to show while their
+          lazy chunk loads and no reason to block the rest of the
+          already-rendered shell above on it. */}
+      <Suspense fallback={null}>
+        <ChatWidget />
+        <CartDrawer open={isCartOpen} onClose={() => dispatch(closeCart())} />
+      </Suspense>
     </div>
   );
 }
@@ -172,6 +211,23 @@ function AppRoutes() {
   const location = useLocation();
 
   const initialPathname = useRef(location.pathname);
+  // Guards against React 18 StrictMode's deliberate dev-only double-
+  // invoke of effects (mount -> cleanup -> mount again, on every
+  // component in the tree, specifically to surface effects that
+  // aren't safe to run twice). Without this, the very first page load
+  // in development fires authAPI.me() TWICE back-to-back - harmless to
+  // the server (it's an idempotent GET, and get_current_user doesn't
+  // mutate anything), but it is real duplicate network work, and (per
+  // this defect repair) exactly the kind of thing that made an
+  // already-confusing login bug look even more erratic in the
+  // browser's network log. hasStartedBootstrap is a ref (not state) so
+  // checking and setting it can't itself trigger a re-render/re-run;
+  // it starts false once per real mount of this component (the app
+  // root is mounted exactly once for the SPA's lifetime - client-side
+  // route changes never remount AppRoutes), so this remains "exactly
+  // one bootstrap call per normal page load," StrictMode or not.
+  const hasStartedBootstrap = useRef(false);
+
   useEffect(() => {
     if (PUBLIC_ROUTES.includes(initialPathname.current) || PUBLIC_ROUTE_PREFIXES.some((p) => initialPathname.current.startsWith(p))) {
       // No auth state is needed to render these pages - skip the
@@ -186,6 +242,10 @@ function AppRoutes() {
       dispatch(sessionCheckFinished(null));
       return;
     }
+    if (hasStartedBootstrap.current) {
+      return;
+    }
+    hasStartedBootstrap.current = true;
     authAPI
       .me()
       .then((res) => dispatch(sessionCheckFinished(res.data)))
@@ -207,6 +267,22 @@ function AppRoutes() {
       });
   }, [dispatch]);
 
+  // A 401 from an ordinary authenticated request (any endpoint other
+  // than the bootstrap /api/auth/me check above - see utils/api.js's
+  // response interceptor, which is what actually decides that and
+  // dispatches this event, deduplicated, when it happens) means the
+  // session has genuinely become invalid since bootstrap confirmed it.
+  // Reusing the existing `logout` reducer here (not a hard
+  // window.location redirect) sets isAuthenticated/user back to
+  // signed-out state and lets <ProtectedRoute> below perform its own
+  // ordinary React Router redirect to /login - a single, soft, in-SPA
+  // navigation, not a full page reload racing a second one.
+  useEffect(() => {
+    const handleSessionInvalid = () => dispatch(logoutAction());
+    window.addEventListener('woodful:session-invalid', handleSessionInvalid);
+    return () => window.removeEventListener('woodful:session-invalid', handleSessionInvalid);
+  }, [dispatch]);
+
   // One place setting document.title for every route, rather than
   // each page doing it individually.
   useEffect(() => {
@@ -219,10 +295,15 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/review-estimate/:token" element={<EstimateReviewPage />} />
-      <Route path="/my-order/:token" element={<MyOrderPage />} />
+      {/* Dashboard -> Home rename: the existing DashboardPage is the
+          single Home/Command Centre implementation, rendered at both
+          "/" and the final user-facing "/home" route - no second
+          implementation, no duplicate data loading. "/dashboard" is
+          kept only as a backward-compatible redirect to "/home" so
+          any existing bookmarks/links keep working. */}
       <Route path="/" element={<Protected><DashboardPage /></Protected>} />
-      <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/home" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/dashboard" element={<Navigate to="/home" replace />} />
       <Route path="/business-decisions" element={<Protected><BusinessDecisionCentrePage /></Protected>} />
       <Route path="/owner-briefing" element={<Protected><OwnerBriefingPage /></Protected>} />
       <Route path="/analytics" element={<Protected><AnalyticsPage /></Protected>} />
@@ -260,6 +341,10 @@ function AppRoutes() {
       <Route path="/employees/:employeeId" element={<Protected><EmployeeDetailPage /></Protected>} />
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/leaves" element={<Protected><LeavesPage /></Protected>} />
+      {/* IA consolidation: single "Attendance & Leave" workspace nav
+          destination. /attendance, /leaves, /company-holidays above
+          and below are untouched and still directly reachable. */}
+      <Route path="/attendance-leave" element={<Protected><AttendanceLeaveHub /></Protected>} />
       <Route path="/daily-tasks" element={<Protected><DailyTasksPage /></Protected>} />
       <Route path="/daily-tasks/:taskId" element={<Protected><TaskDetailPage /></Protected>} />
       <Route path="/production-jobs" element={<Protected><ProductionJobsPage /></Protected>} />
@@ -273,6 +358,10 @@ function AppRoutes() {
       <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
       <Route path="/candidates/:candidateId" element={<Protected><CandidateDetailPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
+      {/* IA consolidation: single "Recruitment" workspace nav
+          destination. /candidates, /candidates/:id, and /interviews
+          above are untouched and still directly reachable. */}
+      <Route path="/recruitment" element={<Protected><RecruitmentHub /></Protected>} />
       <Route path="/salary-slips" element={<Protected><SalarySlipsPage /></Protected>} />
       <Route path="/salary-advances" element={<Protected><SalaryAdvancesPage /></Protected>} />
       <Route path="*" element={<NotFoundPage />} />

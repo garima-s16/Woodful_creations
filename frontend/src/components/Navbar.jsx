@@ -51,7 +51,7 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
           <button className="menu-toggle" onClick={toggleSidebar} title="Toggle menu">
             <MenuIcon />
           </button>
-          <Link to="/dashboard" className="navbar-brand" aria-label="Woodful Creations — go to dashboard">
+          <Link to="/home" className="navbar-brand" aria-label="Woodful Creations — go to Home">
             <span className="brand-mark">
               <img src="/logo-transparent.png" alt="Woodful Creations" className="brand-logo-img" />
             </span>

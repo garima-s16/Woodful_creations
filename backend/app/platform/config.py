@@ -17,16 +17,32 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # when the app is launched from the repo root instead of from inside
 # backend/.
 #
+# Defect repair: this used to walk FOUR parents from
+# backend/app/platform/config.py, which lands one directory too high -
+# at the project root (the parent of backend/, sibling to frontend/) -
+# instead of on backend/ itself. That meant this file silently pointed
+# at <project-root>/.env, a location nothing in this project ever
+# creates or documents (setup.sh/.bat, start_backend.sh/.bat,
+# docker-entrypoint.sh, backend/.env.example, and every setup doc all
+# use backend/.env exclusively). The practical effect: editing
+# backend/.env - exactly as instructed everywhere, including this
+# file's own module docstring - had no effect at all, and the app
+# would fail every time with "SECRET_KEY field required" no matter
+# what was placed there. Three parents (platform -> app -> backend)
+# is what actually reaches backend/; renamed from _PROJECT_ROOT to
+# _BACKEND_ROOT so the intent (and the correct parent count) is
+# unambiguous on inspection.
+#
 # local.env takes priority over .env if both exist - Neon
 # connectivity work added Neon's DATABASE_URL to local.env specifically,
-# and before this fix it was silently never read at all (env_file only
+# and before that fix it was silently never read at all (env_file only
 # ever pointed at a literal ".env" filename). Checked explicitly by file
 # existence here, rather than relying on a particular pydantic-settings
 # version's own multi-file-priority behavior, so this is unambiguous on
 # inspection regardless of which version is installed.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_LOCAL_ENV_FILE = _PROJECT_ROOT / "local.env"
-_DEFAULT_ENV_FILE = _PROJECT_ROOT / ".env"
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+_LOCAL_ENV_FILE = _BACKEND_ROOT / "local.env"
+_DEFAULT_ENV_FILE = _BACKEND_ROOT / ".env"
 _ENV_FILE = _LOCAL_ENV_FILE if _LOCAL_ENV_FILE.exists() else _DEFAULT_ENV_FILE
 
 
@@ -41,6 +57,21 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATABASE_URL: str = "sqlite:///./woodful.db"
+    # Defect repair (F138 P17): this and UPLOAD_DIRECTORY (below, under
+    # --- Uploads ---) named the same concept - where local document/
+    # file storage lives on disk - under two different settings.
+    # UPLOAD_DIRECTORY is the one actually read anywhere (see
+    # app/platform/storage.py's LocalStorageBackend); this field had no
+    # reader at all, so setting it in an environment silently did
+    # nothing - a real misconfiguration trap for anyone who set THIS
+    # one expecting it to control storage location. UPLOAD_DIRECTORY
+    # remains authoritative (more call sites, and the name storage.py's
+    # own docstrings already use); this field is kept, deprecated, as a
+    # still-working alias - see the model_validator below, which honors
+    # an explicitly-set STORAGE_LOCAL_ROOT by using it as
+    # UPLOAD_DIRECTORY's value when UPLOAD_DIRECTORY itself was left at
+    # its default. Do not add new readers of this field - read
+    # UPLOAD_DIRECTORY instead.
     STORAGE_LOCAL_ROOT: str = "./storage_data"
     GOOGLE_DRIVE_CREDENTIALS_PATH: str = ""
     GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""
@@ -182,6 +213,9 @@ class Settings(BaseSettings):
 
     # --- Uploads ---
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
+    # Authoritative local-storage root (see app/platform/storage.py's
+    # LocalStorageBackend) - STORAGE_LOCAL_ROOT above is a deprecated
+    # alias for this same setting (F138 P17).
     UPLOAD_DIRECTORY: str = "./uploads"
     # Same reasoning as CORS_ORIGINS above - plain string, split via property.
     ALLOWED_EXTENSIONS: str = "pdf,xlsx,docx,jpg,png,jpeg"
@@ -217,6 +251,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def debug_must_be_off_in_production(self):
+        # Defect repair (F138 P17): honor a deprecated, explicitly-set
+        # STORAGE_LOCAL_ROOT by folding it into UPLOAD_DIRECTORY (the
+        # one setting storage.py actually reads) when UPLOAD_DIRECTORY
+        # itself was left at its own default - see STORAGE_LOCAL_ROOT's
+        # own field comment above for why. Only when STORAGE_LOCAL_ROOT
+        # was actually changed from its default AND UPLOAD_DIRECTORY
+        # was not, so an operator who set both (or only the correct
+        # one) keeps exactly the value they set.
+        if self.STORAGE_LOCAL_ROOT != "./storage_data" and self.UPLOAD_DIRECTORY == "./uploads":
+            self.UPLOAD_DIRECTORY = self.STORAGE_LOCAL_ROOT
+
         if self.ENVIRONMENT == "production" and self.DEBUG:
             raise ValueError(
                 "DEBUG=True is not allowed when ENVIRONMENT=production - it would expose full "
@@ -276,6 +321,28 @@ class Settings(BaseSettings):
                 "deployment must use the shared Redis-backed rate limiter (RATE_LIMIT_BACKEND=redis "
                 "with REDIS_URL set) - the in-memory backend is not shared across worker "
                 "processes/instances and would silently under-enforce every configured limit."
+            )
+
+        # Defect repair (F138 P11): REDIS_URL defaults to
+        # redis://localhost:6379/0 - fine for local dev, but if a
+        # production deployment enables RATE_LIMIT_BACKEND=redis and
+        # simply never overrides REDIS_URL, every instance would either
+        # fail to connect (no local Redis inside its own container) or,
+        # worse, quietly talk to its OWN local Redis - defeating the
+        # entire point of a shared backend (see _RedisBackend's own
+        # docstring in app/platform/security.py) without any startup
+        # error to say so. Same "fail fast on missing required
+        # production infrastructure" principle already applied to
+        # SECRET_KEY/DATABASE_URL above - refuse to start rather than
+        # silently run production against an unconfigured/local Redis.
+        if self.ENVIRONMENT == "production" and self.RATE_LIMIT_BACKEND == "redis" and (
+            not self.REDIS_URL or "localhost" in self.REDIS_URL or "127.0.0.1" in self.REDIS_URL
+        ):
+            raise ValueError(
+                "REDIS_URL is unset or still pointing at localhost while ENVIRONMENT=production "
+                "and RATE_LIMIT_BACKEND=redis. Set REDIS_URL to the real, shared Redis instance's "
+                "connection string - refusing to start rather than silently run each production "
+                "instance against its own local Redis (or fail to connect to one at all)."
             )
 
         # Gemini and Drive are each explicit opt-ins (GEMINI_ENABLED /

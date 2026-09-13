@@ -108,6 +108,122 @@ export function classifyLoadError(err, label) {
   return { message: `Unable to load this ${label}. Please try again.`, isNotFound: false };
 }
 
+// --- apiError.js ---
+/**
+ * Defect repair (F138 P14): centralized API/mutation error
+ * normalization. classifyLoadError above already handles read/load
+ * failures; this is the write/mutation-side counterpart most pages
+ * previously handled ad hoc with `err.response?.data?.detail ||
+ * 'some fallback string'` before passing the result straight to
+ * <Alert message={...}>.
+ *
+ * That pattern silently assumed `detail` is always a plain string.
+ * It is not: FastAPI's default handler for a pydantic validation
+ * failure (a 422) returns `detail` as an ARRAY of {loc, msg, type}
+ * objects, not a string - and this backend has no custom
+ * RequestValidationError handler that flattens it. Passed straight
+ * through as a React child (Alert renders {message} directly), that
+ * throws "Objects are not valid as a React child" and takes down the
+ * page - turning a routine validation error into a much worse crash.
+ * This function always returns a plain, safe-to-render string no
+ * matter what shape the error actually is, so a caller never has to
+ * reason about the difference itself.
+ *
+ * Handles, in order: no response at all (network/timeout/offline -
+ * axios sets `isAxiosError` with no `response`), a FastAPI validation
+ * array, a plain string `detail`, a nested {detail: {msg}}-style
+ * object some non-standard error paths use, standard status-code
+ * bands (401/403/404/409/422/429/5xx), and finally an honest unknown-
+ * error fallback - never `String(errorObject)` or JSON-dumping a raw
+ * object at the user.
+ */
+export function formatApiError(err, fallback = 'Something went wrong. Please try again.') {
+  if (!err) return fallback;
+
+  if (err.isAxiosError && !err.response) {
+    // Distinguish a request that never got a response at all (offline,
+    // DNS failure, connection refused, or the client gave up waiting)
+    // from a genuine server-side rejection - these need a different,
+    // actionable message ("check your connection", not "fix this
+    // field") and must never be phrased as if the server said no.
+    if (err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '')) {
+      return 'The request took too long to respond. Please check your connection and try again.';
+    }
+    return 'Unable to reach the server. Please check your connection and try again.';
+  }
+
+  const detail = err.response?.data?.detail;
+
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+
+  if (Array.isArray(detail) && detail.length > 0) {
+    // FastAPI/pydantic validation error array: [{loc, msg, type}, ...].
+    // Join every field's message into one readable line rather than
+    // rendering the raw array (which would crash) or showing only the
+    // first item silently (which would hide additional real problems).
+    const messages = detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && typeof item.msg === 'string') {
+          const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : null;
+          return field && typeof field === 'string' ? `${field}: ${item.msg}` : item.msg;
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join('; ');
+  }
+
+  if (detail && typeof detail === 'object') {
+    // A small number of non-standard error paths nest a message one
+    // level deeper ({detail: {msg: "..."}}) rather than a bare string.
+    if (typeof detail.msg === 'string') return detail.msg;
+    if (typeof detail.message === 'string') return detail.message;
+  }
+
+  const status = err.response?.status;
+  if (status === 401) return 'Your session is no longer valid. Please sign in again.';
+  if (status === 403) return 'You do not have permission to do this.';
+  if (status === 404) return 'The requested item could not be found.';
+  if (status === 409) return 'This conflicts with the current state of the record. Please refresh and try again.';
+  if (status === 422) return 'Some of the information provided is invalid. Please check the form and try again.';
+  if (status === 429) return 'Too many requests. Please wait a moment and try again.';
+  if (status >= 500) return 'The server encountered a problem. Please try again shortly.';
+
+  return fallback;
+}
+
+/**
+ * Last-resort safety net for anything ever passed as an Alert message
+ * (or otherwise rendered directly as JSX children) that did NOT go
+ * through formatApiError above - e.g. a plain caught Error, or a
+ * value some older call site still builds by hand. Guarantees a
+ * plain string comes out no matter what goes in, so a rendering call
+ * site can never crash the page just because an upstream error's
+ * shape was unexpected.
+ */
+export function toSafeMessage(value) {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  if (value instanceof Error) return value.message || 'An unexpected error occurred.';
+  if (Array.isArray(value)) {
+    return value.map((v) => toSafeMessage(v)).filter(Boolean).join('; ');
+  }
+  if (typeof value === 'object') {
+    if (typeof value.msg === 'string') return value.msg;
+    if (typeof value.message === 'string') return value.message;
+    if (typeof value.detail === 'string') return value.detail;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'An unexpected error occurred.';
+    }
+  }
+  return String(value);
+}
+
 // --- offlineQueue.js ---
 /**
  * Offline resilience infrastructure for Woodful.
@@ -308,8 +424,13 @@ const SUFFIX = 'Woodful Creations';
 
 // Static routes: exact pathname match.
 const STATIC_TITLES = {
-  '/': 'Dashboard',
-  '/dashboard': 'Dashboard',
+  '/': 'Home',
+  '/home': 'Home',
+  // Dashboard -> Home rename: "/dashboard" itself now only ever
+  // redirects to "/home" (see App.jsx), but this entry is kept so
+  // the title is still correct for the brief moment before that
+  // redirect completes.
+  '/dashboard': 'Home',
   '/analytics': 'Analytics',
   '/inventory': 'Inventory',
   '/materials': 'Materials',
