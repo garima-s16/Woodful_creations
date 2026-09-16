@@ -1,0 +1,274 @@
+/* ==========================================================================
+   Woodful Creations — Design System ("Atelier Command Centre")
+   Palette: near-black studio charcoal, warm teak/walnut wood tones, warm
+   ivory/linen text, restrained sage/amber/terracotta status accents.
+   Editorial, minimal, high-contrast type. Restyled from the original
+   ink/gold system per the Stitch "Atelier Command Centre" dashboard
+   design (dark + light) - same token names throughout, so every page's
+   existing component CSS re-themes automatically; only the values below
+   changed, plus --radius-xl (new) for the boutique rounded-card look
+   used by the Home dashboard and the app chrome (Navbar/Sidebar).
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* ---- Raw brand palette — fixed, does NOT change with theme ----
+     This is the literal Woodful teak/ivory family. It stays constant in
+     both themes because it also drives the app's permanent dark chrome
+     (Navbar, Sidebar, Footer, ChatWidget's own header bar specifically -
+     its message body below uses the theme-adaptive --surface, so the
+     panel as a whole is mixed, not uniformly fixed; the login screen's
+     brand panel) and "inverse fill" controls (a teak/ivory button always
+     paired with dark ink text) - those are a fixed brand presentation,
+     not page content, so they don't flip with the theme toggle. Only
+     the semantic tokens below (background/surface/text/etc.) change
+     between dark and light - see the [data-theme="light"] block. */
+  --color-ink: #101014;
+  --color-charcoal: #17171d;
+  --color-charcoal-elevated: #1d1d24;
+  --color-wood: #8b745e;            /* warm accent - buttons, highlights */
+  --color-tan: #b5b0a6;             /* muted supporting accent */
+  --color-gold: #9b826b;            /* primary accent - the Woodful signature (teak) */
+  --color-gold-soft: #b59f8a;       /* muted teak, hover/secondary accent */
+  --color-ivory: #f4f0e8;
+  --color-ivory-dim: #ebe7df;
+  --color-white: #fffdfa;           /* rare - highest-emphasis text only */
+
+  /* ---- Semantic tokens — theme-aware, dark values (default) ----
+     Everything a page/card/table/form actually renders on reads from
+     these, never from the raw palette above directly. Swapping just
+     this block (done in [data-theme="light"]) re-themes the whole
+     app without touching component CSS. */
+  --background: var(--color-ink);            /* page background */
+  --surface: var(--color-charcoal);          /* card/panel background */
+  --surface-secondary: #141418;              /* a step between background and surface */
+  --surface-elevated: var(--color-charcoal-elevated); /* modals, popovers, hover */
+  --text-primary: var(--color-ivory);
+  --text-secondary: #b5b0a6;
+  --text-muted: #7d7970;
+  --border: #282730;
+  --border-subtle: #1f1f26;
+  --accent: var(--color-gold);
+
+  /* Status - muted tonal chips against a dark page (sage/amber/
+     terracotta), matching the Atelier design's "Risk / Amber / Green"
+     order-health language instead of a generic traffic-light palette */
+  --success: #86a88e;
+  --success-bg: #1b241a;
+  --warning: #c9a279;
+  --warning-bg: #2b2213;
+  --danger: #d87d75;
+  --danger-bg: #2b1917;
+  --danger-soft: #e8998a;           /* hover state for a solid danger fill */
+  --info: #8fb0c2;
+  --info-bg: #16232a;
+
+  /* Legacy aliases - kept so existing component CSS (which already
+     references --light-bg/--border-color/--border-strong throughout)
+     re-themes automatically without a rename pass. New code should
+     prefer --background/--border/--border-subtle above. */
+  --light-bg: var(--background);
+  --border-color: var(--border-subtle);
+  --border-strong: var(--border);
+
+  /* Typography - Plus Jakarta Sans throughout (headings and body),
+     Inter as the fallback, matching the Atelier Stitch design exactly. */
+  --font-display: '"Plus Jakarta Sans"', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: '"Plus Jakarta Sans"', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radius & shadow — restrained, not bubbly */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  /* New: the boutique, heavily-rounded "atelier card" radius used by
+     the Home dashboard's cards and by the Navbar/Sidebar chrome - kept
+     as its own token rather than raised globally so dense data tables
+     elsewhere in the app are not affected. */
+  --radius-xl: 26px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+  --glow-gold: 0 0 0 1px rgba(155, 130, 107, 0.25), 0 4px 20px rgba(155, 130, 107, 0.12);
+  --transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Slightly springier curve for confirmation/entrance feedback only -
+     precision, not bounce. Not used for hover/press (those stay on
+     --transition) or anything continuous/looping. */
+  --transition-spring: 220ms cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* One shared focus treatment for every interactive element - buttons,
+     inputs, custom controls. A box-shadow ring (not outline) so it
+     doesn't clip inside overflow:hidden cards/tables and remains
+     visible against both flat surfaces and rounded corners. Gold stays
+     fixed across themes, so the ring doesn't need a light-theme override. */
+  --focus-ring: 0 0 0 3px rgba(155, 130, 107, 0.28);
+  --disabled-opacity: 0.5;
+
+  /* Skeleton-loading shimmer sweep - a light highlight reads clearly
+     against the dark skeleton base in dark theme; the light-theme
+     override below uses a dark highlight instead, since a white
+     sweep would barely register against an already-light surface. */
+  --shimmer-highlight: rgba(255, 255, 255, 0.5);
+
+  /* Text color for a solid --danger fill (e.g. .btn-danger). --danger
+     itself is tuned differently per theme (lighter/pastel in dark mode
+     for contrast against dark surfaces, darker/more saturated in light
+     mode for contrast against light ones) - a single fixed text color
+     cannot serve both, so this token flips with --danger's own tuning
+     instead. */
+  --danger-text: var(--color-ink);
+}
+
+/* ---- Light theme — same tokens, warm-paper values instead of dark ----
+   Toggled via a data-theme="light" attribute on <html> (see
+   redux/slices/themeSlice.js + App.jsx's useThemeSync). Only the
+   semantic layer changes; the raw --color-* palette above is untouched,
+   which is what keeps the dark chrome (Navbar/Sidebar/Footer/ChatWidget/
+   login) visually identical in both themes - by design, that chrome is
+   Woodful's fixed brand presentation, not page content. */
+[data-theme='light'] {
+  --background: #f8f6f0;             /* warm paper, not stark white */
+  --surface: #ffffff;                /* card/panel background */
+  --surface-secondary: #f4f0e8;
+  --surface-elevated: #f7f5ef;       /* modals, popovers, hover */
+  --text-primary: #26221e;
+  --text-secondary: #66625a;
+  --text-muted: #8a857b;
+  --border: #e7e4dc;
+  --border-subtle: #ede9e1;
+
+  /* Status colors re-tuned for AA-contrast text on a light/pale
+     background rather than a dark one - the same "harmonized" sage/
+     amber/terracotta family the Atelier light-theme mockup uses, just
+     deepened for contrast. */
+  --success: #466e4a;
+  --success-bg: #f2f6f2;
+  --warning: #91672c;
+  --warning-bg: #faf4e8;
+  --danger: #a84d3b;
+  --danger-bg: #fbf2ef;
+  --danger-soft: #c25a44;
+  --info: #2f6a86;
+  --info-bg: #e8f1f5;
+
+  --shadow-sm: 0 1px 3px rgba(50, 40, 30, 0.06);
+  --shadow-md: 0 8px 24px rgba(50, 40, 30, 0.08);
+  --shadow-lg: 0 20px 48px rgba(50, 40, 30, 0.12);
+
+  --shimmer-highlight: rgba(38, 34, 30, 0.08);
+
+  --danger-text: var(--color-white);
+
+  color-scheme: light;
+}
+
+/* One global reduced-motion switch - every transition/animation in the
+   app is built from --transition/--transition-spring or a @keyframes
+   rule, so collapsing them here covers hover, press, modals, drawers,
+   list transitions and skeleton shimmer without touching each file. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100%;
+  font-family: var(--font-body);
+  /* Tells the browser this page's own UI is dark, so native controls
+     it renders itself - a <select>'s dropdown popup, a date input's
+     calendar picker, checkboxes/radios, the default scrollbar - use
+     the browser's dark-mode-native palette instead of assuming a light
+     page and rendering black-on-near-black inside them. Every control
+     we style ourselves (via CSS below) is unaffected; this only fixes
+     the parts we can't reach with CSS. */
+  color-scheme: dark;
+}
+
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--light-bg);
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+/* Default focus-visible treatment for any button/link that doesn't
+   define its own more specific one - a systemic audit found many
+   interactive elements across the app with a :hover state but no
+   matching :focus-visible, leaving keyboard users with no consistent
+   way to see where their focus actually is. A more specific existing
+   rule (e.g. .data-table's own :focus-visible) still correctly wins
+   over this by normal CSS specificity. */
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+input, select, textarea {
+  font-family: var(--font-body);
+}
+
+/* Belt-and-suspenders alongside color-scheme above: some browsers still
+   render a <select>'s open dropdown list using each <option>'s own
+   background/color rather than inheriting the closed <select> box's
+   styling, so every option across the app (whichever component's CSS
+   styles the select itself) gets the same dark surface + readable text
+   explicitly, instead of falling back to the OS's light-mode default. */
+select option {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+a {
+  color: var(--color-gold);
+}
+
+::selection {
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+}
+
+/* Scrollbar - subtle, not default gray */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-tan); }

@@ -1,0 +1,299 @@
+/* Shell/layout styles: navbar and sidebar - the "Atelier Command
+   Centre" chrome (Stitch dashboard redesign). Combines the former
+   Navbar.css and components/Sidebar.css.
+
+   Scope split (by explicit user decision when the two theme-matched
+   logo variants were supplied): the Navbar - and, in modules.css, the
+   login screen's brand panel - is now THEME-ADAPTIVE, reversing the
+   earlier "fixed dark chrome" choice for just these logo-bearing
+   areas, so each surface's own light/dark background always pairs
+   with the matching logo artwork (light-colored wordmark on the dark
+   background, wood-tone wordmark on the light one) instead of one
+   fixed asset run through a filter hack. Every hardcoded dark hex
+   value in the Navbar section below was therefore swapped for the
+   semantic --surface/--text-*/--border tokens so its icon chips,
+   profile menu and search bar re-theme along with the bar itself.
+
+   The Sidebar section further down is UNCHANGED and stays fixed dark
+   in both themes, per the original documented decision (only the
+   Navbar + login brand panel were in scope for this reversal) - its
+   own hardcoded dark hex values are intentional, not an oversight. */
+
+/* --- Navbar.css --- */
+.navbar {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  z-index: 150;
+  border-bottom: 1px solid var(--border);
+}
+
+.navbar-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+  height: 64px;
+}
+
+.navbar-left { display: flex; align-items: center; gap: var(--space-3); flex: 1 1 0; min-width: 0; }
+
+.menu-toggle {
+  display: none; background: none; border: none; color: var(--text-primary);
+  cursor: pointer; padding: 8px; align-items: center; justify-content: center;
+  border-radius: 100px; transition: background var(--transition);
+}
+.menu-toggle:hover { background: var(--surface-elevated); }
+
+.navbar-brand {
+  display: flex; align-items: center;
+  text-decoration: none; color: var(--text-primary);
+  border-radius: var(--radius-sm);
+}
+.navbar-brand:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
+/* No fixed white "chip" box anymore - the logo's own artwork is
+   already color-matched to whichever surface it's sitting on (see
+   Navbar.jsx), so it renders directly on the Navbar background. */
+.brand-mark {
+  height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-logo-img { height: 100%; width: auto; display: block; }
+
+.navbar-center {
+  display: flex;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.navbar-right { display: flex; align-items: center; gap: var(--space-3); flex: 1 1 0; justify-content: flex-end; }
+
+/* Shared "chip" baseline for the navbar's icon buttons - a rounded
+   pill on the same dark surface/border as the floating search bar,
+   matching the Atelier design's compact circular controls. */
+.cart-toggle,
+.theme-toggle,
+.mobile-search-toggle,
+.notification-bell-toggle {
+  position: relative; background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-primary);
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 100px; opacity: 1; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.cart-toggle:hover,
+.theme-toggle:hover,
+.mobile-search-toggle:hover,
+.notification-bell-toggle:hover { background: var(--border); border-color: var(--color-gold-soft); }
+.cart-toggle:active,
+.theme-toggle:active,
+.mobile-search-toggle:active,
+.notification-bell-toggle:active { transform: scale(0.94); }
+.cart-toggle:focus-visible,
+.theme-toggle:focus-visible,
+.mobile-search-toggle:focus-visible,
+.notification-bell-toggle:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
+.cart-toggle-badge {
+  position: absolute; top: 2px; right: 2px; background: var(--color-gold); color: var(--color-ink);
+  font-size: 0.62rem; font-weight: 700; min-width: 16px; height: 16px; border-radius: 100px;
+  display: flex; align-items: center; justify-content: center; padding: 0 3px;
+}
+
+.user-menu { position: relative; }
+
+.profile-button {
+  display: flex; align-items: center; gap: var(--space-3);
+  background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-primary);
+  padding: 5px 12px 5px 5px; border-radius: 100px; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.profile-button:hover { background: var(--border); border-color: var(--color-gold-soft); }
+.profile-button:active { background: var(--border); }
+.profile-button:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
+.profile-avatar {
+  width: 30px; height: 30px; background: var(--border); color: var(--text-primary);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.82rem; flex-shrink: 0;
+}
+
+.profile-info { display: flex; flex-direction: column; line-height: 1.25; text-align: left; }
+.profile-name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.profile-role { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.profile-chevron { color: var(--text-muted); transition: transform var(--transition); flex-shrink: 0; }
+.profile-chevron.open { transform: rotate(180deg); }
+
+.dropdown-name { font-size: 0.92rem; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+
+.profile-dropdown {
+  position: absolute; top: 100%; right: 0;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
+  padding: var(--space-3); min-width: 220px; margin-top: 8px; z-index: 151;
+}
+
+.profile-header { padding-bottom: var(--space-3); }
+.user-email { font-size: 0.8rem; color: var(--text-secondary); margin: 0; }
+.user-role {
+  font-size: 0.7rem; color: var(--color-gold); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 0 0;
+}
+
+.logout-button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 10px; margin-top: var(--space-3);
+  background: var(--danger); color: var(--danger-text); border: none;
+  border-radius: 100px; cursor: pointer; font-weight: 600;
+  transition: opacity var(--transition);
+}
+.logout-button:hover { opacity: 0.9; }
+
+@media (max-width: 768px) {
+  .navbar-container { padding: 0 var(--space-3); gap: var(--space-2); height: 60px; }
+  .menu-toggle { display: flex; width: 44px; height: 44px; }
+  .navbar-center { display: none; }
+  .navbar-right { gap: var(--space-2); }
+  .profile-info { display: none; }
+  .profile-button { padding: 6px; gap: 0; }
+  .cart-toggle, .theme-toggle, .notification-bell-toggle { width: 44px; height: 44px; }
+  .mobile-search-toggle { display: flex; }
+}
+
+.mobile-search-toggle {
+  display: none;
+}
+
+.mobile-search-row {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* --- components/Sidebar.css --- */
+.sidebar {
+  width: 264px;
+  background: var(--color-ink);
+  border-right: 1px solid #1c1c22;
+  overflow-y: auto;
+  transition: transform var(--transition);
+  position: relative;
+}
+
+.sidebar.closed { display: none; }
+
+.sidebar-content {
+  padding: var(--space-4) var(--space-3) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3);
+  height: 100%;
+}
+
+/* The single, always-visible landing pill (Home) above the accordion
+   nav panel - matches the Atelier design's "direct active landing
+   item" outside the collapsible groups. */
+.nav-active-pill {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px var(--space-3);
+  border-radius: 100px;
+  background: #17171d; border: 1px solid #282730;
+  color: #b5b0a6; text-decoration: none; font-size: 0.86rem; font-weight: 600;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.nav-active-pill:hover { border-color: rgba(155, 130, 107, 0.5); color: var(--color-ivory); }
+.nav-active-pill .nav-item-icon { color: var(--color-gold); opacity: 1; }
+.nav-active-pill.active {
+  background: #22212a; color: var(--color-ivory); border-color: #353340;
+}
+
+/* The rounded "card" panel holding the accordion nav groups - the
+   boutique atelier-card radius (--radius-xl), distinct from the
+   sidebar's own outer edge. */
+.sidebar-nav {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-3);
+  background: #141418;
+  border: 1px solid #1c1c22;
+  border-radius: var(--radius-xl);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.nav-group { display: flex; flex-direction: column; margin-bottom: 1px; }
+
+.nav-group-header {
+  display: flex; justify-content: space-between; align-items: center;
+  width: 100%; background: none; border: none; cursor: pointer;
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: #7d7970; font-weight: 600;
+  transition: color var(--transition), background var(--transition);
+}
+.nav-group-header:hover { color: var(--color-ivory); background: #1d1d24; }
+.nav-group-header-label { display: flex; align-items: center; gap: 8px; }
+.nav-group-icon { flex-shrink: 0; opacity: 0.85; width: 14px; height: 14px; }
+
+.nav-chevron { color: currentColor; opacity: 0.7; transition: transform var(--transition); width: 14px; height: 14px; }
+.nav-chevron.collapsed { transform: rotate(-90deg); }
+
+.nav-group-items { display: flex; flex-direction: column; padding: 2px var(--space-1) var(--space-2) var(--space-6); gap: 1px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  color: #7d7970;
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  transition: all var(--transition);
+}
+
+.nav-item-icon { flex-shrink: 0; opacity: 0.85; transition: opacity var(--transition); width: 16px; height: 16px; }
+
+.nav-item:hover {
+  background-color: #1d1d24;
+  color: var(--color-ivory);
+}
+.nav-item:hover .nav-item-icon { opacity: 1; }
+
+.nav-item.active {
+  background-color: rgba(155, 130, 107, 0.14);
+  color: var(--color-gold-soft);
+  font-weight: 600;
+}
+.nav-item.active .nav-item-icon { opacity: 1; color: var(--color-gold); }
+
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    height: calc(100vh - 60px);
+    z-index: 99;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar.closed { display: block; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 60px 0 0 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 98;
+  }
+}
