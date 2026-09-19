@@ -1,17 +1,25 @@
 """Catalog domain Pydantic schemas (request/response shapes)."""
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from app.modules.catalog.models import RATE_SOURCE_TYPES, RATE_CONFIDENCE_LEVELS, STANDARD_UOMS, uom_allowed_for_category, _validate_uom, _validate_source_type, _validate_confidence, _validate_margin_under_100, _validate_rate_field_not_negative
 from app.modules.catalog.models import Product, ProductMaterial, RateCard
 
+# Security-hardening constants (strict input validation pass) - same
+# convention as app/modules/sales/schemas.py and
+# app/modules/clients/services.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_LINE_ITEMS = 500
+
 
 class ProductMaterialInput(BaseModel):
     material_id: int
     quantity_required: Decimal = Decimal("1")
-    unit: Optional[str] = None
-    notes: Optional[str] = None
+    unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
     @field_validator("quantity_required")
     @classmethod
@@ -34,19 +42,19 @@ class ProductMaterialResponse(ProductMaterialInput):
 
 
 class ProductBase(BaseModel):
-    product_code: Optional[str] = None  # server-generated on create, ignored if supplied
-    name: str
-    product_type: str = "standard"  # "standard" | "custom"
-    category: Optional[str] = None
-    subcategory: Optional[str] = None
-    specifications: Optional[str] = None
+    product_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    product_type: str = Field(default="standard", max_length=_SHORT_TEXT_MAX)  # "standard" | "custom"
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    subcategory: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    specifications: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     length: Optional[Decimal] = None
     width: Optional[Decimal] = None
     height: Optional[Decimal] = None
-    dimension_unit: Optional[str] = "in"
-    primary_material: Optional[str] = None
-    finish: Optional[str] = None
-    unit: str = "Nos"
+    dimension_unit: Optional[str] = Field(default="in", max_length=_SHORT_TEXT_MAX)
+    primary_material: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    finish: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    unit: str = Field(default="Nos", max_length=_SHORT_TEXT_MAX)
     gst_percent: Optional[Decimal] = Decimal("18")
     material_cost: Optional[Decimal] = None
     hardware_cost: Optional[Decimal] = None
@@ -60,7 +68,7 @@ class ProductBase(BaseModel):
     margin_percent: Optional[Decimal] = None
     cost_price: Optional[Decimal] = None
     selling_price: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     is_active: bool = True
 
     @field_validator(
@@ -93,29 +101,40 @@ class ProductBase(BaseModel):
     def margin_percent_must_be_under_100(cls, v: Optional[Decimal]) -> Optional[Decimal]:
         # Same convention as RateCard.target_margin_percent: margin is
         # gross margin on the selling price, so 100% implies an
-        # infinite selling price and must be rejected.
+        # infinite selling price and must be rejected. A negative
+        # margin has no valid meaning here either (that would be a
+        # markdown, not a margin) - 0 is a legitimate, valid value
+        # (a deliberate zero-margin/at-cost product), so the floor is
+        # inclusive while the ceiling stays exclusive.
         if v is not None and v >= 100:
             raise ValueError("Margin percent must be less than 100% (100% margin implies an infinite selling price).")
+        if v is not None and v < 0:
+            raise ValueError("Margin percent cannot be negative.")
         return v
 
 
 class ProductCreate(ProductBase):
-    materials_used: List[ProductMaterialInput] = []
+    materials_used: List[ProductMaterialInput] = Field(default=[], max_length=_MAX_LINE_ITEMS)
+
+    # Request body, not the shared Base (which ProductResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    product_type: Optional[str] = None
-    category: Optional[str] = None
-    subcategory: Optional[str] = None
-    specifications: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    product_type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    subcategory: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    specifications: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     length: Optional[Decimal] = None
     width: Optional[Decimal] = None
     height: Optional[Decimal] = None
-    dimension_unit: Optional[str] = None
-    primary_material: Optional[str] = None
-    finish: Optional[str] = None
-    unit: Optional[str] = None
+    dimension_unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    primary_material: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    finish: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     gst_percent: Optional[Decimal] = None
     material_cost: Optional[Decimal] = None
     hardware_cost: Optional[Decimal] = None
@@ -129,9 +148,11 @@ class ProductUpdate(BaseModel):
     margin_percent: Optional[Decimal] = None
     cost_price: Optional[Decimal] = None
     selling_price: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     is_active: Optional[bool] = None
-    materials_used: Optional[List[ProductMaterialInput]] = None
+    materials_used: Optional[List[ProductMaterialInput]] = Field(default=None, max_length=_MAX_LINE_ITEMS)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator(
         "material_cost", "hardware_cost", "labour_cost", "machine_cost",
@@ -163,6 +184,8 @@ class ProductUpdate(BaseModel):
     def margin_percent_must_be_under_100(cls, v: Optional[Decimal]) -> Optional[Decimal]:
         if v is not None and v >= 100:
             raise ValueError("Margin percent must be less than 100% (100% margin implies an infinite selling price).")
+        if v is not None and v < 0:
+            raise ValueError("Margin percent cannot be negative.")
         return v
 
 
@@ -184,12 +207,12 @@ class ProductResponse(ProductBase):
 
 
 class RateCardBase(BaseModel):
-    rate_code: Optional[str] = None  # server-generated, ignored if supplied
-    category: str
-    subcategory: Optional[str] = None
-    item_name: str
-    specification: Optional[str] = None
-    location: str = "Indore, Madhya Pradesh"
+    rate_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated, ignored if supplied
+    category: str = Field(..., max_length=_SHORT_TEXT_MAX)
+    subcategory: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    item_name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    specification: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    location: str = Field(default="Indore, Madhya Pradesh", max_length=_MEDIUM_TEXT_MAX)
     uom: str
 
     market_reference_rate: Optional[Decimal] = None
@@ -203,9 +226,9 @@ class RateCardBase(BaseModel):
 
     effective_from: datetime
     source_type: str
-    source_reference: Optional[str] = None
+    source_reference: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     confidence: str = "NOT_VERIFIED"
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
     @field_validator("uom")
     @classmethod
@@ -245,7 +268,10 @@ class RateCardBase(BaseModel):
 
 
 class RateCardCreate(RateCardBase):
-    pass
+    # Request body, not the shared Base (which RateCardResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
 
 
 class RateCardUpdate(BaseModel):
@@ -257,10 +283,12 @@ class RateCardUpdate(BaseModel):
     wastage_percent: Optional[Decimal] = None
     tax_percent: Optional[Decimal] = None
     source_type: Optional[str] = None
-    source_reference: Optional[str] = None
+    source_reference: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     confidence: Optional[str] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     effective_from: Optional[datetime] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("source_type")
     @classmethod
@@ -286,7 +314,9 @@ class RateCardUpdate(BaseModel):
 
 class RateCardOverride(BaseModel):
     override_price: Decimal
-    override_reason: Optional[str] = None
+    override_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("override_price")
     @classmethod

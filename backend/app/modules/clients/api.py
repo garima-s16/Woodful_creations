@@ -21,9 +21,9 @@ from app.platform.security import get_current_user, require_role, rate_limit
 from app.platform.config import settings
 from app.platform.ids import generate_unique_code, generate_business_id
 from app.platform.storage import get_storage_backend, get_storage_backend_for_record
-from app.shared import validate_file_signature, build_workbook, xlsx_response
+from app.shared import build_workbook, xlsx_response, safe_content_disposition_filename, stream_upload_to_storage
 from app.modules.clients.models import Client, ClientActivity, ClientDocument, ClientProductRate
-from app.modules.sales.models import Order, Estimate
+from app.modules.sales.models import Order, Estimate, active_order_filter, OPEN_ESTIMATE_STATUSES
 from app.modules.catalog.models import Product
 from app.modules.catalog.pricing import resolve_selling_rate
 from app.modules.clients.services import ClientCreate, ClientUpdate, ClientResponse, ClientWithStats, ClientDocumentResponse
@@ -56,14 +56,33 @@ CLIENT_DOC_ALLOWED_MIME_TYPES = {
 clients_router = APIRouter(prefix="/api/clients", tags=["clients"])
 
 
+def _client_search_filter(search: str):
+    """The one shared "client search" definition - GET /api/clients/,
+    the Clients workspace, and the Clients Excel export all apply
+    exactly this filter, so searching for the same term always returns
+    the same set of clients everywhere in the app. Covers every
+    existing Client field a person would plausibly search by to find a
+    specific client: name, the two human-facing identifiers
+    (client_code, business_id), phone/alternate_phone, and email/
+    contact_person - all real, already-existing columns (see
+    clients/models.py), nothing invented. gstin/address/city are left
+    out: real fields, but not identifiers someone recognizes and types
+    in to find "the client", unlike the ones above."""
+    like = f"%{search}%"
+    return (
+        Client.name.ilike(like) | Client.client_code.ilike(like) | Client.business_id.ilike(like)
+        | Client.phone.ilike(like) | Client.alternate_phone.ilike(like)
+        | Client.email.ilike(like) | Client.contact_person.ilike(like)
+    )
+
+
 @clients_router.get("/", response_model=List[ClientResponse])
 def list_clients(response: Response, search: Optional[str] = Query(None),
                   limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
                   db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(Client)
     if search:
-        like = f"%{search}%"
-        query = query.filter((Client.name.ilike(like)) | (Client.client_code.ilike(like)) | (Client.phone.ilike(like)))
+        query = query.filter(_client_search_filter(search))
 
     query = query.order_by(Client.name)
     total = query.count()
@@ -106,6 +125,270 @@ def check_duplicate_clients(name: str = Query(..., min_length=2), db: Session = 
     }
 
 
+def _build_workspace_selected_client(db: Session, selected_client_id: int, is_privileged: bool):
+    """Compact detail payload for the Clients workspace's right-hand
+    panel: contact info, account overview, recent orders/estimates,
+    recent activity (via the existing, already-aggregated
+    client_relationship_timeline - never a second timeline), recent
+    documents, and notes. Everything this panel needs in one query
+    pass, mirroring _build_workspace_selected_order's role in the
+    Orders workspace (sales/api.py) - not a second/simplified
+    implementation of any of these, just a compact slice of it.
+    Returns None if the client does not exist (e.g. deleted between
+    the list load and the selection)."""
+    client = db.query(Client).filter(Client.id == selected_client_id).first()
+    if client is None:
+        return None
+
+    order_count, order_value_sum, received_sum, balance_sum = db.query(
+        func.count(Order.id), func.sum(Order.order_value), func.sum(Order.total_received), func.sum(Order.balance),
+    ).filter(Order.client_id == selected_client_id).one()
+
+    recent_orders = (
+        db.query(Order).filter(Order.client_id == selected_client_id)
+        .order_by(Order.order_date.desc()).limit(5).all()
+    )
+    recent_estimates = (
+        db.query(Estimate).filter(Estimate.client_id == selected_client_id)
+        .order_by(Estimate.created_at.desc()).limit(5).all()
+    )
+    recent_documents = (
+        db.query(ClientDocument).filter(ClientDocument.client_id == selected_client_id)
+        .order_by(ClientDocument.created_at.desc()).limit(5).all()
+    )
+    # Reuses the exact same Unified Client Relationship Timeline the
+    # Timeline tab on the full Client Detail page already calls (see
+    # client_relationship_timeline's own docstring) - just capped to a
+    # handful of entries for this compact panel, never a second feed.
+    timeline = client_relationship_timeline(db, selected_client_id, limit=6, is_privileged=is_privileged)
+
+    return {
+        "id": client.id, "client_code": client.client_code, "business_id": client.business_id,
+        "name": client.name, "client_type": client.client_type, "status": client.status,
+        "contact": {
+            "contact_person": client.contact_person, "phone": client.phone,
+            "alternate_phone": client.alternate_phone, "email": client.email,
+        },
+        "address": {
+            "billing_address": client.address, "site_address": client.site_address,
+            "city": client.city, "state": client.state, "pincode": client.pincode, "gstin": client.gstin,
+        },
+        "lead_source": client.lead_source,
+        "first_contact_date": client.first_contact_date.isoformat() if client.first_contact_date else None,
+        "account_overview": {
+            "total_orders": order_count or 0,
+            "total_order_value": float(order_value_sum) if is_privileged and order_value_sum is not None else None,
+            "total_received": float(received_sum) if is_privileged and received_sum is not None else None,
+            "outstanding_balance": float(balance_sum) if is_privileged and balance_sum is not None else None,
+        },
+        "orders": [
+            {
+                "id": o.id, "order_code": o.order_code, "project_status": o.project_status,
+                "order_value": float(o.order_value) if is_privileged and o.order_value is not None else None,
+                "delivery_date": o.delivery_date.isoformat() if o.delivery_date else None,
+                "progress_percent": o.progress_percent,
+            }
+            for o in recent_orders
+        ],
+        "estimates": [
+            {
+                "id": e.id, "estimate_code": e.estimate_code, "created_at": e.created_at.isoformat(),
+                "total_cost": float(e.total_cost) if is_privileged and e.total_cost is not None else None,
+                "status": e.status,
+            }
+            for e in recent_estimates
+        ],
+        "documents": [
+            {
+                "id": d.id, "original_filename": d.original_filename, "description": d.description,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in recent_documents
+        ],
+        "recent_activity": timeline["entries"][:5] if timeline else [],
+        "remarks": client.remarks,
+    }
+
+
+@clients_router.get("/workspace")
+def clients_workspace(
+    status: Optional[str] = Query(None), search: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_client_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_client_id is set), skip recomputing summary/clients and "
+                    "return only selected_client - mirrors the Orders workspace's own detail_only fast path.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Purpose-built, bounded response for the compact Clients
+    command-center workspace (KPI strip + 4 summary cards + compact
+    client list + inline selected-client detail panel) - modeled
+    directly on GET /api/orders/workspace (sales/api.py), which is the
+    finalized visual/architectural reference for this page. One
+    request on page load, at most one more per row selection.
+
+    Reuses the exact same data every other Clients/Orders/Estimates
+    screen already computes - Order.order_value/total_received/balance
+    (never a second ledger), client_relationship_timeline (never a
+    second activity feed) - and the same master-only financial
+    redaction rule used everywhere else in this codebase. This
+    endpoint only decides what shape to return, never how any figure
+    is computed.
+
+    detail_only=True mirrors the Orders workspace exactly: skips the
+    summary aggregates and the client list query entirely, returning
+    only the (possibly-None) selected_client."""
+    is_privileged = auth.get("role", "user") in ("master",)
+    now = datetime.utcnow()
+
+    if detail_only:
+        return {
+            "summary": None, "clients": None,
+            "selected_client": _build_workspace_selected_client(db, selected_client_id, is_privileged) if selected_client_id else None,
+        }
+
+    # --- summary: cheap, business-wide aggregates -------------------
+    total_clients = db.query(func.count(Client.id)).scalar() or 0
+    active_clients = db.query(func.count(Client.id)).filter(Client.status == "Active").scalar() or 0
+    active_percent = round(100 * active_clients / total_clients, 1) if total_clients else None
+
+    # "VIP / Premium" has no dedicated classification in the Client
+    # Master (see models.py's CLIENT_TYPES) - client_type="Business" is
+    # the closest existing distinction between client segments, so this
+    # reuses it rather than inventing a new VIP flag/scoring system.
+    business_clients = db.query(func.count(Client.id)).filter(Client.client_type == "Business").scalar() or 0
+
+    # Payment due: master-only, same Order.balance figures used
+    # everywhere else - never a second ledger.
+    payment_due_amount = None
+    clients_with_balance = 0
+    if is_privileged:
+        payment_due_amount = float(db.query(func.sum(Order.balance)).filter(Order.balance > 0).scalar() or 0)
+    clients_with_balance = db.query(func.count(func.distinct(Order.client_id))).filter(Order.balance > 0).scalar() or 0
+
+    # Account standing: reuses the exact same "balance outstanding 30+
+    # days" business rule the Orders workspace's own filter already
+    # applies (Order.balance > 0 and Order.order_date older than 30
+    # days) - not a new risk/scoring concept, just the existing one
+    # rolled up to the client level. Scoped to Client.status == "Active"
+    # (joined in) so it counts the same population active_clients does -
+    # previously this counted overdue balances across ALL clients
+    # (including inactive ones), then subtracted that from
+    # active_clients, which could subtract an inactive client's overdue
+    # balance from the active count and silently understate "in good
+    # standing" whenever an inactive client also had one.
+    overdue_cutoff = now - timedelta(days=30)
+    clients_with_overdue_balance = db.query(func.count(func.distinct(Order.client_id))).join(
+        Client, Order.client_id == Client.id
+    ).filter(
+        Order.balance > 0, Order.order_date < overdue_cutoff, Client.status == "Active",
+    ).scalar() or 0
+    clients_in_good_standing = max(0, active_clients - clients_with_overdue_balance)
+
+    # Active relationships: a client with a currently-open order or a
+    # currently-open estimate - existing status vocabularies on each
+    # entity, no new scoring system. Computed as a single SQL UNION
+    # (which already de-duplicates matching client_id rows) rather than
+    # pulling every matching client_id into two Python sets and unioning
+    # them in-process - avoids loading and holding O(N) rows in app
+    # memory just to count a union's size, letting the database do that
+    # with its own (indexed) DISTINCT instead. OPEN_ESTIMATE_STATUSES is
+    # the one shared definition (app/modules/sales/models.py) - not
+    # redeclared here.
+    active_orders_subq = db.query(Order.client_id.label("client_id")).filter(active_order_filter())
+    open_estimates_subq = db.query(Estimate.client_id.label("client_id")).filter(Estimate.status.in_(OPEN_ESTIMATE_STATUSES))
+    active_relationships_count = db.query(func.count()).select_from(
+        active_orders_subq.union(open_estimates_subq).subquery()
+    ).scalar() or 0
+
+    # Receivables overview: master-only, same Order sums as above.
+    receivables_overview = None
+    if is_privileged:
+        total_order_value = float(db.query(func.sum(Order.order_value)).scalar() or 0)
+        total_received = float(db.query(func.sum(Order.total_received)).scalar() or 0)
+        outstanding_balance = float(db.query(func.sum(Order.balance)).scalar() or 0)
+        receivables_overview = {
+            "total_order_value": total_order_value, "total_received": total_received,
+            "outstanding_balance": outstanding_balance,
+        }
+
+    active_order_count = db.query(func.count(Order.id)).filter(active_order_filter()).scalar() or 0
+    active_order_value = (
+        float(db.query(func.sum(Order.order_value)).filter(active_order_filter()).scalar() or 0)
+        if is_privileged else None
+    )
+    pipeline_rows = (
+        db.query(Order.project_status, func.count(Order.id))
+        .filter(active_order_filter()).group_by(Order.project_status).all()
+    )
+
+    summary = {
+        "total_clients": total_clients,
+        "active_clients": active_clients,
+        "active_percent": active_percent,
+        "business_clients": business_clients,
+        "payment_due_amount": payment_due_amount,
+        "clients_with_balance": clients_with_balance,
+        "active_relationships": active_relationships_count,
+        "portfolio": {
+            "total_clients": total_clients, "active_clients": active_clients,
+            "inactive_clients": max(0, total_clients - active_clients),
+        },
+        "account_standing": {
+            "in_good_standing": clients_in_good_standing,
+            "overdue_balance": clients_with_overdue_balance,
+        },
+        "receivables_overview": receivables_overview,
+        "active_orders_card": {
+            "active_order_count": active_order_count, "active_order_value": active_order_value,
+            "stage_breakdown": [{"status": s, "count": c} for s, c in pipeline_rows],
+        },
+    }
+
+    # --- clients: compact, paginated rows ---------------------------
+    query = db.query(Client)
+    if status:
+        query = query.filter(Client.status == status)
+    if search:
+        query = query.filter(_client_search_filter(search))
+    query = query.order_by(Client.name)
+    row_total = query.count()
+    page_clients = query.offset(offset).limit(limit).all()
+
+    client_ids = [c.id for c in page_clients]
+    # Two batched, grouped aggregate queries scoped to just this page's
+    # clients - never one query per row.
+    active_order_counts = dict(
+        db.query(Order.client_id, func.count(Order.id))
+        .filter(Order.client_id.in_(client_ids), active_order_filter())
+        .group_by(Order.client_id).all()
+    ) if client_ids else {}
+    order_value_sums = dict(
+        db.query(Order.client_id, func.sum(Order.order_value))
+        .filter(Order.client_id.in_(client_ids)).group_by(Order.client_id).all()
+    ) if client_ids else {}
+
+    client_rows = []
+    for c in page_clients:
+        client_rows.append({
+            "id": c.id, "client_code": c.client_code, "business_id": c.business_id, "name": c.name,
+            "contact_person": c.contact_person, "phone": c.phone, "email": c.email,
+            "active_orders": active_order_counts.get(c.id, 0),
+            "client_value": float(order_value_sums[c.id]) if is_privileged and order_value_sums.get(c.id) is not None else None,
+            "status": c.status,
+        })
+
+    clients_payload = {"items": client_rows, "total_count": row_total, "limit": limit, "offset": offset}
+
+    selected_client_payload = (
+        _build_workspace_selected_client(db, selected_client_id, is_privileged) if selected_client_id else None
+    )
+
+    return {"summary": summary, "clients": clients_payload, "selected_client": selected_client_payload}
+
+
 @clients_router.get("/{client_id}", response_model=ClientWithStats)
 def get_client(client_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     client = db.query(Client).filter(Client.id == client_id).first()
@@ -126,7 +409,7 @@ def get_client(client_id: int, db: Session = Depends(get_db), auth=Depends(get_c
 @clients_router.get("/{client_id}/relationship-timeline")
 def get_client_relationship_timeline(client_id: int, limit: int = Query(200, ge=1, le=500),
                                       db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Family 137 feature 5 - Unified Client Relationship Timeline. See
+    """Unified Client Relationship Timeline. See
     client_relationship_timeline's own docstring for the real sources
     aggregated. is_privileged gates payment amounts and financial
     notification types, matching every other financial-confidentiality
@@ -162,9 +445,20 @@ def delete_client(client_id: int, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="This client has orders and cannot be deleted.")
     if db.query(Estimate).filter(Estimate.client_id == client_id).first():
         raise HTTPException(status_code=400, detail="This client has estimates and cannot be deleted.")
+    # Collect document storage references BEFORE the client (and its
+    # cascaded ClientDocument rows - Client.documents has cascade="all,
+    # delete-orphan") is deleted and committed - once committed those
+    # rows are gone and their storage_backend/drive_file_id can no
+    # longer be read to clean up the physical/Drive file behind each
+    # one. Same get_storage_backend_for_record() abstraction
+    # delete_client_document already uses above, so this never
+    # reimplements storage access.
+    documents = db.query(ClientDocument).filter(ClientDocument.client_id == client_id).all()
+    storage_refs = [get_storage_backend_for_record(d) for d in documents]
+
     client_name = client.name
     db.query(ClientActivity).filter(ClientActivity.client_id == client_id).delete()
-    # Defect repair (F138 P2): ClientProductRate.client_id is a
+    # ClientProductRate.client_id is a
     # non-nullable FK with no cascade/back-reference on Client - a
     # client-specific rate override left dangling here once the client
     # it belongs to no longer exists is meaningless, not preserved
@@ -173,6 +467,19 @@ def delete_client(client_id: int, request: Request, db: Session = Depends(get_db
     db.query(ClientProductRate).filter(ClientProductRate.client_id == client_id).delete()
     db.delete(client)
     db.commit()
+
+    # Best-effort physical/Drive storage cleanup, same pattern as
+    # delete_client_document above - the DB delete is already committed
+    # and is the source of truth; a storage cleanup failure here is
+    # logged (never left silently unnoticed) rather than raised, since
+    # the client record itself is already gone and there is nothing
+    # left to roll back.
+    for backend, storage_ref in storage_refs:
+        try:
+            backend.delete(storage_ref)
+        except Exception:
+            logger.error(f"Orphaned file after client {client_id} delete: {storage_ref}")
+
     log_action(db, request, user_id=auth.get("user_id"), action="delete_client", module_name="clients",
                record_id=client_id, old_value={"name": client_name})
 
@@ -186,7 +493,9 @@ def list_client_documents(client_id: int, db: Session = Depends(get_db), auth=De
     ).all()
 
 
-@clients_router.post("/{client_id}/documents", response_model=ClientDocumentResponse, status_code=201)
+@clients_router.post("/{client_id}/documents", response_model=ClientDocumentResponse, status_code=201, dependencies=[
+    Depends(rate_limit("upload", settings.RATE_LIMIT_UPLOAD_PER_MINUTE))
+])
 def upload_client_document(client_id: int, file: UploadFile = File(...), description: Optional[str] = None,
                             request: Request = None, db: Session = Depends(get_db),
                             auth=Depends(require_role("master"))):
@@ -212,26 +521,11 @@ def upload_client_document(client_id: int, file: UploadFile = File(...), descrip
     backend = get_storage_backend()
     stored_filename = f"client_documents/{secrets.token_hex(16)}.{ext}"
 
-    size = 0
-    first_chunk = True
-    chunks = []
+    # Streams to storage in bounded chunks rather than buffering the
+    # whole upload in memory first - see app/shared.py's
+    # stream_upload_to_storage.
     try:
-        while chunk := file.file.read(1024 * 1024):
-            if first_chunk:
-                if not validate_file_signature(ext, chunk):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
-                    )
-                first_chunk = False
-            size += len(chunk)
-            if size > settings.MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
-                )
-            chunks.append(chunk)
-        storage_ref = backend.save(stored_filename, b"".join(chunks))
+        storage_ref = stream_upload_to_storage(backend, stored_filename, file, ext, settings.MAX_UPLOAD_SIZE)
     except HTTPException:
         raise
     except Exception:
@@ -284,7 +578,7 @@ def download_client_document(client_id: int, document_id: int, db: Session = Dep
         content=file_bytes, media_type=document.content_type or "application/octet-stream",
         headers={
             "Cache-Control": "no-store, private",
-            "Content-Disposition": f'attachment; filename="{document.original_filename}"',
+            "Content-Disposition": f'attachment; filename="{safe_content_disposition_filename(document.original_filename)}"',
         },
     )
 
@@ -321,7 +615,7 @@ activity_router = APIRouter(prefix="/api/client-activities", tags=["client-activ
 def list_client_activities(client_id: Optional[int] = Query(None), response: Response = None,
                             limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
                             db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    # Defect repair (F138 P1): ClientActivity is a communication log
+    # ClientActivity is a communication log
     # that only grows (see its own docstring) - called with no
     # client_id (e.g. a business-wide activity feed), this previously
     # fetched every activity ever logged for every client, unbounded.
@@ -738,10 +1032,13 @@ def resolve_pricing(data: PricingResolveRequest, db: Session = Depends(get_db),
     if not product:
         raise HTTPException(status_code=400, detail="Invalid Product ID")
 
-    cost = product.cost_price or product.suggested_cost_price
-    if cost is None:
-        cost = Decimal("0")
-    cost = Decimal(str(cost))
+    # `or` treats a legitimately-zero cost_price the same as a missing
+    # one (Decimal("0") is falsy) and would wrongly fall through to
+    # suggested_cost_price - use the same "is not None" idiom sales/
+    # api.py's own cost-basis resolution already uses.
+    cost_basis = product.cost_price if product.cost_price is not None else product.suggested_cost_price
+    cost_known = cost_basis is not None
+    cost = Decimal(str(cost_basis)) if cost_known else Decimal("0")
 
     customer_fixed = None
     customer_margin = None
@@ -763,6 +1060,30 @@ def resolve_pricing(data: PricingResolveRequest, db: Session = Depends(get_db),
         if estimate:
             estimate_margin = estimate.margin_percent_override
 
+    # A fixed-price override (explicit or customer-specific) always
+    # wins regardless of cost, same as resolve_selling_rate's own
+    # priority order - only when resolution would actually fall through
+    # to margin math (which genuinely needs a real cost) does the
+    # "cost is missing/unknown" case matter here.
+    would_use_margin_math = data.explicit_override is None and customer_fixed is None
+    if not cost_known and would_use_margin_math:
+        # No cost basis exists at all - this is "cost is missing/
+        # unknown", not "cost is legitimately zero" (that case already
+        # has cost_known=True and correctly flows through the normal
+        # margin math below). Inventing a cost of 0 here would silently
+        # zero out an otherwise-valid product selling price, so instead
+        # preserve the product's own stored selling_price as the
+        # resolved rate where one exists.
+        if product.selling_price is not None:
+            return PricingResolveResponse(
+                selling_rate=product.selling_price, pricing_rule_applied="PRODUCT_STORED_SELLING_PRICE",
+                margin_percent_used=None, cost_used=None,
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="This product has no cost price and no stored selling price - set one before resolving pricing.",
+        )
+
     result = resolve_selling_rate(
         cost=cost, explicit_override=data.explicit_override,
         customer_product_fixed_price=customer_fixed, customer_margin_percent=customer_margin,
@@ -770,7 +1091,7 @@ def resolve_pricing(data: PricingResolveRequest, db: Session = Depends(get_db),
     )
     return PricingResolveResponse(
         selling_rate=result.selling_rate, pricing_rule_applied=result.pricing_rule_applied,
-        margin_percent_used=result.margin_percent_used, cost_used=cost,
+        margin_percent_used=result.margin_percent_used, cost_used=cost if cost_known else None,
     )
 
 
@@ -797,8 +1118,7 @@ def export_clients(
     query = db.query(Client)
     filters_applied = []
     if search:
-        like = f"%{search}%"
-        query = query.filter((Client.name.ilike(like)) | (Client.client_code.ilike(like)) | (Client.phone.ilike(like)))
+        query = query.filter(_client_search_filter(search))
         filters_applied.append(f'Search: "{search}"')
     if status:
         query = query.filter(Client.status == status)

@@ -321,7 +321,7 @@ def mark_read(notification_id: int, db: Session = Depends(get_db), auth=Depends(
     notification = db.query(Notification).filter(Notification.id == notification_id).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
-    # Defect repair: this used to only check
+    # This used to only check
     # `recipient_user_id in (None, my_id)`, which treats EVERY
     # broadcast (recipient_user_id is None) as visible to any
     # authenticated user - including a master-only financial broadcast

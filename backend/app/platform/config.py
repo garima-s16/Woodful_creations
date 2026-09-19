@@ -17,7 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # when the app is launched from the repo root instead of from inside
 # backend/.
 #
-# Defect repair: this used to walk FOUR parents from
+# This used to walk FOUR parents from
 # backend/app/platform/config.py, which lands one directory too high -
 # at the project root (the parent of backend/, sibling to frontend/) -
 # instead of on backend/ itself. That meant this file silently pointed
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATABASE_URL: str = "sqlite:///./woodful.db"
-    # Defect repair (F138 P17): this and UPLOAD_DIRECTORY (below, under
+    # This and UPLOAD_DIRECTORY (below, under
     # --- Uploads ---) named the same concept - where local document/
     # file storage lives on disk - under two different settings.
     # UPLOAD_DIRECTORY is the one actually read anywhere (see
@@ -146,6 +146,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_COMMUNICATION_SEARCH_PER_MINUTE: int = 20  # per IP
     RATE_LIMIT_COMMUNICATION_AI_PER_MINUTE: int = 10  # per IP - summarize/draft
     RATE_LIMIT_BULK_NOTIFICATION_PER_MINUTE: int = 10  # per IP - mark-all-read and similar bulk ops
+    # Upload endpoints (documents, client/payment documents, resumes) -
+    # each request streams to disk/Drive and does real I/O, so this is
+    # tighter than RATE_LIMIT_DEFAULT_PER_MINUTE (the app-wide floor
+    # every endpoint already gets from GlobalRateLimitMiddleware, which
+    # still applies underneath this - this is a stricter, upload-
+    # specific ceiling on top of it, not a replacement).
+    RATE_LIMIT_UPLOAD_PER_MINUTE: int = 10  # per IP
     # "memory" (default - single process, zero extra dependency at runtime)
     # or "redis" (required for a multi-instance/multi-worker production
     # deployment, where the in-memory limiter's buckets would not be
@@ -153,9 +160,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_BACKEND: str = "memory"
 
     # In-process background scheduler for AutomationService/
-    # NotificationService.run_all_checks (Family 131 section 23 -
+    # NotificationService.run_all_checks, so notifications stay
     # "auto-generated", not only generated when someone happens to open
-    # the notification panel). This app installs no Celery/APScheduler
+    # the notification panel. This app installs no Celery/APScheduler
     # (see automation_service.py's own module docstring) and the
     # docker-entrypoint runs a single uvicorn process with no --workers
     # flag (see backend/docker-entrypoint.sh), so one lightweight
@@ -215,7 +222,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
     # Authoritative local-storage root (see app/platform/storage.py's
     # LocalStorageBackend) - STORAGE_LOCAL_ROOT above is a deprecated
-    # alias for this same setting (F138 P17).
+    # alias for this same setting.
     UPLOAD_DIRECTORY: str = "./uploads"
     # Same reasoning as CORS_ORIGINS above - plain string, split via property.
     ALLOWED_EXTENSIONS: str = "pdf,xlsx,docx,jpg,png,jpeg"
@@ -251,7 +258,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def debug_must_be_off_in_production(self):
-        # Defect repair (F138 P17): honor a deprecated, explicitly-set
+        # Honor a deprecated, explicitly-set
         # STORAGE_LOCAL_ROOT by folding it into UPLOAD_DIRECTORY (the
         # one setting storage.py actually reads) when UPLOAD_DIRECTORY
         # itself was left at its own default - see STORAGE_LOCAL_ROOT's
@@ -323,7 +330,7 @@ class Settings(BaseSettings):
                 "processes/instances and would silently under-enforce every configured limit."
             )
 
-        # Defect repair (F138 P11): REDIS_URL defaults to
+        # REDIS_URL defaults to
         # redis://localhost:6379/0 - fine for local dev, but if a
         # production deployment enables RATE_LIMIT_BACKEND=redis and
         # simply never overrides REDIS_URL, every instance would either
@@ -343,6 +350,27 @@ class Settings(BaseSettings):
                 "and RATE_LIMIT_BACKEND=redis. Set REDIS_URL to the real, shared Redis instance's "
                 "connection string - refusing to start rather than silently run each production "
                 "instance against its own local Redis (or fail to connect to one at all)."
+            )
+
+        # "*" tells uvicorn's ProxyHeadersMiddleware to trust
+        # X-Forwarded-For from ANY connecting peer, not just a known
+        # proxy - since every per-IP rate limiter (security.py,
+        # middleware.py) ultimately reads request.client.host, which
+        # becomes attacker-controlled the moment X-Forwarded-For is
+        # trusted from an arbitrary source, this turns every IP-based
+        # rate limit and backoff in the app into something any client
+        # can spoof past by simply sending its own X-Forwarded-For
+        # header. A specific IP/CIDR (including the safe default,
+        # 127.0.0.1) is a topology decision this validator can't judge -
+        # only the universal wildcard is unconditionally unsafe.
+        if self.ENVIRONMENT == "production" and self.FORWARDED_ALLOW_IPS.strip() == "*":
+            raise ValueError(
+                "FORWARDED_ALLOW_IPS is '*' while ENVIRONMENT=production - this tells uvicorn "
+                "to trust the X-Forwarded-For header from ANY client, letting every IP-based "
+                "rate limit and login backoff be trivially spoofed. Set FORWARDED_ALLOW_IPS to "
+                "the real reverse proxy/load balancer's specific IP address or CIDR range "
+                "instead. Refusing to start rather than silently run production with "
+                "spoofable rate limiting."
             )
 
         # Gemini and Drive are each explicit opt-ins (GEMINI_ENABLED /

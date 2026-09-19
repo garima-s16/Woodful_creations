@@ -14,15 +14,19 @@
 :root {
   /* ---- Raw brand palette — fixed, does NOT change with theme ----
      This is the literal Woodful teak/ivory family. It stays constant in
-     both themes because it also drives the app's permanent dark chrome
-     (Navbar, Sidebar, Footer, ChatWidget's own header bar specifically -
-     its message body below uses the theme-adaptive --surface, so the
-     panel as a whole is mixed, not uniformly fixed; the login screen's
-     brand panel) and "inverse fill" controls (a teak/ivory button always
-     paired with dark ink text) - those are a fixed brand presentation,
-     not page content, so they don't flip with the theme toggle. Only
-     the semantic tokens below (background/surface/text/etc.) change
-     between dark and light - see the [data-theme="light"] block. */
+     both themes. The Navbar and Sidebar now re-theme along with the
+     rest of the app (see layout.css's top comment) and are built from
+     the semantic tokens below instead, but this raw palette still
+     drives what remains permanently fixed brand presentation: the
+     Footer, ChatWidget's own header bar specifically (its message body
+     below uses the theme-adaptive --surface, so the panel as a whole
+     is mixed, not uniformly fixed), the gold accent used throughout
+     both the Navbar and Sidebar for active-nav states, and "inverse
+     fill" controls (a teak/ivory button always paired with dark ink
+     text) - none of those are page content, so they don't flip with
+     the theme toggle. Only the semantic tokens below (background/
+     surface/text/etc.) change between dark and light - see the
+     [data-theme="light"] block. */
   --color-ink: #101014;
   --color-charcoal: #17171d;
   --color-charcoal-elevated: #1d1d24;
@@ -126,15 +130,60 @@
      cannot serve both, so this token flips with --danger's own tuning
      instead. */
   --danger-text: var(--color-ink);
+
+  /* ---- Modal/Form "Final Form Modal" design tokens — Dark Theme only ----
+     A richer, more premium palette supplied specifically for the
+     Modal/Form system (components.css's Modal.css/Form.css sections),
+     deliberately kept as its OWN token family rather than folded into
+     --surface/--border/--text-*/--color-gold above - those remain
+     exactly as already finalized for every other surface in the app
+     (cards, tables, dashboard chrome, sidebar, navbar), per the
+     standing "do not modify the finalized Dashboard" rule - only
+     components.css's .modal-* / .form-* / .wizard-* selectors read
+     these. Dark values below are the supplied Dark Theme reference
+     palette; the [data-theme='light'] block further down maps every
+     one of these to an EXISTING light-theme dashboard token (never a
+     new literal hex) chosen to match the supplied Light Theme
+     reference - the two happen to already be very close, which is
+     exactly why reusing the existing token is correct here rather
+     than inventing a parallel light palette. */
+  --modal-surface: #151419;            /* modal panel background */
+  --modal-surface-header: #111014;     /* header strip - a touch recessed */
+  --modal-surface-footer: #1c1a21;     /* footer strip - a touch elevated, same role as --surface-elevated */
+  --modal-surface-input: #1c1a21;      /* input background - "dark elevated surface" */
+  --modal-surface-input-hover: #232029;
+  --modal-surface-hover: #2b2733;      /* ghost/close-button hover */
+  --modal-border: #2b2733;             /* panel border, section dividers */
+  --modal-border-input: #3c3746;       /* input border - a touch more visible than the panel border */
+  --modal-text-primary: #f4f3f0;
+  --modal-text-secondary: #d4cfdc;
+  --modal-text-label: #c0bac9;
+  --modal-text-muted: #9b94a6;
+  --modal-text-faint: #736c7e;         /* eyebrow/placeholder-weight text */
+  --modal-accent: #c59a63;
+  --modal-accent-strong: #d8b07d;
+  --modal-accent-soft: #e3be8d;
+  --modal-accent-deep: #8e653e;
+  --modal-shadow: 0 24px 64px rgba(5, 4, 6, 0.55), 0 2px 8px rgba(5, 4, 6, 0.35);
+  /* Backdrop tint behind the modal - a touch darker than the modal
+     panel itself (drawn from the same supplied surface family, #0b0a0d)
+     so the dimming reads as part of the same palette rather than an
+     unrelated gray. */
+  --modal-overlay-tint: rgba(11, 10, 13, 0.55);
+  /* Primary-action gradient - the one place a gradient is used, per
+     the supplied reference's own primary CTA treatment. */
+  --modal-cta-gradient: linear-gradient(135deg, #8e653e, #c59a63);
+  --modal-cta-gradient-hover: linear-gradient(135deg, #c59a63, #d8b07d);
 }
 
 /* ---- Light theme — same tokens, warm-paper values instead of dark ----
    Toggled via a data-theme="light" attribute on <html> (see
    redux/slices/themeSlice.js + App.jsx's useThemeSync). Only the
-   semantic layer changes; the raw --color-* palette above is untouched,
-   which is what keeps the dark chrome (Navbar/Sidebar/Footer/ChatWidget/
-   login) visually identical in both themes - by design, that chrome is
-   Woodful's fixed brand presentation, not page content. */
+   semantic layer changes; the raw --color-* palette above is untouched.
+   The Navbar and Sidebar re-theme along with everything else (see
+   layout.css's top comment); the Footer and ChatWidget header remain
+   Woodful's fixed brand presentation, not page content, per index.css's
+   raw-palette comment above. */
 [data-theme='light'] {
   --background: #f8f6f0;             /* warm paper, not stark white */
   --surface: #ffffff;                /* card/panel background */
@@ -167,6 +216,54 @@
   --shimmer-highlight: rgba(38, 34, 30, 0.08);
 
   --danger-text: var(--color-white);
+
+  /* Light Theme's own form-modal treatment - reuses only EXISTING
+     light-dashboard tokens (never a new literal color), reassigned so
+     the modal panel (pure white, --surface) reads as subtly distinct
+     from its header/footer/input surfaces (warm ivory, --surface-
+     elevated / --background) - the same layered-depth relationship
+     the supplied Light reference uses, built entirely from colors the
+     locked Light Dashboard already defines elsewhere.
+
+     --modal-surface-input specifically reconciled to --surface-elevated
+     (not --background): --surface-elevated's own documented purpose
+     above is literally "modals, popovers, hover" - the correct existing
+     token for a surface that lives inside a modal, whereas --background
+     is "page background", a different surface a modal's own input has
+     no relationship to. This also mirrors the Dark Theme reference
+     above, where --modal-surface-input and --modal-surface-footer are
+     literally the same value (#1c1a21) - i.e. the input reads as the
+     same "elevated" depth as the footer, not the page underneath - and
+     matches the one other place this app already distinguishes an
+     input surface from its resting panel (.global-search-input in
+     components.css: --surface-elevated at rest, brightening to
+     --surface on focus/hover). --modal-surface-input-hover follows the
+     same relationship, one step brighter still (pure white, --surface),
+     for the same reason. */
+  --modal-surface: var(--surface);
+  --modal-surface-header: var(--surface-elevated);
+  --modal-surface-footer: var(--surface-elevated);
+  --modal-surface-input: var(--surface-elevated);
+  --modal-surface-input-hover: var(--surface);
+  --modal-surface-hover: var(--surface-elevated);
+  --modal-border: var(--border-color);
+  --modal-border-input: var(--border-strong);
+  --modal-text-primary: var(--text-primary);
+  --modal-text-secondary: var(--text-secondary);
+  --modal-text-label: var(--text-primary);
+  --modal-text-muted: var(--text-secondary);
+  --modal-text-faint: var(--text-muted);
+  --modal-accent: var(--color-gold);
+  --modal-accent-strong: var(--color-gold-soft);
+  --modal-accent-soft: var(--color-gold-soft);
+  --modal-accent-deep: var(--color-gold);
+  --modal-shadow: var(--shadow-lg);
+  /* Light backdrop - a lighter dim than Dark's (per the supplied Light
+     reference: warm dark tint at ~30% opacity, vs Dark's ~55%), so the
+     page underneath stays clearly recognizable against a bright page. */
+  --modal-overlay-tint: rgba(32, 28, 24, 0.3);
+  --modal-cta-gradient: linear-gradient(135deg, #9e7844, #c59a63);
+  --modal-cta-gradient-hover: linear-gradient(135deg, #8e653e, #b08351);
 
   color-scheme: light;
 }

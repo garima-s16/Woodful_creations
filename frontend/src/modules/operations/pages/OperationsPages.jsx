@@ -288,7 +288,7 @@ function TaskDetailPage() {
   }, [taskId]);
 
   useEffect(() => {
-    // Defect repair (F138 P4.2): taskId changing (via the "View
+    // taskId changing (via the "View
     // previous task" hand-off link below, which points at
     // /daily-tasks/:id while staying on this same route/component)
     // means this is a different task now, not a background refresh of

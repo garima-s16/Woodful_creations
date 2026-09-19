@@ -386,15 +386,14 @@ def apply_task_completion(task: DailyTask) -> None:
 
     Used directly by ChatService's task-completion action, which
     previously set task.status/completion_percent by hand and never
-    touched actual_completed_at at all - that was the actual defect.
-    update_daily_task below implements the identical behavior inline
-    (verified to match exactly) rather than calling this function
-    directly, since its own version is entangled with status_changed's
-    timing-sensitive computation (used for this same route's
-    reassignment-notification logic further down) - touching that
-    working code isn't necessary to fix the defect, which was entirely
-    that the chatbot never reached equivalent logic in the first
-    place."""
+    touched actual_completed_at at all. update_daily_task below
+    implements the identical behavior inline (verified to match
+    exactly) rather than calling this function directly, since its own
+    version is entangled with status_changed's timing-sensitive
+    computation (used for this same route's reassignment-notification
+    logic further down) - touching that working code isn't necessary
+    here, since the gap was entirely that the chatbot never reached
+    equivalent logic in the first place."""
     if task.status != "DONE":
         task.actual_completed_at = datetime.utcnow()
     task.status = "DONE"
@@ -894,7 +893,7 @@ def update_work_centre(work_centre_id: int, data: WorkCentreUpdate, db: Session 
 @work_centres_router.get("/{work_centre_id}/capacity")
 def get_work_centre_capacity(work_centre_id: int, date: Optional[str] = Query(None),
                               db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """P0.3.6 - real capacity awareness: sums estimated_duration_minutes
+    """Real capacity awareness: sums estimated_duration_minutes
     of every operation actually assigned to this work centre on the
     given date (via start_time's date), compares against the work
     centre's own configured capacity_hours_per_day. Never claims a

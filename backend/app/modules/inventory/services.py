@@ -24,7 +24,7 @@ from app.modules.procurement.models import SupplierMaterial
 from app.modules.operations.schemas import IssueCreate
 from app.modules.inventory.schemas import StockTransferCreate, StockAdjustmentCreate
 from app.platform.ids import generate_unique_code, generate_business_id
-from app.modules.sales.models import Order, OrderItem
+from app.modules.sales.models import Order, OrderItem, active_order_filter
 from app.modules.catalog.models import ProductMaterial
 
 
@@ -228,7 +228,7 @@ def _stock_summary(db: Session, user_role: str = "user"):
 
 def _at_risk_orders(db: Session):
     """Which open orders currently have a real, current material
-    shortage - Family 130 section 15's "which materials will run
+    shortage - the "which materials will run
     short" target question, framed the more actionable way: not just
     which material, but which customer order it actually threatens."""
     at_risk = StockService.calculate_at_risk_orders(db)
@@ -326,7 +326,7 @@ def _material_usage_summary(m: str, db: Session):
     if not material:
         return None
 
-    # Defect repair (F138 P1): previously loaded every Issue row ever
+    # Previously loaded every Issue row ever
     # recorded against this material (a real, only-growing
     # transactional table) just to compute a count and a per-order
     # breakdown - a heavily-issued material could mean a very large
@@ -393,7 +393,7 @@ def _recent_purchases(db: Session):
 
 
 def _pending_purchases(db: Session):
-    # Defect repair (F138 P1): previously loaded every pending-payment
+    # Previously loaded every pending-payment
     # Purchase (a real, only-growing transactional table) into memory
     # just to report a count and show 10 - now counts in SQL and pulls
     # only the 10 rows actually shown, matching _recent_purchases'
@@ -556,7 +556,7 @@ def _summarize_supplier(m: str, db: Session, user_role: str):
         return None
     supplier = suppliers[0]
 
-    # Defect repair (F138 P1): previously loaded every Purchase this
+    # Previously loaded every Purchase this
     # supplier has ever had (a real, only-growing transactional table)
     # into memory just to derive counts/sums - a supplier active for
     # years could mean thousands of rows fetched for a one-line chat
@@ -692,7 +692,7 @@ class StockService:
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
 
-        # Defect repair (F138 P13.1): Issue.unit is a separate, free-text
+        # Issue.unit is a separate, free-text
         # field from Material.unit, and this quantity is subtracted
         # straight from Material.current_stock/total_issued with no
         # conversion step anywhere in the codebase - same gap, same fix,
@@ -715,12 +715,16 @@ class StockService:
             )
 
         resolved_location_id = data.location_id or material.location_id
-        if data.location_id:
-            # A location was explicitly requested - it must actually have
-            # enough stock, not just the material overall (a material can
-            # be split across racks; issuing from an empty rack while
-            # another rack is full must be rejected even though the
-            # material-wide total would cover it).
+        if resolved_location_id:
+            # Validate against the RESOLVED location - whether it was
+            # explicitly requested or fell back to the material's own
+            # primary location - not only when the caller explicitly
+            # supplied location_id. A material can be split across
+            # racks; issuing from an empty rack while another rack is
+            # full must be rejected even though the material-wide total
+            # would cover it, and that is exactly as true when the
+            # location was defaulted from the material as when it was
+            # typed in explicitly.
             location_balance = StockService._location_balance(db, material.id, resolved_location_id)
             if data.quantity_issued > location_balance:
                 raise HTTPException(
@@ -732,7 +736,7 @@ class StockService:
             issue_code=issue_code, date=data.date, order_id=data.order_id,
             material_id=data.material_id, quantity_issued=data.quantity_issued, unit=data.unit,
             issued_to=data.issued_to, department=data.department, purpose=data.purpose,
-            approved_by=data.approved_by, remarks=data.remarks, location_id=data.location_id,
+            approved_by=data.approved_by, remarks=data.remarks, location_id=resolved_location_id,
             rate_at_issue=material.average_rate,
         )
         db.add(issue)
@@ -876,10 +880,14 @@ class StockService:
             )
 
         resolved_location_id = data.location_id or material.location_id
-        if data.location_id and data.quantity_delta < 0:
-            # A decrease at a specific location must not take that
-            # location's own balance negative, even if the material-wide
-            # total has room (stock at other locations doesn't help here).
+        if resolved_location_id and data.quantity_delta < 0:
+            # A decrease at the RESOLVED location - whether explicitly
+            # requested or defaulted from the material's own primary
+            # location - must not take that location's own balance
+            # negative, even if the material-wide total has room (stock
+            # at other locations doesn't help here). Validating only
+            # when location_id was explicitly supplied let an omitted
+            # location silently bypass this check.
             location_balance = StockService._location_balance(db, material.id, resolved_location_id)
             if -data.quantity_delta > location_balance:
                 raise HTTPException(
@@ -892,7 +900,7 @@ class StockService:
             related_issue_id=data.related_issue_id,
             quantity_delta=data.quantity_delta, stock_before=stock_before, stock_after=stock_after,
             reason=data.reason, adjusted_by=data.adjusted_by, business_id=generate_business_id(db),
-            location_id=data.location_id,
+            location_id=resolved_location_id,
         )
         db.add(adjustment)
         db.flush()  # assigns adjustment.id without committing, needed as the ledger entry's reference_id below
@@ -1021,8 +1029,9 @@ class StockService:
     @staticmethod
     def calculate_reserved_stock(db: Session, material_ids: list, exclude_order_id: int = None) -> dict:
         """Reserved Qty (spec section 9.2/5.4): unfulfilled BOM demand
-        for the given materials across every still-open order
-        (project_status not in "Completed"/"Cancelled" - the two
+        for the given materials across every still-open order (the same
+        authoritative active_order_filter() every other "active order"
+        count/filter in the app uses - Completed/Cancelled are the two
         terminal states where a material's demand no longer counts
         against future planning). "Unfulfilled" means the order's own
         BOM requirement for that material, minus whatever has already
@@ -1047,7 +1056,7 @@ class StockService:
         if not material_ids:
             return {}
 
-        orders_query = db.query(Order.id).filter(Order.project_status.notin_(["Completed", "Cancelled"]))
+        orders_query = db.query(Order.id).filter(active_order_filter())
         if exclude_order_id is not None:
             orders_query = orders_query.filter(Order.id != exclude_order_id)
         open_order_ids = [row[0] for row in orders_query.all()]
@@ -1214,7 +1223,7 @@ class StockService:
         return {"order_id": order_id, "materials": results}
 
     @staticmethod
-    def calculate_at_risk_orders(db: Session, limit: Optional[int] = None) -> list:
+    def calculate_at_risk_orders(db: Session, limit: Optional[int] = None, count_only: bool = False):
         """Business-wide version of calculate_order_material_requirements -
         which open orders have a real, current material shortage, computed
         once across the whole open-order book rather than by looping the
@@ -1234,7 +1243,7 @@ class StockService:
         card and the order detail page can share one frontend
         rendering path.
 
-        Defect repair (P1-6): `limit` is optional and defaults to None,
+        `limit` is optional and defaults to None,
         so every existing caller that needs the true, complete at-risk
         set (the alerts/automation job, the operations at-risk flag
         lookup) is unaffected. Only the dashboard widget - which has
@@ -1247,33 +1256,60 @@ class StockService:
         even know which ones are at risk and how to rank them) still
         runs in full either way - that part was already bulk/N+1-free
         and cannot be shortcut without changing which orders qualify.
-        """
-        open_orders = (
-            db.query(Order)
-            .options(selectinload(Order.client))
-            .filter(Order.project_status.notin_(["Completed", "Cancelled"]))
-            .all()
-        )
-        if not open_orders:
-            return []
-        orders_by_id = {o.id: o for o in open_orders}
-        open_order_ids = list(orders_by_id.keys())
 
+        `count_only=True` (added for the Orders workspace's "Materials
+        at Risk" KPI chip, which needs the TRUE total count across every
+        open order, not a top-N sample) returns just that integer,
+        short-circuiting right after the ranking pass below - before the
+        supplier_options query and the full Order+client re-query that
+        only the winning (possibly limited) result rows actually need.
+        Same shortage formula, same ranking, same qualifying orders as
+        every other caller - this does not add a second way of deciding
+        what counts as "at risk", it just skips work a bare count never
+        needed. `limit` is ignored when `count_only` is True.
+        """
+        # Only IDs are needed for the ranking pass below - order.client,
+        # order.order_code, etc. are only ever read for the (possibly
+        # much smaller, once `limit` is used) final winning set built
+        # after ranking, so there is no reason to eager-load the client
+        # relationship - or materialize full Order entities at all -
+        # for every open order up front. See the targeted re-query
+        # further down, right before the per-order enrichment/result
+        # loop, which is where those fields are actually needed.
+        open_order_ids = [
+            row[0] for row in
+            db.query(Order.id).filter(active_order_filter()).all()
+        ]
+        if not open_order_ids:
+            return 0 if count_only else []
+
+        # Column-pruned: only order_id/product_id/quantity are ever read
+        # below - selecting just those (instead of every OrderItem
+        # column, e.g. description/rate/amount/notes) avoids
+        # constructing full ORM instances and materializing columns
+        # this calculation never uses, for what can be every open
+        # order's every line item. Same filtered rows, same values,
+        # same result - just less loaded per row.
         items = (
-            db.query(OrderItem)
+            db.query(OrderItem.order_id, OrderItem.product_id, OrderItem.quantity)
             .filter(OrderItem.order_id.in_(open_order_ids), OrderItem.product_id.isnot(None))
             .all()
         )
         product_ids = list({item.product_id for item in items})
         if not product_ids:
-            return []
+            return 0 if count_only else []
 
-        bom_rows = db.query(ProductMaterial).filter(ProductMaterial.product_id.in_(product_ids)).all()
+        # Column-pruned the same way - only product_id/material_id/
+        # quantity_required are read below.
+        bom_rows = (
+            db.query(ProductMaterial.product_id, ProductMaterial.material_id, ProductMaterial.quantity_required)
+            .filter(ProductMaterial.product_id.in_(product_ids)).all()
+        )
         bom_by_product: dict = {}
         for row in bom_rows:
             bom_by_product.setdefault(row.product_id, []).append(row)
         if not bom_by_product:
-            return []
+            return 0 if count_only else []
 
         # required(order, material) - identical multiplication the
         # per-order function uses, just keyed by order this time
@@ -1285,7 +1321,7 @@ class StockService:
                 needed = Decimal(str(item.quantity)) * bom_line.quantity_required
                 required_by_order_material[key] = required_by_order_material.get(key, Decimal("0")) + needed
         if not required_by_order_material:
-            return []
+            return 0 if count_only else []
 
         material_ids = list({key[1] for key in required_by_order_material})
 
@@ -1316,10 +1352,22 @@ class StockService:
                 total_unfulfilled_by_material.get(material_id, Decimal("0")) + unfulfilled
             )
 
-        materials_by_id = {m.id: m for m in db.query(Material).filter(Material.id.in_(material_ids)).all()}
+        # Column-pruned: only id/name/unit/current_stock are read below
+        # (material.current_stock, .name, .unit) - Material has many
+        # more columns (opening_stock, total_purchased, total_issued,
+        # minimum_stock, average_rate, subcategory_id, ...) that this
+        # calculation never touches. Row objects from a multi-column
+        # query still support the same .attribute access used below,
+        # so nothing downstream changes.
+        materials_by_id = {
+            m.id: m for m in
+            db.query(Material.id, Material.name, Material.unit, Material.current_stock)
+            .filter(Material.id.in_(material_ids)).all()
+        }
 
+        # Column-pruned: only material_id/quantity are read below.
         pending_purchases = (
-            db.query(Purchase)
+            db.query(Purchase.material_id, Purchase.quantity)
             .filter(Purchase.material_id.in_(material_ids), Purchase.receipt_status != "Received")
             .all()
         )
@@ -1354,6 +1402,8 @@ class StockService:
             key=lambda oid: sum(m["shortage"] for m in at_risk[oid]),
             reverse=True,
         )
+        if count_only:
+            return len(ranked_order_ids)
         order_ids_to_build = ranked_order_ids[:limit] if limit is not None else ranked_order_ids
 
         all_shortage_material_ids = list({
@@ -1362,10 +1412,22 @@ class StockService:
         from app.modules.procurement.services import ProcurementService
         supplier_options = ProcurementService._supplier_options_for_materials(db, all_shortage_material_ids)
 
+        # Full Order rows (with the client relationship, needed for
+        # client_name below) loaded only for the orders that actually
+        # made the final, possibly-limited result set - not for the
+        # whole open-order book scanned above just to rank shortages,
+        # which never touched .client or any other Order column beyond
+        # .id at all.
+        winning_orders_by_id = {
+            o.id: o for o in
+            db.query(Order).options(selectinload(Order.client))
+            .filter(Order.id.in_(order_ids_to_build)).all()
+        } if order_ids_to_build else {}
+
         results = []
         for order_id in order_ids_to_build:
             materials = at_risk[order_id]
-            order = orders_by_id[order_id]
+            order = winning_orders_by_id[order_id]
             for m in materials:
                 m["supplier_options"] = supplier_options.get(m["material_id"], [])
             materials.sort(key=lambda m: m["shortage"], reverse=True)

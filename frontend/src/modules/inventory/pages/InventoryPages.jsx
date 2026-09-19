@@ -41,7 +41,7 @@ function InventoryPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
-  // Defect repair (F138 P4.3): the Stock/Purchases/Issues tabs below
+  // The Stock/Purchases/Issues tabs below
   // previously had no error state at all - a load failure silently
   // wiped whatever was already showing down to "No materials match
   // these filters." / "No purchases recorded yet." / "No issues
@@ -494,7 +494,7 @@ function InventoryPage() {
             { name: 'quantity_issued', label: 'Quantity Issued', type: 'number', required: true },
             {
               name: 'unit', label: 'Unit', type: 'computed',
-              // Defect repair (F138 P21 API-contract audit): this was a
+              // API-contract audit: this was a
               // free-typed text field seeded once from the pre-selected
               // material's unit, so switching the Material dropdown
               // after opening (or typing something else) could easily
@@ -882,7 +882,7 @@ function MaterialsPage() {
       setMaterials(res.data);
       setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
     }).catch(() => {
-      // Defect repair (F138 P4.2): a failed refetch (pagination, filter
+      // A failed refetch (pagination, filter
       // change, retry) used to wipe the already-loaded materials list to
       // [] here, so a transient blip during a background reload blanked
       // an already-populated catalog down to "No materials match your
@@ -1068,7 +1068,15 @@ function MaterialsPage() {
       await materialsAPI.update(editingMaterial.id, {
         name: formData.name, category: formData.category, brand_grade: formData.brand_grade,
         thickness_size: formData.thickness_size, unit: formData.unit,
-        minimum_stock: Number(formData.minimum_stock || 0), average_rate: formData.average_rate,
+        minimum_stock: Number(formData.minimum_stock || 0),
+        // average_rate is intentionally omitted here - the backend's
+        // MaterialUpdate schema has never accepted it (maintained only by
+        // purchase weighted-average calculations, never by a direct edit;
+        // see inventory/schemas.py's own comment on the field), so sending
+        // it was always a silent no-op. Newly strict backend validation
+        // (extra="forbid") now rejects an unrecognized key outright instead
+        // of silently ignoring it, so this field is dropped from the
+        // payload rather than left in to fail every save.
         supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null, location: formData.location,
         location_id: formData.location_id ? Number(formData.location_id) : null,
         subcategory_id: hierarchySelection.subcategoryId,

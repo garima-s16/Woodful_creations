@@ -13,7 +13,7 @@ import { CartIcon, CloseIcon } from '../../../components/icons';
 import '../../../styles/modules.css';
 
 // --- ProcurementRequirementsPage.jsx ---
-// Defect repair (F138 P21 API-contract audit): the backend has always
+// API-contract audit: the backend has always
 // paginated this endpoint (limit/offset, X-Total-Count header) since
 // ProcurementRequirement is a persisted, never-pruned record that only
 // accumulates over time - but this page never read the header or
@@ -187,7 +187,7 @@ function ProcurementRequirementDetailPage() {
   if (loadError || !requirement) return (
     <div className="page">
       {error && <Alert type="error" message={error} />}
-      {/* Defect repair (F138 P4.3): this detail load had no retry
+      {/* This detail load had no retry
           affordance on failure, unlike the loadError/Retry convention
           used on every other detail page in this codebase (e.g.
           ProcurementPages' Purchase/Supplier detail pages). */}

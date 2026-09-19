@@ -92,12 +92,12 @@ class AutomationService:
          "action": "Recommend a purchase quantity (master only) - proposes, never auto-creates a Purchase"},
         {"key": RULE_ORDER_AT_RISK_MATERIAL_SHORTAGE, "event": "An open order's real material shortage - "
          "against its own BOM, current stock, pending purchases and other orders' reservations - "
-         "not just a material below its reorder level (Family 130 - reuses "
+         "not just a material below its reorder level (reuses "
          "StockService.calculate_at_risk_orders, the same calculation already shown on the dashboard, "
          "the daily-tasks list and the AI chatbot, so this proactive notification can never disagree "
          "with what those other surfaces show)", "action": "Notify (broadcast) with a link to the order"},
         {"key": RULE_DELIVERY_RISK_CRITICAL, "event": "An order's delivery risk reaches CRITICAL "
-         "(P0.50) - reuses OrderService.bulk_attention_flags exactly, the same classification already "
+         "- reuses OrderService.bulk_attention_flags exactly, the same classification already "
          "shown on the Orders List and Dashboard, so this can never disagree with what a Master sees "
          "on-screen. Deliberately does NOT fire for WATCH or AT_RISK - only the most severe level, "
          "to avoid the notification noise section 38 explicitly warns against",
@@ -287,7 +287,7 @@ class AutomationService:
                 )
 
     # ---------------------------------------------------------------- #
-    # Rule: Order at risk of a material shortage (Family 130) -> notify
+    # Rule: Order at risk of a material shortage -> notify
     # ---------------------------------------------------------------- #
     @staticmethod
     def check_order_at_risk_material_shortage(db: Session, trigger_event: str = "on_demand_check") -> None:
@@ -295,8 +295,8 @@ class AutomationService:
         that rule is material-centric ("Plywood is low, buy more") and
         fires even for a shortage that threatens nothing yet. This rule
         is order-centric - it only fires when a real, current order is
-        actually blocked, and names which one, matching Family 130
-        section 8's target: "explain which order is at risk, why, and
+        actually blocked, and names which one, matching the
+        target: "explain which order is at risk, why, and
         what material causes the risk" rather than leaving that
         connection for someone to work out by hand."""
         from app.modules.inventory.services import StockService
@@ -342,14 +342,14 @@ class AutomationService:
                 )
 
     # ---------------------------------------------------------------- #
-    # Rule: Delivery risk reaches CRITICAL (P0.50) -> notify
+    # Rule: Delivery risk reaches CRITICAL -> notify
     # ---------------------------------------------------------------- #
     @staticmethod
     def check_delivery_risk_critical(db: Session, trigger_event: str = "on_demand_check") -> None:
         """Complements check_order_at_risk_material_shortage above: that
         rule fires on a material shortage specifically. This rule fires
-        on the order's overall delivery risk reaching CRITICAL (P0.50's
-        4-level model) - a real delivery commitment already missed and
+        on the order's overall delivery risk reaching CRITICAL (using the
+        same 4-level model) - a real delivery commitment already missed and
         still open, or imminent with a genuine blocker - regardless of
         which specific signal caused it. Reuses
         OrderService.bulk_attention_flags exactly, the same bounded,
@@ -359,10 +359,10 @@ class AutomationService:
         Deliberately does not fire for WATCH or AT_RISK - only the most
         severe level, to avoid the notification noise section 38
         explicitly warns against."""
-        from app.modules.sales.models import Order
+        from app.modules.sales.models import Order, active_order_filter
         try:
             active_order_ids = [
-                r[0] for r in db.query(Order.id).filter(Order.project_status != "Completed").all()
+                r[0] for r in db.query(Order.id).filter(active_order_filter()).all()
             ]
             if not active_order_ids:
                 return
@@ -700,7 +700,7 @@ class AutomationService:
     # ---------------------------------------------------------------- #
     @staticmethod
     def check_pending_leave_approval(db: Session, trigger_event: str = "on_demand_check") -> None:
-        """Approval Intelligence (Family 131 section 23): a Leave request
+        """Approval Intelligence: a Leave request
         left in 'Pending' is a real, queryable approval-required
         condition (Leave.status - see app/modules/hr/models.py), not a
         fabricated workflow. Broadcast, matching leaves.py's own existing
@@ -784,7 +784,7 @@ class AutomationService:
     # ---------------------------------------------------------------- #
     @staticmethod
     def check_payroll_finalization_overdue(db: Session, trigger_event: str = "on_demand_check") -> None:
-        """Payroll Issue (Family 131 section 23): a SalarySlip left in
+        """Payroll Issue: a SalarySlip left in
         'draft' after its own pay-period month has fully ended (plus a
         short grace window - see PAYROLL_FINALIZATION_GRACE_DAYS) is a
         genuine operational finding, derived only from SalarySlip.month/

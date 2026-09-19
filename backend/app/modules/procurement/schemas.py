@@ -1,17 +1,27 @@
 """Procurement domain Pydantic schemas."""
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 from app.modules.procurement.models import Supplier, SupplierMaterial, Purchase, ProcurementRequirement, SupplierDecision, PersonalCartItem, PROCUREMENT_REQUIREMENT_STATUSES
 from app.modules.inventory.models import PURCHASE_CREATE_RECEIPT_STATUSES
 
+# Security-hardening constants (strict input validation pass) - same
+# convention as app/modules/sales/schemas.py and
+# app/modules/clients/services.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_LINE_ITEMS = 500
+
 
 class PersonalCartItemCreate(BaseModel):
     material_id: int
     quantity: Decimal = Decimal("1")
     supplier_id: Optional[int] = None
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("quantity")
     @classmethod
@@ -28,7 +38,9 @@ class PersonalCartItemUpdate(BaseModel):
     intentional behavior list_my_cart/add_to_cart never needed since
     creation has no equivalent remove semantics."""
     quantity: Optional[Decimal] = None
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PersonalCartItemResponse(BaseModel):
@@ -57,16 +69,20 @@ class ProcurementRequirementCreate(BaseModel):
     client-supplied number."""
     order_id: int
     material_id: int
-    priority: Optional[str] = None
+    priority: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     required_by_date: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProcurementRequirementUpdate(BaseModel):
     status: Optional[str] = None
-    priority: Optional[str] = None
+    priority: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     required_by_date: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("status")
     @classmethod
@@ -87,7 +103,9 @@ class SupplierDecisionCreate(BaseModel):
     client-supplied value that could misrepresent the recommendation."""
     requirement_id: int
     selected_supplier_id: int
-    decision_reason: Optional[str] = None
+    decision_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class SupplierDecisionResponse(BaseModel):
@@ -138,12 +156,14 @@ class RequirementPurchaseCreate(BaseModel):
     never re-typed by the client, so the resulting Purchase can never
     disagree with the decision that was actually made."""
     quantity: Decimal
-    unit: str
+    unit: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     rate: Decimal
     gst_percent: Decimal = Decimal("0")
     expected_delivery_date: Optional[datetime] = None
     receipt_status: str = "Ordered"
     location_id: Optional[int] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("quantity")
     @classmethod

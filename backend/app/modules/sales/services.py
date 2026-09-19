@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.modules.sales.models import Order, Estimate
+from app.modules.sales.models import Order, Estimate, active_order_filter, is_active_order_status
 from app.modules.clients.models import Client
 from app.modules.ai.contracts import ChatContext, ProposedAction
 from decimal import Decimal
@@ -57,7 +57,7 @@ def _detect_payment_mode(m: str) -> Optional[str]:
 def _order_risk_workspace(db: Session, order_id: int, user_role: str, message: str):
     """"What is blocking this order" - delegates the actual risk
     computation to OrderService.compute_order_health (the single
-    authoritative Order Health/Risk contract, Family 130 P0.1), then
+    authoritative Order Health/Risk contract), then
     adds the chat-specific behavior that function deliberately does
     NOT do: role-based financial redaction, persisting the result as a
     real Woodful artifact (AIWorkspaceReport, so it's viewable/
@@ -269,7 +269,7 @@ def _describe_order_status(order) -> str:
 
 
 def _route_order_status_query(m: str, db: Session, user_role: str, context: Optional[ChatContext]):
-    """Family 131-adjacent Woodful Assistant fix - "siddharth ka order
+    """Woodful Assistant fix - "siddharth ka order
     kaha pahucha" and equivalent phrasing must answer the actual
     current stage, not the order's existence/code/value. Returns the
     full 5-tuple process_message expects
@@ -522,7 +522,7 @@ def _route_estimate_summary(m: str, db: Session, user_role: str, context: Option
 
 def _orders_summary(db: Session):
     total = db.query(func.count(Order.id)).scalar() or 0
-    active = db.query(func.count(Order.id)).filter(Order.project_status != "Completed").scalar() or 0
+    active = db.query(func.count(Order.id)).filter(active_order_filter()).scalar() or 0
     return (
         f"{total} total orders, {active} still active.",
         ["Show pending payments", "Show client count"], [],
@@ -603,7 +603,7 @@ def _profitability_summary(db: Session):
 # --- order_service.py ---
 """Keeps Order.total_received / balance consistent with the Payment
 register, and provides the profitability/dashboard aggregations, plus
-the deterministic Order Health/Risk contract (Family 130 P0.1) that
+the deterministic Order Health/Risk contract that
 both the chatbot and the plain Order Health API consume."""
 
 CASH_MODES = {"cash"}  # payment_mode is free-text on the model; compare case-insensitively
@@ -701,7 +701,7 @@ class OrderService:
         at-risk-orders chatbot query already use for this exact order).
         Never a fabricated figure or an invented score.
 
-        Family 130 P0.50 (Delivery Risk Engine) extends this same
+        The Delivery Risk Engine extends this same
         function rather than creating a second risk engine: a 4-level
         risk_level (ON_TRACK/WATCH/AT_RISK/CRITICAL, deterministic
         rules, not a numeric score), delivery_timing (honest days-
@@ -726,8 +726,7 @@ class OrderService:
         plain GET /api/orders/{id}/health REST endpoint call this same
         function rather than each computing risk independently. This
         is also the structured contract a future AI/agent should
-        consume instead of re-deriving risk logic of its own (Family
-        130 P0.1 section 22-24, P0.50 section 24).
+        consume instead of re-deriving risk logic of its own.
 
         Returns None if the order doesn't exist - callers decide how
         to surface that (404 for the API, a plain "not found" message
@@ -758,7 +757,7 @@ class OrderService:
         # from ordinary in-progress work.
         production_blockers = [j for j in jobs if (j.blocker_reason or "").strip()]
 
-        # Production connection (P0.50 section 14) - the structured
+        # Production connection - the structured
         # job breakdown the spec's own example asks for, from exactly
         # the same jobs list already queried above.
         production_summary = {
@@ -801,7 +800,7 @@ class OrderService:
                     actual_completion_date = log.created_at.isoformat()
                     break
 
-        # P0.50 Delivery Timing Intelligence - honest wording for every
+        # Delivery Timing Intelligence - honest wording for every
         # case (missing date, today, future, overdue), never negative/
         # confusing phrasing. days_remaining is negative when overdue;
         # is_overdue is the explicit, unambiguous signal callers should
@@ -823,11 +822,14 @@ class OrderService:
                 delivery_timing["urgency_text"] = f"{days_left} days remaining"
 
         delivery_at_risk = days_left is not None and 0 <= days_left <= 3 and (bool(open_tasks) or bool(incomplete_jobs))
-        delivery_overdue_open = days_left is not None and days_left < 0 and order.project_status != "Completed"
+        # is_active_order_status: a Cancelled order is just as terminal
+        # as a Completed one - its delivery commitment is moot, so it
+        # should never be flagged "overdue and still open" either.
+        delivery_overdue_open = days_left is not None and days_left < 0 and is_active_order_status(order.project_status)
 
         has_active_blocker = bool(blocked_tasks or material_shortages or production_blockers)
 
-        # P0.50 section 6 - a small, deterministic 4-level model, not an
+        # A small, deterministic 4-level model, not an
         # opaque score. CRITICAL is reserved for genuinely severe cases
         # (delivery commitment already missed and still open, or
         # imminent with a real blocker still active) - AT_RISK covers
@@ -1037,7 +1039,7 @@ class OrderService:
 
     @staticmethod
     def build_timeline(db: Session, order_id: int) -> Optional[dict]:
-        """Family 137 feature 2 - Visual Build Timeline. A read-only
+        """Visual Build Timeline. A read-only
         presentation layer over existing Milestone and ProductionJob
         data - reuses compute_order_health for the order's own
         risk_level rather than inventing a second status engine
@@ -1115,8 +1117,7 @@ class OrderService:
 
     @staticmethod
     def evaluate_delivery_promise(db: Session, order_id: int, requested_date: datetime) -> Optional[dict]:
-        """Family 137 feature 12 (cross-feature section 13's "Capacity-
-        Aware Delivery Promise") - evaluates whether a requested
+        """Capacity-Aware Delivery Promise - evaluates whether a requested
         delivery date is realistic using only genuinely existing
         signals; never a fabricated confidence score:
 
@@ -1279,12 +1280,27 @@ class OrderService:
         }
 
     @staticmethod
-    def bulk_attention_flags(db: Session, order_ids: List[int]) -> dict:
+    def bulk_attention_flags(db: Session, order_ids: List[int], risk_level_only: bool = False) -> dict:
         """Lightweight, batched "does this order need attention" flag for
-        the Order List (Family 130 P0.1 s.11) - fixed-count queries
+        the Order List - fixed-count queries
         regardless of how many orders are passed in, so listing a page of
         orders never becomes an N+1 or re-runs compute_order_health's
         per-order material-shortage calculation for every row.
+
+        risk_level_only=True: same classification, same queries, but
+        skips building the human-readable `reason` text (an f-string
+        touching each blocked/overdue task's or job's description) and
+        returns {order_id: risk_level} instead of the full
+        {order_id: {...}} shape. For a risk-priority sort
+        (_risk_sorted_page in sales/api.py), every order matching the
+        current filters has to be classified just to establish sort
+        order - only the page actually being displayed needs the full
+        reason/needs_attention detail, which is re-fetched normally
+        (risk_level_only=False) for just those rows afterward. This is
+        not a second risk calculation: it is the exact same
+        classification logic below, just with the reason-string
+        construction skipped and a smaller per-id return value for the
+        (potentially much larger) full-filtered-set call.
 
         Deliberately narrower than compute_order_health: covers only
         blocked tasks, overdue tasks (real DailyTask.due_date data),
@@ -1301,7 +1317,7 @@ class OrderService:
 
         Returns {order_id: {"needs_attention": bool, "reason": str|None,
         "risk_level": str}} for every id in order_ids (never a sparse/
-        omitted key). risk_level uses the same P0.50 4-level model as
+        omitted key). risk_level uses the same 4-level model as
         compute_order_health, built only from the signals already
         gathered above - material-shortage-driven CRITICAL/AT_RISK is
         still only available from the single-order health endpoint."""
@@ -1335,40 +1351,111 @@ class OrderService:
 
         result = {}
         for order_id, delivery_date, project_status in orders:
+            # has_reason tracks whether a reason WOULD be set, even in
+            # risk_level_only mode where the string itself is skipped -
+            # risk_level classification below depends on "is there a
+            # reason", not on the text, so this must stay computed
+            # either way.
             reason = None
+            has_reason = False
             has_blocker = order_id in blocked_by_order or order_id in blocker_by_order
             is_overdue_open = False
             if order_id in blocked_by_order:
-                reason = f"Task '{blocked_by_order[order_id].task_description}' is blocked"
+                has_reason = True
+                if not risk_level_only:
+                    reason = f"Task '{blocked_by_order[order_id].task_description}' is blocked"
             elif order_id in blocker_by_order:
-                reason = f"Production job '{blocker_by_order[order_id].job_code}' is blocked"
+                has_reason = True
+                if not risk_level_only:
+                    reason = f"Production job '{blocker_by_order[order_id].job_code}' is blocked"
             elif order_id in overdue_by_order:
-                reason = f"Task '{overdue_by_order[order_id].task_description}' is overdue"
+                has_reason = True
+                if not risk_level_only:
+                    reason = f"Task '{overdue_by_order[order_id].task_description}' is overdue"
             days_left = None
             if delivery_date:
                 days_left = (delivery_date.date() - now.date()).days
-                is_overdue_open = days_left < 0 and project_status != "Completed"
-                if reason is None and days_left <= 3 and (order_id in open_by_order or order_id in incomplete_job_by_order):
-                    reason = "Delivery date is within 3 days with work still open"
-            if is_overdue_open and reason is None:
-                reason = "Delivery date has passed and the order is not yet completed"
+                # is_active_order_status: same authoritative definition
+                # compute_order_health's delivery_overdue_open uses - a
+                # Cancelled order is just as terminal as a Completed
+                # one for this purpose.
+                is_overdue_open = days_left < 0 and is_active_order_status(project_status)
+                if not has_reason and days_left <= 3 and (order_id in open_by_order or order_id in incomplete_job_by_order):
+                    has_reason = True
+                    if not risk_level_only:
+                        reason = "Delivery date is within 3 days with work still open"
+            if is_overdue_open and not has_reason:
+                has_reason = True
+                if not risk_level_only:
+                    reason = "Delivery date has passed and the order is not yet completed"
 
-            # Same P0.50 4-level model as compute_order_health, using
+            # Same 4-level model as compute_order_health, using
             # only the signals this function already gathered - not a
             # second, independently-derived risk definition.
             if is_overdue_open and (has_blocker or order_id in overdue_by_order):
                 risk_level = "CRITICAL"
             elif days_left is not None and days_left <= 1 and has_blocker:
                 risk_level = "CRITICAL"
-            elif reason is not None or is_overdue_open:
+            elif has_reason or is_overdue_open:
                 risk_level = "AT_RISK"
             elif days_left is not None and 4 <= days_left <= 7 and (order_id in open_by_order or order_id in incomplete_job_by_order):
                 risk_level = "WATCH"
             else:
                 risk_level = "ON_TRACK"
 
-            result[order_id] = {"needs_attention": reason is not None, "reason": reason, "risk_level": risk_level}
+            if risk_level_only:
+                result[order_id] = risk_level
+            else:
+                result[order_id] = {"needs_attention": has_reason, "reason": reason, "risk_level": risk_level}
         return result
+
+    @staticmethod
+    def business_wide_risk_summary(db: Session) -> dict:
+        """The one, shared computation behind every "business-wide
+        delivery risk" figure in the app - the Orders workspace's
+        Delivery & Risk card (sales/api.py's orders_workspace) and the
+        main Dashboard's Orders widget (reporting/api.py's
+        orders_dashboard) both call this instead of each independently
+        re-deriving "every currently-open order id" and re-running
+        bulk_attention_flags over them to build the same
+        CRITICAL/AT_RISK/WATCH/ON_TRACK counts. Before this, that logic
+        was duplicated verbatim in both places - editing the risk
+        definition in one without the other would have silently made
+        Orders and the Dashboard disagree with each other.
+
+        Returns {"active_orders_count": int, "risk_counts":
+        {"CRITICAL"/"AT_RISK"/"WATCH"/"ON_TRACK": int}, "on_track_percent":
+        float|None} - "on track" here means ON_TRACK or WATCH (a Watch
+        order is still, by definition, not yet considered off track),
+        matching what the Orders workspace's on_track_percent already
+        meant. The full list of active order ids is intentionally NOT
+        part of this return value - bulk_attention_flags below still
+        has to materialize it internally to run its own batched
+        IN-queries (there is no stored/indexed risk column to aggregate
+        on directly - see the Orders risk-sorting notes on
+        _risk_sorted_page for why that wasn't rebuilt as raw SQL here),
+        but neither of this method's two callers (the Orders workspace,
+        the main Dashboard) ever needed the ids themselves, only the
+        counts - so this no longer hands them a full list to hold onto
+        for no reason."""
+        active_order_ids = [
+            r[0] for r in db.query(Order.id).filter(active_order_filter()).all()
+        ]
+        active_orders_count = len(active_order_ids)
+        risk_counts = {"CRITICAL": 0, "AT_RISK": 0, "WATCH": 0, "ON_TRACK": 0}
+        if active_order_ids:
+            flags = OrderService.bulk_attention_flags(db, active_order_ids)
+            for flag in flags.values():
+                risk_counts[flag["risk_level"]] = risk_counts.get(flag["risk_level"], 0) + 1
+        on_track_percent = (
+            round(100 * (risk_counts["ON_TRACK"] + risk_counts["WATCH"]) / active_orders_count, 1)
+            if active_orders_count else None
+        )
+        return {
+            "active_orders_count": active_orders_count,
+            "risk_counts": risk_counts,
+            "on_track_percent": on_track_percent,
+        }
 
     @staticmethod
     def profitability(db: Session, order: Order) -> dict:
@@ -1387,7 +1474,7 @@ class OrderService:
         later purchases and would otherwise silently rewrite the cost
         of an already-completed order).
 
-        Labour cost (Family P0.45, see labour_cost_bulk) is
+        Labour cost (see labour_cost_bulk) is
         deliberately kept OUT of actual_direct_costs/
         estimated_gross_profit/gross_margin_ratio above - those three
         are an existing, already-tested contract that predates labour
@@ -1438,7 +1525,7 @@ class OrderService:
             gross_profit = (order.order_value or Decimal("0")) - actual_direct_costs
             margin = float(gross_profit / order.order_value) if order.order_value else 0.0
 
-            # Labour (Family P0.45) is deliberately kept as separate,
+            # Labour is deliberately kept as separate,
             # clearly-labelled additional keys rather than folded into
             # actual_direct_costs/estimated_gross_profit/gross_margin_ratio
             # above - those three are an existing, already-tested
@@ -1469,7 +1556,7 @@ class OrderService:
                 # explicit and prevent a 100x misinterpretation error.
                 "gross_margin_ratio": round(margin, 6),
                 "status": order.project_status,
-                # Family P0.45 additions - additive only, see comment above.
+                # Labour additions - additive only, see comment above.
                 "labour_cost": float(labour["attributed_cost"]),
                 "labour_is_attributed": labour["is_attributed"],
                 "labour_days": labour["labour_days"],
@@ -1482,7 +1569,7 @@ class OrderService:
 
     @staticmethod
     def labour_cost_bulk(db: Session, orders: List[Order]) -> dict:
-        """Family P0.45 - Labour Cost Attribution. Uses only data that
+        """Labour Cost Attribution. Uses only data that
         genuinely already exists and is already the codebase's own
         established convention, not an invented rate:
 
@@ -1664,7 +1751,7 @@ ESTIMATE_TRANSITIONS = {
     # gate every estimate must pass through.
     "draft": {"sent", "approved", "rejected", "cancelled"},
     # changes_requested: the client used the Client Approval Hub
-    # (Family 137, feature 1) and asked for changes rather than
+    # and asked for changes rather than
     # approving - see clients/portal_api.py. Staff addresses the
     # feedback and moves it back to "sent" (a revised estimate version
     # going out again), not directly to approved/rejected from here.

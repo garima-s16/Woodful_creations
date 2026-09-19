@@ -1,50 +1,138 @@
-// HR workforce pages: employees list/detail, attendance, leaves,
+// HR workforce pages: employees workspace, attendance, leaves,
 // company holidays, and holiday import. Combines the former
 // EmployeesPage.jsx, EmployeeDetailPage.jsx, AttendancePage.jsx,
 // LeavesPage.jsx, CompanyHolidaysPage.jsx, and HolidayImportPage.jsx.
+//
+// EmployeesPage below is rebuilt on the finalized Orders/Clients/
+// Suppliers command-center workspace as the visual master (KPI strip /
+// toolbar / 4 summary cards / 68-32 list+detail grid / 3-zone detail
+// panel) - see OrdersPage (../../sales/pages/SalesListPages.jsx),
+// ClientsPage (../../clients/pages/ClientPages.jsx), and SuppliersPage
+// (../../procurement/pages/ProcurementPages.jsx) for the reference
+// implementation this mirrors. Reuses the exact same CSS classes
+// (kpi-strip/orders-workspace-*/order-detail-*) - shared workspace-
+// layout primitives, not Orders-specific styling. EmployeeDetailPage's
+// former standalone-route Employee 360 experience (9 tabs: Overview/
+// Attendance/Leave/Tasks/Production/Salary/Documents/Onboarding/
+// Activity) is preserved VERBATIM below as EmployeeInspectorBody -
+// same state, same handlers, same endpoints, same tab content - only
+// its outer wrapper is restructured to fit the workspace inspector's
+// fixed-top/scrollable-middle/fixed-bottom zones instead of a
+// standalone page, and employeeId now comes from the workspace's
+// selection instead of a route param.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { attendanceAPI, dailyTasksAPI, documentsAPI, employeesAPI, holidayImportAPI, holidaysAPI, leavesAPI, ordersAPI, overtimeRequestsAPI, productionJobsAPI, reportsAPI, salaryAdvancesAPI, salarySlipsAPI, usersAPI } from '../../../utils/api';
-import { Alert, Card, ConfirmDialog, Form, KpiCard, Modal, Table } from '../../../components/common/UI';
+import { Alert, Card, ConfirmDialog, Form, KpiCard, KpiStrip, Modal, Pagination, Table } from '../../../components/common/UI';
 import { formatCurrency, statusClass, today } from '../../../utils/utils';
 import { DocumentsPanel } from '../../../components/Assistant';
 import { openWithMessage } from '../../../redux/slices';
+import { EmployeeIcon, CheckCircleIcon, AttendanceIcon, PaymentIcon, PrinterIcon } from '../../../components/icons';
 
 // --- EmployeesPage.jsx ---
+const PAGE_SIZE = 25;
+
 function EmployeesPage() {
-  const navigate = useNavigate();
+  // Route compatibility: /employees/:employeeId (the former standalone
+  // EmployeeDetailPage route) now renders this same workspace with
+  // that employee pre-selected, instead of a separate detail screen.
+  const { employeeId: routeEmployeeId } = useParams();
   const { user } = useSelector((state) => state.auth);
   const isPrivileged = user?.role === 'master';
-  const [employees, setEmployees] = useState([]);
+  // workspace holds the one bounded GET /api/employees/workspace
+  // response: { summary, employees: {items,total_count,limit,offset},
+  // selected_employee }.
+  const [workspace, setWorkspace] = useState(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(routeEmployeeId ? Number(routeEmployeeId) : null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [loginAccessEmployee, setLoginAccessEmployee] = useState(null); // the employee whose Login Access modal is open
   const [justCreatedEmployee, setJustCreatedEmployee] = useState(null); // Section 9's onboarding prompt after Add Employee
+  const [page, setPage] = useState(1);
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const location = useLocation();
+  const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const load = (searchTerm) => {
+  const loadUsers = () => {
+    if (isPrivileged) usersAPI.list().then((res) => setUsers(res.data)).catch(() => setUsers([]));
+  };
+
+  const activeFilters = () => {
+    const params = {};
+    if (departmentFilter) params.department = departmentFilter;
+    if (search) params.search = search;
+    return params;
+  };
+
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
+  const selectedEmployeeIdRef = useRef(selectedEmployeeId);
+  selectedEmployeeIdRef.current = selectedEmployeeId;
+
+  const load = useCallback((filterParams, pageNum = 1) => {
+    const offset = (pageNum - 1) * PAGE_SIZE;
     setPageLoading(true);
     setLoadError(false);
-    const params = {};
-    if (searchTerm) params.search = searchTerm;
-    employeesAPI.list(params).then((res) => setEmployees(res.data)).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
-    if (isPrivileged) {
-      usersAPI.list().then((res) => setUsers(res.data)).catch(() => setUsers([]));
-    }
-  };
-  useEffect(() => {
-    load();
+    employeesAPI.workspace({
+      ...filterParams, limit: PAGE_SIZE, offset,
+      selected_employee_id: selectedEmployeeIdRef.current || undefined,
+    }).then((res) => {
+      setWorkspace(res.data);
+      if (res.data.selected_employee) setSelectedEmployeeId(res.data.selected_employee.id);
+    }).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
   }, []);
+
+  useEffect(() => {
+    load(activeFiltersRef.current());
+    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
+
+  useEffect(() => {
+    if (!pageLoading && workspace && !selectedEmployeeId && workspace.employees?.items?.length) {
+      handleSelectEmployee(workspace.employees.items[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLoading, workspace]);
+
+  const handleSelectEmployee = (employeeIdVal) => {
+    if (employeeIdVal === selectedEmployeeId && workspace?.selected_employee) return;
+    setSelectedEmployeeId(employeeIdVal);
+    setDetailLoading(true);
+    employeesAPI.workspace({ selected_employee_id: employeeIdVal, detail_only: true }).then((res) => {
+      setWorkspace((prev) => (prev ? { ...prev, selected_employee: res.data.selected_employee } : prev));
+    }).catch(() => {}).finally(() => setDetailLoading(false));
+  };
+
+  const applyFilters = (nextDepartment, nextSearch) => {
+    const params = {};
+    if (nextDepartment) params.department = nextDepartment;
+    if (nextSearch) params.search = nextSearch;
+    setPage(1);
+    load(params, 1);
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    load(search);
+    applyFilters(departmentFilter, search);
+  };
+
+  const handleDepartmentTab = (nextDepartment) => {
+    setDepartmentFilter(nextDepartment);
+    applyFilters(nextDepartment, search);
+  };
+
+  const goToPage = (pageNum) => {
+    setPage(pageNum);
+    load(activeFilters(), pageNum);
   };
 
   const handleCreate = async (formData) => {
@@ -57,7 +145,8 @@ function EmployeesPage() {
         monthly_salary: formData.monthly_salary || '0',
       });
       setShowAdd(false);
-      load(search);
+      setSuccess('Employee created.');
+      load(activeFilters(), page);
       setJustCreatedEmployee(res.data); // offer Login Access next, per the intended onboarding flow
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to add employee');
@@ -66,7 +155,7 @@ function EmployeesPage() {
     }
   };
 
-  const userForEmployee = (employeeId) => users.find((u) => u.employee_id === employeeId && !u.is_deleted);
+  const userForEmployee = (employeeIdVal) => users.find((u) => u.employee_id === employeeIdVal && !u.is_deleted);
   const activeMasterCount = () => users.filter((u) => u.role === 'master' && u.is_active).length;
 
   const handleUpdate = async (formData) => {
@@ -80,7 +169,8 @@ function EmployeesPage() {
         emergency_contact: formData.emergency_contact, remarks: formData.remarks,
       });
       setEditingEmployee(null);
-      load(search);
+      setSuccess('Employee updated.');
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update employee');
     } finally {
@@ -102,50 +192,13 @@ function EmployeesPage() {
         await usersAPI.create({ ...formData, employee_id: loginAccessEmployee.id });
       }
       setLoginAccessEmployee(null);
-      load(search);
+      loadUsers();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save login access');
     } finally {
       setLoading(false);
     }
   };
-
-  const columns = [
-    { key: 'employee_code', label: 'Employee ID' }, { key: 'name', label: 'Name' },
-    { key: 'designation', label: 'Designation' },
-    { key: 'department', label: 'Department' }, { key: 'phone', label: 'Phone' },
-    { key: 'email', label: 'Email' },
-    { key: 'joining_date', label: 'Joining Date', render: (v) => (v ? new Date(v).toLocaleDateString() : '-') },
-    { key: 'monthly_salary', label: 'Monthly Salary', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
-    { key: 'daily_wage', label: 'Daily Wage', render: (v) => v != null ? formatCurrency(v) : 'Restricted' },
-    { key: 'manager', label: 'Manager' },
-    { key: 'status', label: 'Status' },
-    {
-      key: 'login_access', label: 'Login Access', render: (v, row) => {
-        const linked = userForEmployee(row.id);
-        if (!linked) return isPrivileged ? <span style={{ color: 'var(--text-secondary)' }}>No login</span> : '-';
-        return (
-          <span className={`status-badge ${linked.is_active ? 'status-ok' : 'status-neutral'}`}>
-            {linked.username} ({linked.role === 'master' ? 'Master' : 'User'}{linked.is_active ? '' : ', Inactive'})
-          </span>
-        );
-      },
-    },
-    {
-      key: 'login_action', label: '', render: (v, row) => (
-        isPrivileged
-          ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setLoginAccessEmployee(row); }}>
-              {userForEmployee(row.id) ? 'Manage Login' : 'Create Login'}
-            </button>
-          : null
-      ),
-    },
-    {
-      key: 'edit_action', label: '', render: (v, row) => (
-        isPrivileged ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingEmployee(row); }}>Edit</button> : null
-      ),
-    },
-  ];
 
   const createFields = [
     { name: 'name', label: 'Name', required: true },
@@ -180,37 +233,261 @@ function EmployeesPage() {
   const exportUrl = () => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
+    if (departmentFilter) params.set('department', departmentFilter);
     const qs = params.toString();
     return reportsAPI.downloadUrl(`employees.xlsx${qs ? `?${qs}` : ''}`);
   };
+
+  const summary = workspace?.summary || null;
+  const employeeRows = workspace?.employees?.items || [];
+  const totalCount = workspace?.employees?.total_count || 0;
+  const offsetStart = workspace?.employees?.offset ?? (page - 1) * PAGE_SIZE;
+  const selected = workspace?.selected_employee || null;
+
+  // Real department tabs, sourced from workspace.summary - nothing
+  // invented client-side.
+  const departmentTabs = [
+    { value: '', label: 'All' },
+    ...(summary?.department_role_mix?.department_breakdown || [])
+      .filter((d) => d.department && d.department !== 'Unassigned')
+      .slice(0, 4)
+      .map((d) => ({ value: d.department, label: d.department })),
+  ];
+
+  // KPI chips, all sourced from workspace.summary. "On Leave Today" and
+  // "Present Today" are real, derivable aggregates from the existing
+  // Leave/Attendance data - not invented statuses.
+  const kpiItems = summary ? [
+    { label: 'Total Employees', value: summary.total_employees, icon: EmployeeIcon },
+    { label: 'Active Employees', value: summary.active_employees, icon: CheckCircleIcon },
+    { label: 'On Leave Today', value: summary.on_leave_today, icon: AttendanceIcon },
+    { label: 'Present Today', value: summary.present_today, icon: PaymentIcon },
+  ] : [];
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Employees</h1>
+          <h1>
+            Employees
+            {summary && <span className="home-card-chip" style={{ marginLeft: 10, verticalAlign: 'middle' }}>{summary.active_employees} Active</span>}
+          </h1>
           <p className="page-summary">Manage your team's roles, compensation, and department assignments.</p>
-        </div>
-        <div className="page-actions">
-          <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
-            {search ? 'Export Filtered' : 'Export All'}
-          </a>
-          {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Employee</button>}
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
-      <div className="kpi-row">
-        <KpiCard label="Total Employees" value={employees.length} />
-        <KpiCard label="Active" value={employees.filter((e) => e.status === 'Active').length} tone="success" />
+      {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
+
+      {summary && <KpiStrip items={kpiItems} />}
+
+      <div className="orders-workspace-toolbar">
+        {isPrivileged && <button className="btn-primary" onClick={() => setShowAdd(true)}>+ New Employee</button>}
+        <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
+          {search || departmentFilter ? 'Export Filtered' : 'Export All'}
+        </a>
       </div>
-      <form className="page-search" onSubmit={handleSearch}>
-        <input
-          type="text" placeholder="Search by name, ID, designation, phone, or email..." value={search}
-          onChange={(e) => setSearch(e.target.value)} className="form-input"
-        />
-        <button type="submit" className="btn-secondary">Search</button>
-      </form>
-      <Table columns={columns} data={employees} loading={pageLoading} error={loadError} onRetry={() => load(search)} onRowClick={(row) => navigate(`/employees/${row.id}`)} emptyMessage="No employees yet. Add your first employee to get started." emptyAction={isPrivileged ? { label: 'Add Employee', onClick: () => setShowAdd(true) } : undefined} />
+
+      <div className="orders-summary-cards">
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Workforce Overview</span>
+            {summary && <span className="home-card-chip">{summary.overview.total_employees} Total</span>}
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="orders-card-hero">
+                <span className="orders-card-hero-number">{summary.overview.active_employees}</span>
+                <span className="orders-card-hero-caption">Active Employees</span>
+                <span className="orders-card-hero-side">{summary.overview.inactive_employees} Inactive</span>
+              </div>
+              <div className="orders-card-footer-row">
+                <span>Departments</span>
+                <strong>{summary.overview.department_count}</strong>
+              </div>
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Active Employees</span>
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="orders-card-hero">
+                <span className="orders-card-hero-number">{summary.active_breakdown.active_employees}</span>
+                <span className="orders-card-hero-caption">Active</span>
+              </div>
+              {summary.active_breakdown.department_breakdown.slice(0, 3).map((d) => (
+                <div className="orders-card-stat-row" key={d.department}><span>{d.department}</span><strong>{d.count}</strong></div>
+              ))}
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Attendance &amp; Availability</span>
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="order-health-chips">
+                <div className="order-health-chip order-health-success">
+                  <span className="order-health-count">{summary.attendance_availability.present_today}</span>
+                  <span className="order-health-label">Present Today</span>
+                </div>
+                <div className="order-health-chip order-health-warning">
+                  <span className="order-health-count">{summary.attendance_availability.on_leave_today}</span>
+                  <span className="order-health-label">On Leave</span>
+                </div>
+                <div className="order-health-chip order-health-danger">
+                  <span className="order-health-count">{summary.attendance_availability.absent_today}</span>
+                  <span className="order-health-label">Absent Today</span>
+                </div>
+              </div>
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Department / Role Mix</span>
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              {summary.department_role_mix.designation_breakdown.slice(0, 4).map((d) => (
+                <div className="orders-card-stat-row" key={d.designation}><span>{d.designation}</span><strong>{d.count}</strong></div>
+              ))}
+              {summary.department_role_mix.designation_breakdown.length === 0 && (
+                <div className="simple-chart-empty">No designations recorded yet.</div>
+              )}
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+      </div>
+
+      <div className="orders-workspace-grid">
+        {/* All Employees - 68%, compact table, sticky header, internal
+            scroll, row click selects (never navigates). */}
+        <div className="card orders-workspace-panel">
+          <div className="orders-panel-header">
+            <div className="orders-panel-title">
+              <h3>All Employees</h3>
+              <div className="orders-panel-tabs">
+                {departmentTabs.map((t) => (
+                  <button
+                    key={t.label} type="button"
+                    className={`orders-panel-tab ${departmentFilter === t.value ? 'active' : ''}`}
+                    onClick={() => handleDepartmentTab(t.value)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className="home-card-caption">{totalCount} total</span>
+          </div>
+          <form
+            className="page-search"
+            onSubmit={handleSearch}
+            style={{ maxWidth: 'none', flexWrap: 'wrap', padding: 'var(--space-3) var(--space-4)', margin: 0, borderBottom: '1px solid var(--border-subtle)' }}
+          >
+            <input
+              type="text" placeholder="Search by name, ID, designation, phone, or email..." value={search}
+              onChange={(e) => setSearch(e.target.value)} className="form-input"
+            />
+            <button type="submit" className="btn-secondary">Search</button>
+          </form>
+          <div className="orders-table-scroll">
+            {loadError ? (
+              <div className="simple-chart-empty">
+                Failed to load employees. <button className="btn-link" onClick={() => load(activeFilters(), page)}>Retry</button>
+              </div>
+            ) : pageLoading ? (
+              <div className="simple-chart-empty">Loading employees...</div>
+            ) : employeeRows.length === 0 ? (
+              <div className="simple-chart-empty">
+                No employees yet.
+                {isPrivileged && <><br /><button className="btn-link" onClick={() => setShowAdd(true)}>Add your first employee</button></>}
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Employee ID</th><th>Name</th><th>Designation</th><th>Department</th>
+                    <th>Phone</th><th>Email</th><th>Joining Date</th><th>Manager</th><th>Status</th><th>Login Access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employeeRows.map((row) => {
+                    const linked = userForEmployee(row.id);
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`clickable ${row.id === selectedEmployeeId ? 'orders-row-selected' : ''}`}
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => handleSelectEmployee(row.id)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectEmployee(row.id); } }}
+                      >
+                        <td>
+                          <span className="business-id-badge">{row.business_id || '-'}</span>
+                          <span className="client-id-ref">{row.employee_code}</span>
+                        </td>
+                        <td>{row.name}</td>
+                        <td>{row.designation || '-'}</td>
+                        <td>{row.department || '-'}</td>
+                        <td>{row.phone || '-'}</td>
+                        <td>{row.email || '-'}</td>
+                        <td>{row.joining_date ? new Date(row.joining_date).toLocaleDateString() : '-'}</td>
+                        <td>{row.manager || '-'}</td>
+                        <td><span className={`status-badge ${statusClass(row.status)}`}>{row.status}</span></td>
+                        <td>
+                          {linked
+                            ? <span className={`status-badge ${linked.is_active ? 'status-ok' : 'status-neutral'}`}>{linked.username}</span>
+                            : (isPrivileged ? <span style={{ color: 'var(--text-secondary)' }}>No login</span> : '-')}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="orders-panel-footer">
+            <span>{employeeRows.length ? `Showing ${offsetStart + 1}-${offsetStart + employeeRows.length} of ${totalCount}` : `${totalCount} employees`}</span>
+            {totalCount > PAGE_SIZE && (
+              <Pagination currentPage={page} totalPages={Math.ceil(totalCount / PAGE_SIZE)} onPageChange={goToPage} />
+            )}
+          </div>
+        </div>
+
+        {/* Employee Details - 32%, three fixed/scroll/fixed zones.
+            EmployeeInspectorBody below owns all three zones itself
+            (it renders order-detail-top/-scroll/-bottom directly) so
+            that the full, unmodified Employee 360 experience fits
+            inside them - see EmployeeInspectorBody's own comment. */}
+        <div className="card orders-workspace-panel">
+          <div className="orders-panel-header">
+            <div className="orders-panel-title"><h3>Employee Details</h3></div>
+          </div>
+          {!selected ? (
+            <div className="order-detail-empty">
+              {detailLoading ? 'Loading...' : 'Select an employee from the list to see their details.'}
+            </div>
+          ) : (
+            <EmployeeInspectorBody
+              key={selected.id}
+              employeeId={selected.id}
+              isPrivileged={isPrivileged}
+              onEdit={(emp) => setEditingEmployee(emp)}
+              onManageLogin={(emp) => setLoginAccessEmployee(emp)}
+              loginUser={userForEmployee(selected.id)}
+            />
+          )}
+        </div>
+      </div>
+
       <Modal isOpen={showAdd} title="Add Employee" onClose={() => setShowAdd(false)}>
         <Form fields={createFields} onSubmit={handleCreate} loading={loading} submitText="Add Employee" />
       </Modal>
@@ -297,20 +574,24 @@ function EmployeesPage() {
   );
 }
 
-// --- EmployeeDetailPage.jsx ---
-// Family 137 - Employee 360 / HR Command Center (section 13):
+// --- EmployeeInspectorBody (formerly the standalone EmployeeDetailPage.jsx) ---
+// Employee 360 / HR Command Center (section 13):
 // Overview/Attendance/Leave/Tasks/Production/Salary/Onboarding/Activity
 // give the "coherent Employee 360 experience with appropriate
 // sections/tabs" section 13.15 asks for, built entirely on top of the
-// existing tabs/endpoints already below plus the new Employee 360
-// aggregation endpoints (see hr/services.py).
+// existing tabs/endpoints already below plus the Employee 360
+// aggregation endpoints (see hr/services.py). Every bit of state,
+// every handler, every tab's content below is UNCHANGED from the
+// former standalone EmployeeDetailPage - only employeeId now arrives
+// as a prop (from the workspace's selected row) instead of a route
+// param, and the outer wrapper renders the workspace's fixed-top/
+// scrollable-middle/fixed-bottom zones instead of a standalone page.
 const TABS = ['Overview', 'Attendance', 'Leave', 'Tasks', 'Production', 'Salary', 'Documents', 'Onboarding', 'Activity'];
 
-function EmployeeDetailPage() {
-  const { employeeId } = useParams();
+function EmployeeInspectorBody({ employeeId, isPrivileged: isPrivilegedProp, onEdit, onManageLogin, loginUser }) {
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
-  const isPrivileged = user?.role === 'master';
+  const isPrivileged = isPrivilegedProp !== undefined ? isPrivilegedProp : user?.role === 'master';
   const isOwnProfile = String(user?.employee_id) === String(employeeId);
   const canViewHrDetails = isPrivileged || isOwnProfile;
   const [employee, setEmployee] = useState(null);
@@ -329,7 +610,7 @@ function EmployeeDetailPage() {
   const [tasksError, setTasksError] = useState(false);
   const [productionJobsError, setProductionJobsError] = useState(false);
 
-  // Family 137 (Employee 360) - the Overview tab's single aggregation
+  // Employee 360 - the Overview tab's single aggregation
   // call plus organizational relationships, loaded alongside the rest
   // (cheap, and both back the Overview tab shown by default).
   const [overview360, setOverview360] = useState(null);
@@ -369,12 +650,12 @@ function EmployeeDetailPage() {
     attendanceAPI.list({ employee_id: employeeId }).then((res) => setAttendance(res.data)).catch(() => { setAttendance([]); setAttendanceError(true); });
     leavesAPI.list({ employee_id: employeeId }).then((res) => setLeaves(res.data)).catch(() => { setLeaves([]); setLeavesError(true); });
     dailyTasksAPI.list({ employee_id: employeeId }).then((res) => setTasks(res.data)).catch(() => { setTasks([]); setTasksError(true); });
-    // Defect repair (P1-7): production-jobs now supports a server-side
+    // production-jobs now supports a server-side
     // employee_id filter - was previously the entire, ever-growing
     // production_jobs table fetched and filtered down to one
     // employee's jobs here in React.
     productionJobsAPI.list({ employee_id: employeeId }).then((res) => setProductionJobs(res.data)).catch(() => { setProductionJobs([]); setProductionJobsError(true); });
-    // Defect repair (P1-8): this is only a "Project (Order)" picker
+    // This is only a "Project (Order)" picker
     // for the task/production-job forms below, not a report - a
     // Completed order is never a valid assignment target anyway.
     // active_only scopes it to orders that can actually be assigned
@@ -390,7 +671,7 @@ function EmployeeDetailPage() {
   }, [employeeId, canViewHrDetails]);
 
   useEffect(() => {
-    // Defect repair (F138 P4.2): employeeId changing (e.g. via the
+    // employeeId changing (e.g. via the
     // Direct Reports / Department Peers links on the Overview tab
     // below, which point at /employees/:id while staying on this same
     // route/component) means this is a different employee now, not a
@@ -475,7 +756,7 @@ function EmployeeDetailPage() {
     }
   };
 
-  // Family 137 (Employee 360, section 13.9) - exit_date/exit_reason are
+  // Employee 360 (section 13.9) - exit_date/exit_reason are
   // set explicitly by a master, never inferred from the status change
   // itself, matching this project's human-in-the-loop rule.
   const [exitDetailsSaving, setExitDetailsSaving] = useState(false);
@@ -540,8 +821,8 @@ function EmployeeDetailPage() {
     finally { setActionLoading(false); }
   };
 
-  if (loadError) return <div className="page"><Alert type="error" message={loadError} /><button type="button" className="btn-secondary" style={{ marginTop: 'var(--space-4)' }} onClick={load}>Retry</button></div>;
-  if (!employee) return <div className="page">Loading...</div>;
+  if (loadError) return <div className="order-detail-empty"><Alert type="error" message={loadError} /><button type="button" className="btn-secondary" style={{ marginTop: 'var(--space-4)' }} onClick={load}>Retry</button></div>;
+  if (!employee) return <div className="order-detail-empty">Loading...</div>;
 
   const totalHours = attendance.reduce((sum, a) => sum + (a.working_hours || 0), 0);
   const totalOvertime = attendance.reduce((sum, a) => sum + (a.overtime_hours || 0), 0);
@@ -549,23 +830,26 @@ function EmployeeDetailPage() {
   const overdueTasks = tasks.filter((t) => t.status !== 'DONE' && new Date(t.date) < new Date(today())).length;
 
   return (
-    <div className="page">
-      <div className="detail-header">
-        <div>
-          <Link to="/employees" className="btn-link">&larr; Back to Employees</Link>
-          <h1 className="detail-title" style={{ marginTop: 8 }}>{employee.name}</h1>
-          <div className="detail-subtitle">
-            {employee.employee_code} &middot; {employee.department || 'No department'}
-            {employee.business_id && <span className="business-id-badge">{employee.business_id}</span>}
-          </div>
+    <>
+      <div className="order-detail-top">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <h3 style={{ margin: 0 }}>{employee.name}</h3>
+          <button type="button" className="order-detail-icon-btn" title="Print" onClick={() => window.print()}>
+            <PrinterIcon />
+          </button>
         </div>
-        <div className="page-actions">
-          <button className="btn-secondary" onClick={() => setActiveAction('attendance')}>Record Attendance</button>
-          <button className="btn-secondary" onClick={() => setActiveAction('task')}>Assign Task</button>
-          <button className="btn-secondary" onClick={() => setActiveAction('production')}>Create Production Job</button>
+        <div className="order-detail-top-meta" style={{ marginTop: 6 }}>
+          <span className="business-id-badge">{employee.business_id || employee.employee_code}</span>
+          <span className={`status-badge status-badge-dot ${statusClass(employee.status)}`}>{employee.status}</span>
+          {employee.department && <span className="status-badge status-info">{employee.department}</span>}
+          {isPrivileged && onEdit && <button className="btn-link" onClick={() => onEdit(employee)}>Edit</button>}
+          {isPrivileged && onManageLogin && (
+            <button className="btn-link" onClick={() => onManageLogin(employee)}>{loginUser ? 'Manage Login' : 'Create Login'}</button>
+          )}
         </div>
       </div>
 
+      <div className="order-detail-scroll">
       <div className="kpi-row">
         {canViewHrDetails && (
           <>
@@ -575,7 +859,6 @@ function EmployeeDetailPage() {
         )}
         <Card><div className="card-body"><div className="detail-meta-label">Tasks Completed</div><h3>{completedTasks}/{tasks.length}</h3></div></Card>
         <Card><div className="card-body"><div className="detail-meta-label">Overdue Tasks</div><h3 style={overdueTasks > 0 ? { color: 'var(--warning)' } : undefined}>{overdueTasks}</h3></div></Card>
-        <Card><div className="card-body"><div className="detail-meta-label">Status</div><h3 style={{ fontSize: '1.1rem' }}>{employee.status}</h3></div></Card>
       </div>
 
       <div className="tab-bar">
@@ -689,6 +972,9 @@ function EmployeeDetailPage() {
 
       {tab === 'Attendance' && (
         <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
+            <button className="btn-secondary" onClick={() => setActiveAction('attendance')}>Record Attendance</button>
+          </div>
           {canViewHrDetails && (
             <Card title="Attendance Intelligence (trailing 6 months)">
               <div className="card-body">
@@ -780,6 +1066,9 @@ function EmployeeDetailPage() {
 
       {tab === 'Tasks' && (
         <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
+            <button className="btn-secondary" onClick={() => setActiveAction('task')}>Assign Task</button>
+          </div>
           {overview360?.work_summary && (
             <div className="kpi-row">
               <KpiCard label="Active" value={overview360.work_summary.active} />
@@ -803,16 +1092,21 @@ function EmployeeDetailPage() {
       )}
 
       {tab === 'Production' && (
-        <Table
-          columns={[
-            { key: 'job_code', label: 'Job' }, { key: 'machine', label: 'Machine' },
-            { key: 'operation', label: 'Operation' }, { key: 'status', label: 'Status' },
-          ]}
-          data={productionJobs}
-          error={productionJobsError}
-          onRetry={load}
-          emptyMessage="No production jobs for this employee yet."
-        />
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-2)' }}>
+            <button className="btn-secondary" onClick={() => setActiveAction('production')}>Create Production Job</button>
+          </div>
+          <Table
+            columns={[
+              { key: 'job_code', label: 'Job' }, { key: 'machine', label: 'Machine' },
+              { key: 'operation', label: 'Operation' }, { key: 'status', label: 'Status' },
+            ]}
+            data={productionJobs}
+            error={productionJobsError}
+            onRetry={load}
+            emptyMessage="No production jobs for this employee yet."
+          />
+        </>
       )}
 
       {tab === 'Salary' && canViewHrDetails && (
@@ -940,6 +1234,21 @@ function EmployeeDetailPage() {
         </Card>
       )}
 
+      {tab === 'Documents' && isPrivileged && (
+        <DocumentsPanel title="Employee Document Vault" enableCategorization api={{
+          list: () => documentsAPI.list('employee', employeeId),
+          upload: (file, description, extra) => documentsAPI.upload('employee', employeeId, file, description, extra),
+          downloadUrl: (documentId) => documentsAPI.downloadUrl('employee', employeeId, documentId),
+          remove: (documentId) => documentsAPI.remove('employee', employeeId, documentId),
+        }} canUpload={isPrivileged} />
+      )}
+      </div>
+
+      <div className="order-detail-bottom">
+        <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setActiveAction('attendance')}>Record Attendance</button>
+        <button className="btn-primary" style={{ flex: 1 }} onClick={() => setActiveAction('task')}>Assign Task</button>
+      </div>
+
       <Modal isOpen={activeAction === 'attendance'} title="Record Attendance" onClose={closeAction}>
         {actionError && <Alert type="error" message={actionError} onClose={() => setActionError('')} />}
         <Form
@@ -989,16 +1298,7 @@ function EmployeeDetailPage() {
           initialValues={{ date: today() }}
         />
       </Modal>
-
-      {tab === 'Documents' && isPrivileged && (
-        <DocumentsPanel title="Employee Document Vault" enableCategorization api={{
-          list: () => documentsAPI.list('employee', employeeId),
-          upload: (file, description, extra) => documentsAPI.upload('employee', employeeId, file, description, extra),
-          downloadUrl: (documentId) => documentsAPI.downloadUrl('employee', employeeId, documentId),
-          remove: (documentId) => documentsAPI.remove('employee', employeeId, documentId),
-        }} canUpload={isPrivileged} />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -1007,8 +1307,8 @@ function EmployeeDetailPage() {
 // aggregated view (attendance_period_summary/day_detail/team_grid/
 // exceptions - see hr/services.py) replacing the old plain "every
 // attendance record in a flat table" page. Every widget below loads
-// independently (F138 P4 - one slow/failing panel must never block a
-// sibling one), and every figure comes from a real backend calculation
+// independently - one slow/failing panel must never block a
+// sibling one, and every figure comes from a real backend calculation
 // - nothing here re-derives attendance math client-side (see each
 // service function's own docstring for the exact formula it owns).
 function currentMonthKey() {
@@ -2365,4 +2665,4 @@ function AttendanceLeaveHub() {
   );
 }
 
-export { EmployeesPage, EmployeeDetailPage, AttendancePage, LeavesPage, CompanyHolidaysPage, HolidayImportPage, AttendanceLeaveHub };
+export { EmployeesPage, AttendancePage, LeavesPage, CompanyHolidaysPage, HolidayImportPage, AttendanceLeaveHub };

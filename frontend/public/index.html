@@ -3,8 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0e0d0b" />
+    <!-- Static dark-theme default for the very first paint, before
+         src/index.jsx's synchronous syncThemeColorMeta() call (and,
+         on every later toggle, src/App.jsx's useThemeSync) update
+         this to the active theme's real --background value - see
+         src/utils/utils.js's syncThemeColorMeta for why this is never
+         hardcoded a second time anywhere else. Matches the app's
+         approved dark token (--color-ink / --background in
+         src/styles/index.css). -->
+    <meta name="theme-color" content="#101014" />
     <meta name="description" content="Woodful Creations - AI-powered management system" />
+    <!-- Open Graph / social preview metadata - a single site-level set
+         since this is a client-rendered SPA with one static index.html
+         (no per-route server-side rendering to vary these per page).
+         Internal-only app, so this only affects how a shared login-page
+         link previews in chat/Slack, never a marketing surface. -->
+    <meta property="og:title" content="Woodful Creations" />
+    <meta property="og:description" content="Woodful Creations - AI-powered management system" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="%PUBLIC_URL%/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Woodful Creations" />
+    <meta name="twitter:description" content="Woodful Creations - AI-powered management system" />
     <!-- iOS Safari ignores manifest.json icons for "Add to Home Screen" -
          apple-touch-icon must be linked directly, or the OS falls back to
          a screenshot of the page as the icon. -->

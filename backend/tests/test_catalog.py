@@ -10,7 +10,7 @@ from app.modules.auth.auth import User
 """Tests for Product's own cost/margin computed properties - no
 dedicated file existed for these despite several already being on the
 model (suggested_cost_price, suggested_selling_price, margin,
-actual_margin_percent). Focuses on the two added for P0.1 section 2:
+actual_margin_percent). Focuses on the two added below:
 bom_cost (what the BOM says material should cost right now,
 at real current Material.average_rate prices) and
 bom_cost_variance (how far the manually-entered material_cost
@@ -44,7 +44,7 @@ def test_bom_cost_is_none_without_any_bom(client, test_user):
 
 
 def test_bom_cost_variance_flags_a_stale_manual_estimate(client, test_user):
-    """P0.1 section 2's comparison example - the manually-entered
+    """The comparison example - the manually-entered
     material_cost can drift from what the BOM says it should cost
     today; the variance must say by how much and in which direction."""
     _login(client, test_user)
@@ -63,7 +63,7 @@ def test_bom_cost_variance_flags_a_stale_manual_estimate(client, test_user):
 
 
 def test_bom_cost_reflects_updated_material_rate(client, test_user):
-    """The same P0.1 'no stale requirement' guarantee already proven
+    """The same 'no stale requirement' guarantee already proven
     for shortage calculations - this property is computed fresh from
     current Material.average_rate on every fetch, never stored."""
     _login(client, test_user)
@@ -234,3 +234,159 @@ def test_rate_card_import_commit_requires_master(client, db_session):
 
     resp = client.post("/api/rate-card-imports/commit", json={"rows": [_valid_row()]})
     assert resp.status_code == 403
+
+
+# --- BOM validation (items 9/10/27) ---
+
+def test_bom_line_unit_must_match_material_unit(client, test_user):
+    """Item 9: a BOM line whose supplied unit conflicts with the
+    material's own unit must be rejected."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "BOM Unit Mismatch Sheet", "unit": "Sheets", "opening_stock": "10",
+    }).json()
+    resp = client.post("/api/products/", json={
+        "name": "BOM Unit Mismatch Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "2", "unit": "Kg"}],
+    })
+    assert resp.status_code == 400
+    assert "unit mismatch" in resp.json()["detail"].lower()
+
+
+def test_bom_line_unit_derived_from_material_when_omitted(client, test_user):
+    """Item 9: when no unit is supplied on the BOM line at all, it is
+    derived from the material's own unit rather than left unset."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "BOM Unit Derive Sheet", "unit": "Sheets", "opening_stock": "10",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "BOM Unit Derive Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "2"}],
+    }).json()
+    assert product["materials_used"][0]["unit"] == "Sheets"
+
+
+def test_bom_invalid_material_id_rejected_without_destroying_existing_bom(client, test_user):
+    """Items 10/27: an invalid material_id in an update must be
+    rejected as a clean error BEFORE the existing BOM rows are
+    deleted/replaced - the product's original BOM must survive
+    untouched."""
+    _login(client, test_user)
+    real_material = client.post("/api/materials/", json={
+        "name": "BOM Survive Sheet", "unit": "Sheets", "opening_stock": "10",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "BOM Survive Product", "unit": "Piece",
+        "materials_used": [{"material_id": real_material["id"], "quantity_required": "3"}],
+    }).json()
+    assert len(product["materials_used"]) == 1
+
+    resp = client.put(f"/api/products/{product['id']}", json={
+        "materials_used": [{"material_id": 999999, "quantity_required": "1"}],
+    })
+    assert resp.status_code == 400
+
+    persisted = client.get(f"/api/products/{product['id']}").json()
+    assert len(persisted["materials_used"]) == 1
+    assert persisted["materials_used"][0]["material_id"] == real_material["id"]
+    assert float(persisted["materials_used"][0]["quantity_required"]) == 3.0
+
+
+# --- Margin validation (items 11/12) ---
+
+def test_negative_margin_percent_rejected(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/products/", json={
+        "name": "Negative Margin Product", "unit": "Piece", "margin_percent": "-5",
+    })
+    assert resp.status_code == 422
+
+
+def test_zero_margin_percent_produces_selling_price_equal_to_cost(client, test_user):
+    """Item 12: margin_percent == 0 is a legitimate, deliberate
+    zero-margin/at-cost price - `not self.margin_percent` previously
+    treated Decimal("0") the same as None and silently skipped pricing.
+    Cost = 10000, margin = 0% -> suggested selling price must be 10000."""
+    _login(client, test_user)
+    product = client.post("/api/products/", json={
+        "name": "Zero Margin Product", "unit": "Piece",
+        "material_cost": "10000.00", "margin_percent": "0",
+    }).json()
+    assert product["suggested_cost_price"] == 10000.0
+    assert product["suggested_selling_price"] == 10000.0
+
+
+def test_none_margin_percent_still_yields_no_suggested_selling_price(client, test_user):
+    """The other half of item 12 - margin_percent left entirely unset
+    (None) must still mean "no margin rule", not be confused with 0%."""
+    _login(client, test_user)
+    product = client.post("/api/products/", json={
+        "name": "No Margin Rule Product", "unit": "Piece", "material_cost": "10000.00",
+    }).json()
+    assert product["suggested_cost_price"] == 10000.0
+    assert product["suggested_selling_price"] is None
+
+
+# --- Rate card revision retry atomicity (item 23/U) ---
+
+def test_rate_card_revision_retry_leaves_exactly_one_active_revision(client, test_user, db_session, monkeypatch):
+    """A rate-code collision on the first attempt must not leave the
+    old rate mistakenly still active alongside a successfully-inserted
+    new one - each retry attempt re-applies BOTH the deactivation and
+    the new insert together, so a rollback genuinely undoes both and
+    the next attempt redoes both consistently."""
+    _login(client, test_user)
+    from app.modules.catalog.models import RateCard
+    import app.modules.catalog.api as catalog_api
+
+    original = client.post("/api/rate-cards/", json={
+        "category": "Material", "item_name": "Retry Consistency Item", "uom": "Sheet",
+        "woodful_selling_rate": "1000.00", "effective_from": "2026-01-01T00:00:00",
+        "source_type": "MANUAL_VERIFIED", "confidence": "HIGH",
+    }).json()
+
+    # Force exactly one collision: the first generate_unique_code() call
+    # inside revise_rate_card returns the SAME code the original row
+    # already has (a real, guaranteed unique-constraint violation), then
+    # falls through to the real generator on every later call.
+    real_generate = catalog_api.generate_unique_code
+    calls = {"count": 0}
+
+    def _colliding_then_real(db, model, code_column, prefix, pad=3):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return original["rate_code"]
+        return real_generate(db, model, code_column, prefix, pad)
+
+    monkeypatch.setattr(catalog_api, "generate_unique_code", _colliding_then_real)
+
+    resp = client.put(f"/api/rate-cards/{original['id']}", json={"woodful_selling_rate": "1200.00"})
+    assert resp.status_code == 200
+    assert calls["count"] >= 2  # genuinely retried at least once
+
+    active_rows = db_session.query(RateCard).filter(
+        RateCard.item_name == "Retry Consistency Item", RateCard.is_active == True,  # noqa: E712
+    ).all()
+    assert len(active_rows) == 1
+    assert float(active_rows[0].woodful_selling_rate) == 1200.0
+
+    old_persisted = client.get(f"/api/rate-cards/{original['id']}").json()
+    assert old_persisted["is_active"] is False
+
+
+# --- Security hardening: strict input validation ---
+
+def test_product_create_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/products/", json={
+        "name": "Strict Validation Test Product", "unit": "Piece",
+        "not_a_real_product_field": "value",
+    })
+    assert resp.status_code == 422
+
+
+def test_product_create_rejects_oversized_name(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/products/", json={"name": "x" * 5000, "unit": "Piece"})
+    assert resp.status_code == 422

@@ -475,7 +475,6 @@ function AnalyticsPage() {
 }
 
 // --- BusinessDecisionCentrePage.jsx ---
-const SEVERITY_TONE = { CRITICAL: 'danger', HIGH: 'warning', MEDIUM: 'default', LOW: 'default' };
 const SEVERITY_BADGE_CLASS = {
   CRITICAL: 'status-badge status-danger', HIGH: 'status-badge status-warning',
   MEDIUM: 'status-badge status-neutral', LOW: 'status-badge status-neutral',
@@ -510,7 +509,7 @@ function BusinessDecisionCentrePage() {
       {error && (
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <Alert type="error" message={error} onClose={() => setError('')} />
-          {/* Defect repair (F138 P4.3): this primary list load had no
+          {/* This primary list load had no
               retry affordance on failure - matching the loadError/Retry
               convention used elsewhere (e.g. ClientDetailPage, MaterialPages). */}
           <button type="button" className="btn-secondary" onClick={load}>Retry</button>
@@ -577,8 +576,8 @@ function BusinessDecisionCentrePage() {
 }
 
 // --- OwnerBriefingPage.jsx ---
-// Family 137, features 11 (Owner Daily/Weekly Business Briefing) and
-// 12 (Forward Cash-Flow Forecast). Master-only - both endpoints are
+// Owner Daily/Weekly Business Briefing and Forward Cash-Flow Forecast.
+// Master-only - both endpoints are
 // gated server-side; this page assumes the route itself is already
 // restricted to master (see App.jsx), matching every other
 // master-only page in this app.
@@ -591,7 +590,7 @@ function OwnerBriefingPage() {
   const [cashFlowError, setCashFlowError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Defect repair (F138 P4.1): briefing and cash-flow forecast are two
+  // Briefing and cash-flow forecast are two
   // independent widgets on this page (see the separate `{briefing &&
   // ...}` / `{cashFlow && ...}` sections below) - firing them through
   // one Promise.all meant either endpoint failing blanked the WHOLE

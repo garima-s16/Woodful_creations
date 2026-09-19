@@ -515,9 +515,8 @@ def test_adding_to_cart_does_not_change_material_stock(client, test_user):
     assert after == before
 
 # --- test_procurement_requirements.py ---
-"""Tests for ProcurementRequirement (P0.2.1) and SupplierDecision
-(P0.2.3) - closing the two gaps this family's own architecture review
-identified: there was no persisted procurement requirement (only a
+"""Tests for ProcurementRequirement and SupplierDecision -
+closing the two gaps identified in architecture review: there was no persisted procurement requirement (only a
 transient shortage calculation) and no persisted record distinguishing
 a supplier recommendation from the supplier actually chosen."""
 
@@ -568,7 +567,7 @@ def test_requirement_without_a_real_material_requirement_is_rejected(client, tes
 
 
 def test_supplier_decision_distinguishes_recommendation_from_actual_choice(client, test_user):
-    """The core P0.2.3 guarantee: the recommendation and the actual
+    """The core guarantee: the recommendation and the actual
     decision are genuinely different, persisted things."""
     _login(client, test_user)
     order, material = _make_shortage_order(client, "2")
@@ -703,7 +702,7 @@ def test_procurement_requirements_require_auth(client):
 
 
 def test_decision_rejects_supplier_with_no_material_relationship(client, test_user):
-    """P0.2.4: the backend must reject this regardless of what the
+    """The backend must reject this regardless of what the
     frontend dropdown would have filtered - never trust a client-sent
     supplier_id alone."""
     _login(client, test_user)
@@ -721,7 +720,7 @@ def test_decision_rejects_supplier_with_no_material_relationship(client, test_us
 
 
 def test_purchase_created_from_requirement_is_linked_and_fulfills_it(client, test_user):
-    """P0.2.5 traceability: requirement.purchase_id is actually set, and
+    """Traceability: requirement.purchase_id is actually set, and
     receipt_status="Received" genuinely fulfills the requirement (goods
     are actually in hand, not merely ordered)."""
     _login(client, test_user)
@@ -800,3 +799,79 @@ def test_second_purchase_from_same_requirement_is_rejected(client, test_user):
         "quantity": "5", "unit": "Sheets", "rate": "450.00", "gst_percent": "18",
     })
     assert resp.status_code == 409
+
+
+# --- items 15/16: invalid supplier/location on purchase create and receive
+# return clean application errors, never a DB IntegrityError/500 ---
+
+def test_purchase_create_with_nonexistent_supplier_returns_404(client, test_user):
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Bad Supplier Purchase Material", "unit": "Sheets", "opening_stock": "0",
+    }).json()
+
+    resp = client.post("/api/purchases/", json={
+        "date": "2026-09-01T00:00:00", "supplier_id": 999999, "material_id": material["id"],
+        "quantity": "5", "unit": "Sheets", "rate": "500.00", "gst_percent": "18", "payment_status": "Paid",
+    })
+    assert resp.status_code == 404
+
+    # No purchase row and no stock mutation from the rejected attempt.
+    updated = client.get(f"/api/materials/{material['id']}").json()
+    assert float(updated["current_stock"]) == 0
+
+
+def test_purchase_create_with_nonexistent_location_returns_404(client, test_user):
+    _login(client, test_user)
+    supplier = client.post("/api/suppliers/", json={"name": "Bad Location Purchase Supplier"}).json()
+    material = client.post("/api/materials/", json={
+        "name": "Bad Location Purchase Material", "unit": "Sheets", "opening_stock": "0",
+    }).json()
+
+    resp = client.post("/api/purchases/", json={
+        "date": "2026-09-01T00:00:00", "supplier_id": supplier["id"], "material_id": material["id"],
+        "quantity": "5", "unit": "Sheets", "rate": "500.00", "gst_percent": "18", "payment_status": "Paid",
+        "location_id": 999999,
+    })
+    assert resp.status_code == 404
+
+    updated = client.get(f"/api/materials/{material['id']}").json()
+    assert float(updated["current_stock"]) == 0
+
+
+def test_purchase_receive_with_nonexistent_location_returns_404_and_leaves_purchase_unreceived(client, test_user):
+    _login(client, test_user)
+    supplier = client.post("/api/suppliers/", json={"name": "Bad Receive Location Supplier"}).json()
+    material = client.post("/api/materials/", json={
+        "name": "Bad Receive Location Material", "unit": "Sheets", "opening_stock": "0",
+    }).json()
+    purchase = client.post("/api/purchases/", json={
+        "date": "2026-09-01T00:00:00", "supplier_id": supplier["id"], "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "500.00", "gst_percent": "18", "payment_status": "Paid",
+        "receipt_status": "Ordered",
+    }).json()
+
+    resp = client.post(f"/api/purchases/{purchase['id']}/receive", json={"location_id": 999999})
+    assert resp.status_code == 404
+
+    # Rejected receipt must not have mutated stock or the purchase's status.
+    updated_material = client.get(f"/api/materials/{material['id']}").json()
+    assert float(updated_material["current_stock"]) == 0
+    updated_purchase = client.get(f"/api/purchases/{purchase['id']}").json()
+    assert updated_purchase["receipt_status"] == "Ordered"
+
+
+# --- Security hardening: strict input validation ---
+
+def test_supplier_create_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/suppliers/", json={
+        "name": "Strict Validation Test Supplier", "not_a_real_supplier_field": "value",
+    })
+    assert resp.status_code == 422
+
+
+def test_supplier_create_rejects_oversized_name(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/suppliers/", json={"name": "x" * 5000})
+    assert resp.status_code == 422

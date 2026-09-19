@@ -4,8 +4,10 @@ instructions), and PDF document styling (header/footer/contact-block/
 masking). Combines the former validators.py, exporters.py, and
 document_style.py."""
 import os
+import re
 from io import BytesIO
 from typing import Iterable, Sequence
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -51,6 +53,27 @@ _FILE_SIGNATURES = {
 }
 
 
+_HEADER_UNSAFE_CHARS = re.compile(r'[\r\n"\x00-\x1f\x7f]')
+
+
+def safe_content_disposition_filename(filename: str, fallback: str = "download") -> str:
+    """Sanitizes an untrusted filename (e.g. a user-supplied upload
+    filename stored as original_filename) before it is interpolated into
+    a Content-Disposition response header. Without this, a filename
+    containing CR/LF could inject additional response headers, and an
+    unescaped double-quote could break out of the quoted filename
+    attribute - the header value is built with an f-string at every call
+    site, so nothing there re-validates it. Also drops anything outside
+    latin-1, since header values must be latin-1 encodable and a raw
+    non-latin-1 character would otherwise fail at response-encoding time
+    instead of degrading gracefully to the fallback name."""
+    if not filename:
+        return fallback
+    cleaned = _HEADER_UNSAFE_CHARS.sub("", filename).strip()
+    cleaned = cleaned.encode("latin-1", errors="ignore").decode("latin-1").strip()
+    return cleaned or fallback
+
+
 def validate_file_signature(ext: str, header: bytes) -> bool:
     """Returns True if `header` (the first bytes read from the uploaded
     file) matches a known-good magic-byte signature for the claimed
@@ -60,6 +83,46 @@ def validate_file_signature(ext: str, header: bytes) -> bool:
     if not signatures:
         return False
     return any(header.startswith(sig) for sig in signatures)
+
+
+def stream_upload_to_storage(backend, relative_path: str, upload_file, ext: str, max_size: int):
+    """Shared read-validate-write loop for every persistent-storage
+    upload route (documents, client/payment documents, resumes) -
+    replaces each route's own `chunks = []; ...; b"".join(chunks)`
+    pattern, which built one complete in-memory copy of the upload
+    before ever calling storage. Reads in bounded 1MB chunks, checks
+    the magic-byte signature against the FIRST chunk only (fails
+    closed before a single byte reaches storage), and aborts the
+    moment the running total exceeds `max_size` - the real streamed
+    byte count, never a trusted Content-Length header - rather than
+    reading (and buffering) the remainder of an oversized upload.
+    Delegates the actual write to `backend.save_stream()`, so local
+    disk and Drive each still write through their own real streaming
+    implementation (see app/platform/storage.py); this function only
+    owns the read/validate loop, not the destination. Returns whatever
+    `backend.save_stream()` returns (a StorageReference)."""
+    def _chunks():
+        size = 0
+        first_chunk = True
+        while True:
+            chunk = upload_file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            if first_chunk:
+                if not validate_file_signature(ext, chunk):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
+                    )
+                first_chunk = False
+            size += len(chunk)
+            if size > max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File exceeds the {max_size // (1024*1024)}MB size limit.",
+                )
+            yield chunk
+    return backend.save_stream(relative_path, _chunks())
 
 
 # --- exporters.py ---
@@ -468,7 +531,8 @@ PDF_BORDER = colors.HexColor("#DED6C8")
 PDF_TEXT_SECONDARY = colors.HexColor("#70685D")
 
 
-LOGO_ASPECT = 609 / 2435  # native pixel dimensions of assets/logo.png
+LOGO_ASPECT = 609 / 2435  # height/width ratio of assets/logo.png's artwork (unchanged even
+# after the file was re-exported at smaller pixel dimensions - it's the same ratio, 250/1000)
 
 
 def _icon_pin(size=9):

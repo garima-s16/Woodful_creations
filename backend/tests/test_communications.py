@@ -215,7 +215,7 @@ def test_owner_can_mark_own_addressed_notification_read(client, test_user, db_se
 
 
 def test_employee_cannot_mark_financial_broadcast_notification_read(client, test_user, db_session):
-    """Regression test (defect repair pass): mark_read used to check
+    """Regression test: mark_read used to check
     only `recipient_user_id in (None, my_id)`, which treats EVERY
     broadcast notification (recipient_user_id is None) as visible to
     any authenticated user - including a master-only financial
@@ -777,7 +777,7 @@ def test_material_above_reorder_level_does_not_recommend(client, test_user, db_s
 
 
 def test_order_at_risk_material_shortage_notifies_with_order_context(client, test_user, db_session):
-    """Family 130 - distinct from check_low_stock_purchase_recommendations
+    """Distinct from check_low_stock_purchase_recommendations
     above: that rule only knows a material is low, never which order it
     threatens. This rule must name the actual order."""
     _login_with_credentials(client)
@@ -809,7 +809,7 @@ def test_order_at_risk_material_shortage_notifies_with_order_context(client, tes
 
 
 def test_delivery_risk_critical_notifies_with_order_context(client, test_user, db_session):
-    """P0.50 section 38 - fires only for the most severe (CRITICAL)
+    """Fires only for the most severe (CRITICAL)
     delivery risk level, reusing OrderService.bulk_attention_flags
     exactly, the same calculation already backing the Orders List and
     Dashboard."""

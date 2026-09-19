@@ -10,14 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi import Response
 from sqlalchemy.orm import Session
 from app.platform.database import get_db
-from app.platform.security import get_current_user, require_role
+from app.platform.security import get_current_user, require_role, rate_limit
 from app.platform.audit import log_action
 from app.platform.config import settings
 from app.modules.sales.models import Order
 from app.modules.procurement.models import Supplier, Purchase
 from app.modules.hr.models import Employee
 from app.modules.catalog.models import Product
-from app.shared import validate_file_signature
+from app.shared import safe_content_disposition_filename, stream_upload_to_storage
 from app.platform.storage import get_storage_backend, get_storage_backend_for_record
 
 
@@ -54,8 +54,8 @@ class GenericDocument(BaseModel):
     uploaded_by = Column(String(100), nullable=True)
     storage_backend = Column(String(20), nullable=False, default="local")
     drive_file_id = Column(String(255), nullable=True, index=True)
-    # Family 137 (Employee 360, section 13.8 - Employee Document Vault,
-    # but shared by every parent type, not employee-only). All
+    # Employee Document Vault fields,
+    # but shared by every parent type, not employee-only. All
     # optional/nullable - free text for document_type (e.g. "contract",
     # "resume", "identity", "joining", "salary", "certificate",
     # "policy") rather than a rigid enum, since the applicable
@@ -136,7 +136,9 @@ def list_documents(parent_type: str, parent_id: int, db: Session = Depends(get_d
     ).order_by(GenericDocument.created_at.desc()).all()
 
 
-@router.post("/{parent_type}/{parent_id}", response_model=GenericDocumentResponse, status_code=201)
+@router.post("/{parent_type}/{parent_id}", response_model=GenericDocumentResponse, status_code=201, dependencies=[
+    Depends(rate_limit("upload", settings.RATE_LIMIT_UPLOAD_PER_MINUTE))
+])
 def upload_document(parent_type: str, parent_id: int, file: UploadFile = File(...),
                      description: Optional[str] = None, document_type: Optional[str] = None,
                      issue_date: Optional[date_type] = None, expiry_date: Optional[date_type] = None,
@@ -162,26 +164,13 @@ def upload_document(parent_type: str, parent_id: int, file: UploadFile = File(..
     backend = get_storage_backend()
     stored_filename = f"documents/{parent_type}/{secrets.token_hex(16)}.{ext}"
 
-    size = 0
-    first_chunk = True
-    chunks = []
+    # Streams straight to storage in bounded chunks (see
+    # app/shared.py's stream_upload_to_storage) instead of first
+    # building one complete in-memory copy of the upload - memory use
+    # per upload stays bounded to a single chunk regardless of file
+    # size, up to whatever MAX_UPLOAD_SIZE allows.
     try:
-        while chunk := file.file.read(1024 * 1024):
-            if first_chunk:
-                if not validate_file_signature(ext, chunk):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
-                    )
-                first_chunk = False
-            size += len(chunk)
-            if size > settings.MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
-                )
-            chunks.append(chunk)
-        storage_ref = backend.save(stored_filename, b"".join(chunks))
+        storage_ref = stream_upload_to_storage(backend, stored_filename, file, ext, settings.MAX_UPLOAD_SIZE)
     except HTTPException:
         raise
     except Exception:
@@ -234,7 +223,7 @@ def download_document(parent_type: str, parent_id: int, document_id: int, db: Se
         content=file_bytes, media_type=document.content_type or "application/octet-stream",
         headers={
             "Cache-Control": "no-store, private",
-            "Content-Disposition": f'attachment; filename="{document.original_filename}"',
+            "Content-Disposition": f'attachment; filename="{safe_content_disposition_filename(document.original_filename)}"',
         },
     )
 

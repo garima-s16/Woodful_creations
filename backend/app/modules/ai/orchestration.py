@@ -34,6 +34,7 @@ implementations live in their own module (chat_inventory.py,
 chat_sales.py, chat_hr.py, chat_operations.py, chat_catalog.py) -
 split out of what was previously one 2250-line, 55-method file mixing
 every domain together under one ChatService class."""
+import re
 from typing import List, Optional, Tuple, Union
 
 from sqlalchemy.orm import Session
@@ -84,12 +85,61 @@ ORDER_BLOCKING_WORDS = ["what is blocking", "what's blocking", "kya problem hai"
                          "why is this delayed", "is this order at risk", "is this at risk"]
 
 
+
+# Security-hardening addition: a deterministic, Gemini-independent safe
+# response for self-harm/crisis language. This is checked before ANY
+# other routing below - deterministic keyword matching, the learned-
+# intent lookup, and the Gemini gateway - so a message matching this
+# can never be answered by the business-intelligence matcher (which
+# has no concept of this) or reach the live model at all. Deliberately
+# not delegated to Gemini's own safety filtering: that would depend on
+# a live API call this codebase has never actually executed (see
+# ai_gateway.py's own "HONEST STATUS" notes), and would risk the model
+# attempting to be "helpful" about a business-sounding phrasing
+# ("how much rope do I need") that ai_gateway._extract_and_redact_amount
+# and friends were never built to reason about safety-wise in the
+# first place. Matches whole words only (word-boundary regex) so this
+# doesn't fire on unrelated substrings, and is intentionally narrow -
+# no ambiguous/borderline heuristics, no attempt to keep the
+# conversation going, just a single caring, non-judgmental redirect to
+# real human help every time. Woodful is a business tool, not a
+# crisis-response system, so it stops there rather than attempting to
+# counsel further.
+_SELF_HARM_PATTERN = re.compile(
+    r"\b(suicid\w*|kill\s+myself|end\s+my\s+life|self[\s-]?harm|hurt\s+myself|"
+    r"want\s+to\s+die|don'?t\s+want\s+to\s+live|self[\s-]?injur\w*)\b",
+    re.IGNORECASE,
+)
+
+_SAFE_CRISIS_RESPONSE = (
+    "I'm really sorry you're going through this, and I want you to know you don't have to "
+    "handle it alone. I'm Woodful's business assistant, so I'm not the right support for this - "
+    "please reach out to a crisis line or someone you trust right now. In India, you can call the "
+    "iCall helpline at 9152987821, or the Kiran mental health helpline at 1800-599-0019 (both are "
+    "free and confidential). If you're outside India, please contact your local emergency number "
+    "or a crisis helpline. I'm here whenever you want to come back to work matters."
+)
+
+
+def _is_self_harm_message(message: str) -> bool:
+    """Checked at the very start of process_message, before any other
+    routing. Pure pattern matching - no network call, no dependency on
+    Gemini or its (never-verified-live) safety settings, so this is
+    fully testable and guaranteed to run for every message this
+    assistant ever receives, regardless of which downstream handler
+    would otherwise have picked it up."""
+    return bool(_SELF_HARM_PATTERN.search(message or ""))
+
+
 class ChatService:
     @staticmethod
     def process_message(message: str, db: Session, user_role: str = "user",
                          context: Optional[ChatContext] = None, current_employee_id: Optional[int] = None,
                          request=None, auth: Optional[dict] = None,
                          ) -> Tuple[str, List[str], Optional[ProposedAction], Optional[dict], List[dict]]:
+        if _is_self_harm_message(message):
+            return _SAFE_CRISIS_RESPONSE, [], None, None, []
+
         m = message.lower()
 
         if any(w in m for w in COMPLETE_TASK_WORDS):

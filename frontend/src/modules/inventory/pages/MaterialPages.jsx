@@ -17,7 +17,6 @@ const TABS = ['Overview', 'Suppliers', 'Purchases', 'Issues'];
 function MaterialDetailPage() {
   const { materialId } = useParams();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const isPrivileged = user?.role === 'master';
@@ -760,7 +759,15 @@ const MaterialAttributesEditor = forwardRef(function MaterialAttributesEditor(
   // ("intelligent defaults", accepted by explicit user action)
   // so the two never drift into two different implementations of the
   // same lookup.
-  const selectSubcategory = (targetSubcategoryId, categoriesList, prefillAttributeValues) => {
+  //
+  // Wrapped in useCallback so it has a stable identity across renders
+  // (it closes over nothing but the onChange prop - categoriesList and
+  // prefillAttributeValues are plain parameters, not closure state) and
+  // can therefore be safely listed as a real dependency below, instead
+  // of silencing the warning: both real callers pass a useState setter
+  // as onChange, which React itself guarantees is stable, so this
+  // never actually changes identity in practice.
+  const selectSubcategory = useCallback((targetSubcategoryId, categoriesList, prefillAttributeValues) => {
     for (const category of categoriesList) {
       const match = (category.subcategories || []).find((s) => s.id === targetSubcategoryId);
       if (match) {
@@ -785,7 +792,7 @@ const MaterialAttributesEditor = forwardRef(function MaterialAttributesEditor(
       }
     }
     return false;
-  };
+  }, [onChange]);
 
   useEffect(() => {
     materialCategoriesAPI.list().then((res) => {
@@ -799,8 +806,15 @@ const MaterialAttributesEditor = forwardRef(function MaterialAttributesEditor(
       // wipe the material's existing category/specs.
       selectSubcategory(initialSubcategoryId, res.data, initialAttributeValues);
     }).catch(() => setCategories([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Both real call sites only ever render this component while
+    // initialSubcategoryId/initialAttributeValues are already fixed
+    // (InventoryPages.jsx mounts it inside {editingMaterial && (...)},
+    // so a genuinely different material always means a fresh mount,
+    // never a same-instance prop change) - so listing them here doesn't
+    // introduce a repeated materialCategoriesAPI.list() call in
+    // practice, it just makes the real dependency explicit instead of
+    // silencing the check.
+  }, [selectSubcategory, initialSubcategoryId, initialAttributeValues]);
 
   useImperativeHandle(ref, () => ({
     // Applies a suggested subcategory (material-name
@@ -816,7 +830,7 @@ const MaterialAttributesEditor = forwardRef(function MaterialAttributesEditor(
       if (!targetSubcategoryId) return false;
       return selectSubcategory(targetSubcategoryId, categories, null);
     },
-  }), [categories]);
+  }), [categories, selectSubcategory]);
 
   const handleCategoryChange = (e) => {
     const id = e.target.value;

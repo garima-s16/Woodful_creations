@@ -528,7 +528,7 @@ else
 fi
 
 # ----------------------------------------------------------------------
-section "AUTH SESSION CONTRACT (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR - static checks)"
+section "AUTH SESSION CONTRACT (static checks)"
 # ----------------------------------------------------------------------
 # Zero-dependency (plain node, no node_modules/npm install required) -
 # see frontend/scripts/verify_auth_session_contract.js's own docstring.

@@ -223,7 +223,7 @@ def test_staff_dashboard_production_summary_reflects_real_counts_not_hardcoded(c
     assert after != before
 
 
-"""Tests for ProductionOperation (P0.3.3/3.4) - a single manufacturing
+"""Tests for ProductionOperation - a single manufacturing
 step within a ProductionJob, with a deliberately simple, single-
 predecessor dependency (not a general workflow engine). Focused on the
 real business rule: a dependent operation cannot be started/completed
@@ -337,8 +337,8 @@ def test_employee_cannot_create_operation(client, test_user, db_session):
     assert resp.status_code == 403
 
 
-"""Tests for GET /api/production-jobs/{id}/variance - planned vs actual
-(P0.3 section 27/28). Never invents an actual value: duration variance
+"""Tests for GET /api/production-jobs/{id}/variance - planned vs actual.
+Never invents an actual value: duration variance
 is computed only from operations that actually have actual_duration_minutes
 recorded, and duration_complete distinguishes a partial variance from
 the final one."""
@@ -511,7 +511,7 @@ def test_job_material_status_unknown_job_returns_404(client, test_user):
 
 
 def test_job_material_status_includes_supplier_options_when_blocked(client, test_user):
-    """Family 130 section 8: a blocked job's material-status must show
+    """A blocked job's material-status must show
     which supplier can actually resolve the shortage, not just the raw
     numbers - preferred supplier first regardless of price."""
     _login(client, test_user)
@@ -557,8 +557,8 @@ def test_job_material_status_includes_supplier_options_when_blocked(client, test
     assert options[1]["price"] == 400.0
 
 
-"""Tests for GET /api/production-jobs/{id}/risks - Production Risk
-(P0.3 section 29). Always a list of individually-explained findings,
+"""Tests for GET /api/production-jobs/{id}/risks - Production Risk.
+Always a list of individually-explained findings,
 never a single opaque score; an empty list is a real "nothing found
 from checkable data", not a claim of guaranteed safety."""
 
@@ -703,7 +703,7 @@ def test_risks_unknown_job_returns_404(client, test_user):
 
 
 """Tests for the Production Readiness Engine
-(GET /api/production-jobs/{id}/readiness) - P0.3 section 2.
+(GET /api/production-jobs/{id}/readiness).
 READY/PARTIALLY_READY/BLOCKED, reusing
 StockService.calculate_order_material_requirements exactly (the same
 calculation the material-status endpoint, dashboard, daily-tasks list
@@ -1033,7 +1033,7 @@ def test_cutting_requirements_require_auth(client):
 
 
 def test_cut_list_groups_by_material(client, test_user):
-    """Family 131 section 12 - the cut list must group real
+    """The cut list must group real
     CuttingRequirement rows by material, using the exact same data
     already entered against the job, never a second data source."""
     _login(client, test_user)
@@ -1066,7 +1066,7 @@ def test_cut_list_groups_by_material(client, test_user):
 
 
 def test_nesting_calculates_sheets_required(client, test_user):
-    """Family 131 section 13 - nesting must run against real part
+    """Nesting must run against real part
     dimensions and report an honest, deterministic result, never a
     fake 'optimized' number."""
     _login(client, test_user)
@@ -1749,3 +1749,26 @@ def test_task_list_material_at_risk_false_for_well_stocked_order(client, test_us
     assert resp.status_code == 200
     row = next(r for r in resp.json() if r["id"] == task["id"])
     assert row["material_at_risk"] is False
+
+
+# --- Security hardening: strict input validation ---
+
+def test_daily_task_create_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Strict Validation Task Employee", "monthly_salary": "20000"}).json()
+    resp = client.post("/api/daily-tasks/", json={
+        "employee_id": employee["id"], "date": "2026-08-20T00:00:00",
+        "task_description": "Strict validation test task",
+        "not_a_real_task_field": "value",
+    })
+    assert resp.status_code == 422
+
+
+def test_daily_task_create_rejects_oversized_description(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Strict Validation Task Employee 2", "monthly_salary": "20000"}).json()
+    resp = client.post("/api/daily-tasks/", json={
+        "employee_id": employee["id"], "date": "2026-08-20T00:00:00",
+        "task_description": "y" * 10000,
+    })
+    assert resp.status_code == 422

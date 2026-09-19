@@ -19,15 +19,15 @@ from app.modules.inventory import api as inventory_module
 from app.modules.catalog import api as catalog_module
 from app.modules.hr import api as hr_module
 from app.modules.clients import api as clients_module
-# Defect repair (P1-13): client_portal_module (the unauthenticated,
-# token-based external client-facing router - "Client Approval Hub" /
-# "My Order" link, see clients/portal_api.py) is intentionally not
-# imported/registered here anymore. Woodful is an internal-only tool;
-# this was the one API surface in the whole app with no
-# Depends(get_current_user)/require_role at all, reachable by anyone
-# holding a link. See clients/portal_api.py's own module docstring for
-# the full rationale and how to re-enable it if that product decision
-# is ever reversed.
+# The public, unauthenticated Client Portal ("Client Approval Hub" / "My
+# Order" link) has been removed entirely - Woodful is an internal-only
+# tool, and that router was the one API surface in the whole app with
+# no Depends(get_current_user)/require_role at all, reachable by anyone
+# holding a link. Nothing else in the codebase imports from it anymore
+# (the staff-facing "generate client link" actions in
+# sales/api.py now return 410 Gone directly, with no dependency on the
+# portal module). Re-adding it would mean rebuilding it, deliberately -
+# not a one-line reversal.
 from app.modules.communications import api as communications_module
 from app.modules.operations import api_operations as ops_module
 from app.modules.operations import api_production as prod_module
@@ -170,8 +170,7 @@ all_routers = [
     ops_module.issues_router,
     clients_module.clients_router,
     clients_module.activity_router,
-    # client_portal_module.client_portal_router intentionally not
-    # registered - see the import comment above (P1-13).
+    # (Client Portal router removed - see the import comment above.)
     reporting_module.search_router,
     sales_module.orders_router,
     sales_module.order_imports_router,

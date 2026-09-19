@@ -16,12 +16,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request, Response
 from app.platform.audit import log_action
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from app.platform.database import get_db
-from app.platform.security import require_role
+from app.platform.security import require_role, rate_limit
 from app.platform.config import settings
 from app.platform.ids import generate_business_id
-from app.shared import validate_file_signature
+from app.shared import safe_content_disposition_filename, stream_upload_to_storage
 from app.platform.storage import get_storage_backend, get_storage_backend_for_record
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -258,6 +259,172 @@ def create_candidate(data: CandidateCreate, db: Session = Depends(get_db),
     raise HTTPException(status_code=500, detail="Unable to generate a unique business ID, please try again")
 
 
+def _build_workspace_selected_candidate(db: Session, selected_candidate_id: int):
+    """Compact detail payload for the Candidates workspace's right-hand
+    inspector: profile, resume status, and interview history - the
+    interview history is read directly from the existing Interview
+    table via its candidate_id relationship, never duplicated into
+    Candidate. Mirrors _build_workspace_selected_supplier/_employee's
+    role in their own workspaces. Returns None if the candidate does
+    not exist (e.g. deleted between the list load and the selection)."""
+    candidate = db.query(Candidate).filter(Candidate.id == selected_candidate_id).first()
+    if candidate is None:
+        return None
+
+    # interview_count is the TRUE, complete count for this candidate -
+    # a SQL COUNT over every Interview row, independent of how many are
+    # actually displayed below. The inspector's "Interview History (N)"
+    # label reads this field rather than the (now bounded) interviews
+    # array's length, so it keeps representing every interview this
+    # candidate has ever had even once the display list is capped.
+    interview_count = (
+        db.query(func.count(Interview.id)).filter(Interview.candidate_id == selected_candidate_id).scalar() or 0
+    )
+
+    # Interview History display: bounded at the database to the newest
+    # INTERVIEW_HISTORY_LIMIT rows - never an unbounded .all() that
+    # loads every interview a long-tenured candidate has ever had just
+    # to show a handful in the inspector.
+    INTERVIEW_HISTORY_LIMIT = 20
+    interviews = (
+        db.query(Interview).filter(Interview.candidate_id == selected_candidate_id)
+        .order_by(Interview.scheduled_date.desc()).limit(INTERVIEW_HISTORY_LIMIT).all()
+    )
+
+    return {
+        "id": candidate.id, "business_id": candidate.business_id, "name": candidate.name,
+        "profile": {
+            "position": candidate.position, "email": candidate.email, "phone": candidate.phone,
+            "experience": candidate.experience, "status": candidate.status,
+        },
+        "resume": {
+            "resume_original_filename": candidate.resume_original_filename,
+            "resume_content_type": candidate.resume_content_type,
+            "resume_url": candidate.resume_url,
+            "has_uploaded_resume": bool(candidate.resume_stored_filename),
+        },
+        "interview_count": interview_count,
+        "interviews": [
+            {
+                "id": i.id, "business_id": i.business_id, "round": i.round,
+                "scheduled_date": i.scheduled_date.isoformat() if i.scheduled_date else None,
+                "interviewer": i.interviewer, "status": i.status, "feedback": i.feedback,
+                "overall_rating": i.overall_rating, "technical_rating": i.technical_rating,
+                "communication_rating": i.communication_rating, "culture_fit_rating": i.culture_fit_rating,
+                "recommendation": i.recommendation,
+            }
+            for i in interviews
+        ],
+        "remarks": candidate.remarks,
+    }
+
+
+@candidates_router.get("/workspace")
+def candidates_workspace(
+    search: Optional[str] = Query(None), status: Optional[str] = Query(None), position: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_candidate_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_candidate_id is set), skip recomputing summary/candidates and "
+                    "return only selected_candidate - mirrors the Orders/Clients/Suppliers/Employees workspace's "
+                    "own detail_only fast path.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(require_role("master")),
+):
+    """Purpose-built, bounded response for the compact Candidates
+    command-center workspace (KPI strip + 4 summary cards + compact
+    candidate list + inline selected-candidate inspector) - modeled
+    directly on GET /api/suppliers/workspace and GET /api/employees/workspace,
+    the finalized visual/architectural reference for this layout. One
+    request on page load, at most one more per row selection
+    (detail_only=True).
+
+    Candidate statuses are exactly Applied/Shortlisted/Selected/
+    Rejected (see the Candidate model's own column comment) - nothing
+    else is invented here. Interview counts/upcoming/completed are
+    read directly from the existing Interview table, never duplicated
+    into a second, parallel count."""
+    if detail_only:
+        return {
+            "summary": None, "candidates": None,
+            "selected_candidate": (
+                _build_workspace_selected_candidate(db, selected_candidate_id) if selected_candidate_id else None
+            ),
+        }
+
+    # --- summary: cheap, business-wide aggregates --------------------
+    total_candidates = db.query(func.count(Candidate.id)).scalar() or 0
+    status_counts = dict(db.query(Candidate.status, func.count(Candidate.id)).group_by(Candidate.status).all())
+    applied_count = status_counts.get("Applied", 0)
+    shortlisted_count = status_counts.get("Shortlisted", 0)
+    selected_count = status_counts.get("Selected", 0)
+    rejected_count = status_counts.get("Rejected", 0)
+
+    now = datetime.utcnow()
+    total_interviews = db.query(func.count(Interview.id)).scalar() or 0
+    upcoming_interviews = db.query(func.count(Interview.id)).filter(
+        Interview.status == "Scheduled", Interview.scheduled_date >= now,
+    ).scalar() or 0
+    completed_interviews = db.query(func.count(Interview.id)).filter(Interview.status == "Completed").scalar() or 0
+
+    summary = {
+        "total_candidates": total_candidates,
+        "applied_count": applied_count, "shortlisted_count": shortlisted_count,
+        "selected_count": selected_count, "rejected_count": rejected_count,
+        "overview": {
+            "total_candidates": total_candidates,
+            "status_breakdown": [
+                {"status": s, "count": status_counts.get(s, 0)}
+                for s in ("Applied", "Shortlisted", "Selected", "Rejected")
+            ],
+        },
+        "hiring_pipeline": {
+            "applied": applied_count, "shortlisted": shortlisted_count, "selected": selected_count,
+        },
+        "interview_activity": {
+            "total_interviews": total_interviews, "upcoming_interviews": upcoming_interviews,
+            "completed_interviews": completed_interviews,
+        },
+        "hiring_status": {
+            "selected_count": selected_count, "rejected_count": rejected_count,
+        },
+    }
+
+    # --- list: server-side search + filter + bounded pagination ------
+    query = db.query(Candidate)
+    if status:
+        query = query.filter(Candidate.status == status)
+    if position:
+        query = query.filter(Candidate.position == position)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            Candidate.name.ilike(like) | Candidate.email.ilike(like) | Candidate.phone.ilike(like)
+            | Candidate.position.ilike(like) | Candidate.business_id.ilike(like)
+        )
+    query = query.order_by(Candidate.created_at.desc())
+    total_count = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    items = [
+        {
+            "id": c.id, "business_id": c.business_id, "name": c.name, "position": c.position,
+            "phone": c.phone, "email": c.email, "experience": c.experience, "status": c.status,
+        }
+        for c in rows
+    ]
+
+    selected_candidate = None
+    if selected_candidate_id:
+        selected_candidate = _build_workspace_selected_candidate(db, selected_candidate_id)
+
+    return {
+        "summary": summary,
+        "candidates": {"items": items, "total_count": total_count, "limit": limit, "offset": offset},
+        "selected_candidate": selected_candidate,
+    }
+
+
 @candidates_router.get("/{candidate_id}", response_model=CandidateResponse)
 def get_candidate(candidate_id: int, db: Session = Depends(get_db),
                    auth=Depends(require_role("master"))):
@@ -294,7 +461,9 @@ class _ResumeStorageRecord:
         self.drive_file_id = candidate.drive_file_id
 
 
-@candidates_router.post("/{candidate_id}/resume", response_model=CandidateResponse)
+@candidates_router.post("/{candidate_id}/resume", response_model=CandidateResponse, dependencies=[
+    Depends(rate_limit("upload", settings.RATE_LIMIT_UPLOAD_PER_MINUTE))
+])
 def upload_resume(candidate_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
                    auth=Depends(require_role("master"))):
     """Upload (or replace) a candidate's resume file. Validates the file
@@ -321,26 +490,11 @@ def upload_resume(candidate_id: int, file: UploadFile = File(...), db: Session =
     # with/overwrite another candidate's stored file.
     stored_filename = f"resumes/{secrets.token_hex(16)}.{ext}"
 
-    size = 0
-    first_chunk = True
-    chunks = []
+    # Streams to storage in bounded chunks rather than buffering the
+    # whole upload in memory first - see app/shared.py's
+    # stream_upload_to_storage.
     try:
-        while chunk := file.file.read(1024 * 1024):
-            if first_chunk:
-                if not validate_file_signature(ext, chunk):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
-                    )
-                first_chunk = False
-            size += len(chunk)
-            if size > settings.MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
-                )
-            chunks.append(chunk)
-        storage_ref = backend.save(stored_filename, b"".join(chunks))
+        storage_ref = stream_upload_to_storage(backend, stored_filename, file, ext, settings.MAX_UPLOAD_SIZE)
     except HTTPException:
         raise
     except Exception:
@@ -397,7 +551,7 @@ def download_resume(candidate_id: int, db: Session = Depends(get_db),
     file_bytes = backend.read(storage_ref)
     return Response(
         content=file_bytes, media_type=candidate.resume_content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{candidate.resume_original_filename or "resume"}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_content_disposition_filename(candidate.resume_original_filename or "resume")}"'},
     )
 
 

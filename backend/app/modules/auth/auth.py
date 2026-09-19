@@ -3,10 +3,11 @@ PasswordResetToken. Split out of the former app/models/ top-level
 package - these are the auth module's own models, following the
 same modules/<domain>/models.py convention as every other domain
 (app/modules/sales/models.py, app/modules/hr/models.py, etc.)."""
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, func
 from sqlalchemy.orm import relationship
 from app.platform.database import BaseModel
-from pydantic import BaseModel as PydanticBaseModel, EmailStr
+from pydantic import BaseModel as PydanticBaseModel, EmailStr, ConfigDict, Field, field_validator
+from app.shared import validate_phone
 from typing import Optional
 from datetime import datetime
 import logging
@@ -87,6 +88,17 @@ class PasswordResetToken(BaseModel):
 and admin (create/update/list users) request/response shapes."""
 
 
+_IDENTIFIER_MAX = 255  # matches User.email/username column widths (String(255))
+_PASSWORD_MAX = 128    # no legitimate password is longer than this; bcrypt itself only
+                        # considers the first 72 bytes, so anything past that is wasted
+                        # input anyway - bounding it also caps the cost of hashing a
+                        # deliberately huge string on every login attempt.
+_TOKEN_MAX = 100        # reset tokens are secrets.token_urlsafe(32), ~43 chars - generous
+                        # headroom over that, never close to unbounded.
+_NAME_MAX = 255
+_USERNAME_PATTERN = r"^[A-Za-z0-9._-]+$"
+
+
 class UserBase(PydanticBaseModel):
     email: EmailStr
     username: str
@@ -94,17 +106,23 @@ class UserBase(PydanticBaseModel):
 
 
 class UserLogin(PydanticBaseModel):
-    identifier: str  # email OR username
-    password: str
+    model_config = ConfigDict(extra="forbid")
+
+    identifier: str = Field(..., min_length=1, max_length=_IDENTIFIER_MAX)  # email OR username
+    password: str = Field(..., min_length=1, max_length=_PASSWORD_MAX)
 
 
 class ForgotPasswordRequest(PydanticBaseModel):
-    identifier: str  # email OR username
+    model_config = ConfigDict(extra="forbid")
+
+    identifier: str = Field(..., min_length=1, max_length=_IDENTIFIER_MAX)  # email OR username
 
 
 class ResetPasswordRequest(PydanticBaseModel):
-    token: str
-    new_password: str
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(..., min_length=1, max_length=_TOKEN_MAX)
+    new_password: str = Field(..., min_length=8, max_length=_PASSWORD_MAX)
 
 
 class UserResponse(UserBase):
@@ -134,21 +152,64 @@ class MobileLoginResponse(PydanticBaseModel):
 
 
 class UserCreateAdmin(PydanticBaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    full_name: str
-    phone: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(..., min_length=3, max_length=100, pattern=_USERNAME_PATTERN)
+    email: EmailStr = Field(..., max_length=_IDENTIFIER_MAX)
+    password: str = Field(..., min_length=8, max_length=_PASSWORD_MAX)
+    full_name: str = Field(..., min_length=1, max_length=_NAME_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
     role: str = "user"
     employee_id: Optional[int] = None
 
+    @field_validator("role")
+    @classmethod
+    def role_must_be_allowed(cls, v):
+        # ALLOWED_ROLES is defined later in this same module (used by
+        # the create_user/update_user routes too) - referenced here
+        # rather than duplicating the set, since this validator only
+        # runs at request-validation time, well after the whole module
+        # has finished importing.
+        if v not in ALLOWED_ROLES:
+            raise ValueError(f"role must be one of {sorted(ALLOWED_ROLES)}")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def phone_must_be_valid(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not validate_phone(v):
+            raise ValueError("Please enter valid mobile number")
+        return v
+
 
 class UserUpdateAdmin(PydanticBaseModel):
-    full_name: Optional[str] = None
-    phone: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=_NAME_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
     role: Optional[str] = None
     employee_id: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator("role")
+    @classmethod
+    def role_must_be_allowed(cls, v):
+        if v is not None and v not in ALLOWED_ROLES:
+            raise ValueError(f"role must be one of {sorted(ALLOWED_ROLES)}")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def phone_must_be_valid(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not validate_phone(v):
+            raise ValueError("Please enter valid mobile number")
+        return v
 
 
 class UserAdminResponse(PydanticBaseModel):
@@ -196,6 +257,14 @@ _DUMMY_PASSWORD_HASH = "$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KU
 
 def _authenticate(request: UserLogin, db: Session) -> User:
     identifier = request.identifier
+    # Email is normalized to lowercase everywhere it's stored (see
+    # create_user) - comparing here with func.lower() on the stored
+    # column too (not just lowercasing the identifier) means this also
+    # keeps working for any account whose email was stored before this
+    # normalization existed, without needing a backfill. Username stays
+    # exactly as typed/stored - this app has never treated usernames as
+    # case-insensitive, and nothing here changes that.
+    identifier_normalized = identifier.strip().lower()
 
     # Per-account fixed-window limit (independent of per-IP limit applied at
     # the route level) - stops one account being hammered from many IPs.
@@ -204,7 +273,7 @@ def _authenticate(request: UserLogin, db: Session) -> User:
     check_login_backoff(identifier)
 
     user = db.query(User).filter(
-        (User.email == identifier) | (User.username == identifier),
+        (func.lower(User.email) == identifier_normalized) | (User.username == identifier),
         User.is_deleted.is_(False),
     ).first()
 
@@ -223,6 +292,13 @@ def _authenticate(request: UserLogin, db: Session) -> User:
         raise HTTPException(status_code=403, detail="This account has been deactivated")
 
     clear_login_failures(identifier)
+    # Only ever touched here, on a genuinely successful authentication -
+    # never on a failed attempt (both failure paths above return before
+    # this line).
+    user.last_login = datetime.utcnow()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 
@@ -312,7 +388,7 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     )
 
     user = db.query(User).filter(
-        (User.email == data.identifier) | (User.username == data.identifier),
+        (func.lower(User.email) == data.identifier.strip().lower()) | (User.username == data.identifier),
         User.is_deleted.is_(False), User.is_active.is_(True),
     ).first()
     if not user:
@@ -445,7 +521,13 @@ def create_user(data: UserCreateAdmin, request: Request, db: Session = Depends(g
                  auth=Depends(require_role("master"))):
     if data.role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail=f"Role must be one of {ALLOWED_ROLES}")
-    if db.query(User).filter((User.username == data.username) | (User.email == data.email)).first():
+    # Store/compare email lowercased consistently everywhere (create,
+    # login, uniqueness) - otherwise "Jane@x.com" and "jane@x.com" would
+    # pass this uniqueness check as different accounts, then fail to
+    # match each other later at login. Username is left exactly as
+    # given - unchanged, case-sensitive, as it always has been.
+    normalized_email = data.email.strip().lower()
+    if db.query(User).filter((User.username == data.username) | (func.lower(User.email) == normalized_email)).first():
         raise HTTPException(status_code=400, detail="Username or email already exists")
     if data.role != "master":
         # Every RBAC "own records only" check across the app (attendance,
@@ -463,7 +545,7 @@ def create_user(data: UserCreateAdmin, request: Request, db: Session = Depends(g
             raise HTTPException(status_code=400, detail="employee_id does not match an existing employee.")
 
     user = User(
-        username=data.username, email=data.email, full_name=data.full_name, phone=data.phone,
+        username=data.username, email=normalized_email, full_name=data.full_name, phone=data.phone,
         role=data.role, employee_id=data.employee_id, password_hash=hash_password(data.password), is_active=True,
     )
     db.add(user)

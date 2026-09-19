@@ -47,7 +47,7 @@ function ClientDetailPage() {
   const [deletingRate, setDeletingRate] = useState(false);
   const [rateError, setRateError] = useState('');
   const [loadError, setLoadError] = useState('');
-  // Family 137, feature 5 - Unified Client Relationship Timeline.
+  // Unified Client Relationship Timeline.
   // Fetched only when the Timeline tab is actually opened, not on
   // every page load - this is a broader, heavier aggregation than the
   // Activity tab's own manual log.
@@ -70,7 +70,7 @@ function ClientDetailPage() {
   }, [clientId, canViewFinancials]);
 
   useEffect(() => {
-    // Defect repair (F138 P4.2): clientId changing means the route now
+    // clientId changing means the route now
     // points at a different client record, not a background refresh of
     // the one already on screen - reset per-client state so the
     // previous client's data (orders, payments, activities, insights...)

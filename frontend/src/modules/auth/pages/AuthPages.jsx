@@ -2,7 +2,7 @@
 // Combines the former LoginPage.jsx, ForgotPasswordPage.jsx, and
 // ResetPasswordPage.jsx.
 //
-// Defect repair (F138 P1): UsersPage.jsx used to live in this same
+// UsersPage.jsx used to live in this same
 // file/module. LoginPage/ForgotPasswordPage/ResetPasswordPage are
 // deliberately imported EAGERLY (statically) at the top of App.jsx so
 // the login screen renders without waiting on a dynamic import - but

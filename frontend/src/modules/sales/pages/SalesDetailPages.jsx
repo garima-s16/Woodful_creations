@@ -27,7 +27,7 @@ function EstimateDetailPage() {
   const [sentMessage, setSentMessage] = useState('');
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState('');
-  // Family 137, feature 9 - Cost-Drift Alert.
+  // Cost-Drift Alert.
   const [costDrift, setCostDrift] = useState(null);
 
   const load = useCallback(() => {
@@ -51,7 +51,7 @@ function EstimateDetailPage() {
   }, [estimateId, isPrivileged]);
 
   useEffect(() => {
-    // Defect repair (F138 P4.2): estimateId changing (notably via
+    // estimateId changing (notably via
     // handleRevise below, which navigates from this same page to the
     // freshly-created next version's own /estimates/:id) means this is
     // a different estimate now, not a background refresh of the one
@@ -156,7 +156,7 @@ function EstimateDetailPage() {
         )}
       </div>
 
-      {/* Family 137, feature 9 - Cost-Drift Alert. FACT: the cost
+      {/* Cost-Drift Alert. FACT: the cost
           comparison below is directly computed from recorded cost
           snapshots vs current cost - never a decision. Nothing here
           changes the estimate; the human reviews and acts through the
@@ -316,7 +316,6 @@ function OrderDetailPage() {
   const [materialRequirements, setMaterialRequirements] = useState(null);
   const [materialRiskDismissed, setMaterialRiskDismissed] = useState(false);
   const [orderHealth, setOrderHealth] = useState(null);
-  const [error, setError] = useState('');
   const [loadError, setLoadError] = useState(null);
   const [sendEmailKind, setSendEmailKind] = useState(null); // 'order' | 'invoice' | null
   const [sentMessage, setSentMessage] = useState('');
@@ -341,15 +340,15 @@ function OrderDetailPage() {
   const [pendingDeletePayment, setPendingDeletePayment] = useState(null);
   const [deletingPayment, setDeletingPayment] = useState(false);
   const [sendReceiptPaymentId, setSendReceiptPaymentId] = useState(null);
-  // Family 137, feature 8 - Approved Specification / Sample Lock.
+  // Approved Specification / Sample Lock.
   const [approvedSpecs, setApprovedSpecs] = useState([]);
   const [approvedSpecsError, setApprovedSpecsError] = useState(false);
   const [showApproveSpecForm, setShowApproveSpecForm] = useState(false);
   const [approvingSpec, setApprovingSpec] = useState(false);
   const [approveSpecError, setApproveSpecError] = useState('');
-  // Family 137, feature 2 - Visual Build Timeline.
+  // Visual Build Timeline.
   const [buildTimeline, setBuildTimeline] = useState(null);
-  // Family 137, feature 12 - Capacity-Aware Delivery Promise. The
+  // Capacity-Aware Delivery Promise. The
   // evaluation is a PREDICTION + RECOMMENDATION only, requested
   // on-demand rather than loaded automatically - recording the final
   // date is the one explicit human decision.
@@ -387,7 +386,7 @@ function OrderDetailPage() {
     }
   };
 
-  // Family 137, feature 12 - Capacity-Aware Delivery Promise.
+  // Capacity-Aware Delivery Promise.
   const handleEvaluateDeliveryPromise = async () => {
     if (!promiseRequestedDate) { setPromiseError('Pick a requested delivery date first.'); return; }
     setEvaluatingPromise(true); setPromiseError(''); setPromiseEvaluation(null);
@@ -500,7 +499,7 @@ function OrderDetailPage() {
     projectExpensesAPI.list({ order_id: orderId }).then((res) => setExpenses(res.data)).catch((err) => setExpenses(err.response?.status === 403 ? 'forbidden' : 'error'));
     ordersAPI.profitability(orderId).then((res) => setProfitability(res.data)).catch((err) => setProfitability(err.response?.status === 403 ? 'forbidden' : 'error'));
     ordersAPI.materialRequirements(orderId).then((res) => setMaterialRequirements(res.data.materials)).catch(() => setMaterialRequirements('error'));
-    // Deterministic Order Health/Risk (Family 130 P0.1) - same
+    // Deterministic Order Health/Risk - same
     // authoritative computation the chatbot's "what is blocking this
     // order" query uses. Drives the header's Next Action/risk line
     // below instead of the page re-deriving it from raw tasks.
@@ -513,7 +512,7 @@ function OrderDetailPage() {
     setApprovedSpecsError(false);
     ordersAPI.listApprovedSpecifications(orderId).then((res) => setApprovedSpecs(res.data)).catch(() => { setApprovedSpecs([]); setApprovedSpecsError(true); });
 
-    // Family 137, feature 2 - Visual Build Timeline (Milestone +
+    // Visual Build Timeline (Milestone +
     // ProductionJob status, reusing the same order-health computation).
     ordersAPI.buildTimeline(orderId).then((res) => setBuildTimeline(res.data)).catch(() => setBuildTimeline(null));
   }, [orderId]);
@@ -601,7 +600,7 @@ function OrderDetailPage() {
               // next_action (blocked task > material shortage > production
               // blocker > overdue task > delivery risk > earliest open task) -
               // not re-derived from raw tasks here, so a generic open task can
-              // never hide a stronger business blocker (Family 130 P0.1 s.5).
+              // never hide a stronger business blocker.
               <div className="detail-meta-item">
                 <span className="detail-meta-label">Next Action</span>
                 <span className="detail-meta-value">
@@ -626,7 +625,7 @@ function OrderDetailPage() {
               </div>
             )}
             {orderHealth?.readiness && (
-              // Structured, non-fabricated readiness (Family 130 P0.1 s.6) -
+              // Structured, non-fabricated readiness -
               // "unavailable" means no real data exists for that dimension
               // yet, never a hidden pass. No percentage is invented.
               <div className="detail-meta-item">
@@ -1324,7 +1323,7 @@ function OrderDetailPage() {
         />
       </Modal>
 
-      {/* Family 137, feature 8 - Approved Specification / Sample Lock.
+      {/* Approved Specification / Sample Lock.
           Never edits an existing approval - each submit creates a new
           version and supersedes the previous one, preserving full
           history (see create_approved_specification). */}

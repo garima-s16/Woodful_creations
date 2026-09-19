@@ -28,6 +28,9 @@ SALARY_SLIP_STATUSES = {"draft", "finalized", "paid"}
 SALARY_ADVANCE_STATUSES = {"Pending", "Approved", "Rejected"}
 
 
+LEAVE_STATUSES = {"Pending", "Approved", "Rejected"}
+
+
 # Attendance & Overtime redesign - a real approval workflow (never
 # existed before; overtime_hours was previously only a direct
 # Master-set fact with no lifecycle). Draft never skips to Submitted
@@ -67,7 +70,7 @@ class Employee(BaseModel):
     bank_name = Column(String(100), nullable=True)
     bank_account_number = Column(String(30), nullable=True)
     tax_regime = Column(String(10), nullable=True)  # Old / New
-    # Family 137 (Employee 360, section 13.9) - offboarding facts.
+    # Employee 360 offboarding facts.
     # Both nullable/unset for every currently-active employee; set
     # together when a status change to "Inactive" represents someone
     # actually leaving (as opposed to a temporary/administrative
@@ -95,7 +98,7 @@ class Attendance(BaseModel):
     out_time = Column(DateTime, nullable=True)
     standard_hours = Column(Numeric(5, 2), nullable=False, default=8)
     attendance_status = Column(String(20), nullable=False, default="Present")
-    # Family P0.43 - a real, directly-settable fact, not derived from
+    # A real, directly-settable fact, not derived from
     # in_time/out_time: the Master explicitly states whether there
     # were any overtime hours on a given day. Zero unless the Master
     # says otherwise - working_hours (below) is a separate, purely
@@ -163,7 +166,7 @@ class SalarySlip(BaseModel):
     pf_deduction = Column(Numeric(12, 2), nullable=False, default=0)
     tds_deduction = Column(Numeric(12, 2), nullable=False, default=0)
     other_deductions = Column(Numeric(12, 2), nullable=False, default=0)
-    # Family P0.44 - the recovery amount applied against a SalaryAdvance
+    # The recovery amount applied against a SalaryAdvance
     # for this employee/month, kept as its own explicit column (not
     # folded into other_deductions) so recovery is independently
     # visible and traceable back to the SalaryAdvance it came from,
@@ -206,7 +209,7 @@ class CompanyHoliday(BaseModel):
 
 
 class SalaryAdvance(BaseModel):
-    """Family P0.44 - Salary Advance Management. A full workflow, not a
+    """Salary Advance Management. A full workflow, not a
     single number: Employee requests -> Master approves/rejects (at a
     possibly different amount than requested) -> recovery happens
     against real SalarySlips over one or more payroll months, tracked
@@ -309,7 +312,7 @@ class OvertimeRequest(BaseModel):
     employee = relationship("Employee")
 
 
-# Family 137 (Employee 360, section 13.9) - the fixed onboarding/
+# Employee 360's fixed onboarding/
 # offboarding checklist catalogs. Each entry is (item_key, label).
 # Four onboarding items (marked below) are never stored as an
 # EmployeeLifecycleItem row at all - they are computed live from
@@ -347,8 +350,8 @@ LIFECYCLE_PHASES = {"onboarding", "offboarding"}
 
 
 class EmployeeLifecycleItem(BaseModel):
-    """One onboarding or offboarding checklist item for one employee
-    (Family 137, section 13.9). See ONBOARDING_ITEMS/OFFBOARDING_ITEMS
+    """One onboarding or offboarding checklist item for one employee.
+    See ONBOARDING_ITEMS/OFFBOARDING_ITEMS
     above for the fixed catalogs this is seeded from - item_key/label
     are never freeform, so "progress" always means real, comparable
     completion against the same checklist for every employee."""

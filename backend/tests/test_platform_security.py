@@ -15,6 +15,7 @@ import time
 from openpyxl import load_workbook
 from app.shared import pdf_text
 from app.main import _migration_state
+from fastapi import HTTPException
 
 
 # --- platform/test_platform.py ---
@@ -706,6 +707,50 @@ def test_local_backend_save_read_exists_delete_round_trip():
         assert backend.exists(ref) is False
 
 
+def test_local_backend_save_stream_round_trip_matches_save():
+    """save_stream() (the memory-bounded path every real upload route
+    now uses via stream_upload_to_storage) must produce byte-identical
+    output to save() - streaming is an internal memory-use difference,
+    never a behavior difference."""
+    from app.platform.storage import LocalStorageBackend, StorageReference
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        backend = LocalStorageBackend(base_dir=tmp)
+        chunks = [b"hello ", b"streamed ", b"woodful ", b"content"]
+        ref = backend.save_stream("subdir/streamed.txt", iter(chunks))
+        assert isinstance(ref, StorageReference)
+        assert backend.exists(ref) is True
+        assert backend.read(ref) == b"".join(chunks)
+        backend.delete(ref)
+
+
+def test_save_stream_never_leaves_a_partial_file_on_mid_stream_failure():
+    """If the chunk generator raises partway through (exactly what
+    stream_upload_to_storage's generator does on an oversized or
+    signature-mismatched upload), no partial/corrupt file must be left
+    behind at the final path - same atomicity guarantee save() already
+    had via the temp-file-then-rename pattern."""
+    from app.platform.storage import LocalStorageBackend
+    import tempfile
+
+    def _failing_chunks():
+        yield b"partial data that should never be committed"
+        raise ValueError("simulated mid-stream failure")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        backend = LocalStorageBackend(base_dir=tmp)
+        try:
+            backend.save_stream("subdir/should_not_exist.txt", _failing_chunks())
+            assert False, "should have propagated the ValueError"
+        except ValueError:
+            pass
+        full_path = backend._full_path("subdir/should_not_exist.txt")
+        import os
+        assert not os.path.exists(full_path)
+        # No stray .tmp_ file left behind in the target directory either.
+        assert os.listdir(os.path.dirname(full_path)) == []
+
+
 def test_local_backend_delete_of_nonexistent_file_does_not_raise():
     from app.platform.storage import LocalStorageBackend, StorageReference
     import tempfile
@@ -749,6 +794,170 @@ def test_document_upload_still_works_through_the_abstraction(client, test_user):
 
     download = client.get(f"/api/documents/order/{order['id']}/{upload.json()['id']}/download")
     assert download.status_code == 200
+
+
+def test_safe_content_disposition_filename_strips_header_injection_characters():
+    """Content-Disposition headers across the document/resume download
+    routes interpolate the untrusted original filename directly into an
+    f-string - safe_content_disposition_filename (app/shared.py) is the
+    one place that must neutralize CR/LF (response-splitting/header
+    injection) and a bare double-quote (breaking out of the quoted
+    filename attribute) before that happens."""
+    from app.shared import safe_content_disposition_filename
+    injected = safe_content_disposition_filename('evil.pdf"\r\nX-Injected: yes')
+    assert "\r" not in injected
+    assert "\n" not in injected
+    assert '"' not in injected
+    assert safe_content_disposition_filename("") == "download"
+    assert safe_content_disposition_filename(None) == "download"
+    assert safe_content_disposition_filename("normal-file.pdf") == "normal-file.pdf"
+
+
+def test_document_download_header_is_safe_against_malicious_filename(client, test_user):
+    """End-to-end: a filename crafted to inject a header/break the quoted
+    attribute must not appear unsanitized in the real response headers."""
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Header Injection Client", "phone": "9000010098"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
+    }).json()
+    malicious_name = 'evil.pdf"; x-injected=yes'
+    files = {"file": (malicious_name, io.BytesIO(b"%PDF-1.4 header injection probe"), "application/pdf")}
+    upload = client.post(f"/api/documents/order/{order['id']}", files=files)
+    assert upload.status_code == 201
+
+    download = client.get(f"/api/documents/order/{order['id']}/{upload.json()['id']}/download")
+    assert download.status_code == 200
+    disposition = download.headers["content-disposition"]
+    assert disposition.count('"') == 2  # exactly the wrapping pair around filename=...
+
+
+def test_stream_upload_to_storage_rejects_signature_mismatch_before_any_write(tmp_path):
+    """stream_upload_to_storage must validate the magic-byte signature
+    against the FIRST chunk and raise before backend.save_stream ever
+    writes anything - a disguised file must leave zero trace on disk,
+    not a partial file that then gets cleaned up after the fact."""
+    from app.shared import stream_upload_to_storage
+    from app.platform.storage import LocalStorageBackend
+    import io as io_module
+
+    class _FakeUploadFile:
+        def __init__(self, data: bytes):
+            self.file = io_module.BytesIO(data)
+
+    backend = LocalStorageBackend(base_dir=str(tmp_path))
+    fake_file = _FakeUploadFile(b"this is not a real pdf")
+    try:
+        stream_upload_to_storage(backend, "probe.pdf", fake_file, "pdf", 1024 * 1024)
+        assert False, "should have raised on signature mismatch"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_stream_upload_to_storage_stops_at_configured_max_size(tmp_path):
+    """The running total is checked chunk-by-chunk, so an oversized
+    upload is rejected without ever accumulating past the configured
+    limit - proven here with a limit far smaller than the fake file, so
+    a bug that read the whole thing into memory first would still pass
+    this test's assertions but a correct streaming implementation stops
+    (and raises) as soon as the second 1-byte-chunk read pushes the
+    running total over the limit."""
+    from app.shared import stream_upload_to_storage
+    from app.platform.storage import LocalStorageBackend
+    import io as io_module
+
+    class _FakeUploadFile:
+        def __init__(self, data: bytes):
+            self.file = io_module.BytesIO(data)
+
+    backend = LocalStorageBackend(base_dir=str(tmp_path))
+    fake_file = _FakeUploadFile(b"%PDF-1.4 " + b"x" * 500)
+    try:
+        stream_upload_to_storage(backend, "probe.pdf", fake_file, "pdf", 20)
+        assert False, "should have raised on oversized upload"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "size limit" in exc.detail.lower()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_new_performance_indexes_exist_on_the_schema():
+    """orders.delivery_date and notifications(recipient_user_id, is_read)
+    are declared at the ORM level (Order.delivery_date's Column,
+    Notification's __table_args__) - confirms both actually reached the
+    schema this test database was built from (Base.metadata.create_all()),
+    the same guarantee migration 0079 provides for a real, already-
+    provisioned database."""
+    from sqlalchemy import inspect as sa_inspect
+    from tests.conftest import engine as test_engine
+    insp = sa_inspect(test_engine)
+    order_indexed_columns = {tuple(ix["column_names"]) for ix in insp.get_indexes("orders")}
+    assert ("delivery_date",) in order_indexed_columns
+    notification_indexed_columns = {tuple(ix["column_names"]) for ix in insp.get_indexes("notifications")}
+    assert ("recipient_user_id", "is_read") in notification_indexed_columns
+
+
+def test_document_upload_endpoint_is_rate_limited(client, test_user):
+    """A dedicated, configurable rate-limit tier (RATE_LIMIT_UPLOAD_PER_MINUTE)
+    applies to upload endpoints specifically - tighter than the global
+    per-IP floor, reusing the same centralized rate_limit() dependency
+    every other tiered endpoint (login/chat/export) already uses."""
+    from app.platform.config import settings
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Upload Rate Limit Client", "phone": "9000010099"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
+    }).json()
+    responses = []
+    for i in range(settings.RATE_LIMIT_UPLOAD_PER_MINUTE + 3):
+        files = {"file": (f"probe{i}.pdf", io.BytesIO(b"%PDF-1.4 probe"), "application/pdf")}
+        responses.append(client.post(f"/api/documents/order/{order['id']}", files=files))
+    limited = [r for r in responses if r.status_code == 429]
+    assert limited, "expected the upload-specific rate limit to trigger before the loop finished"
+    assert "retry-after" in {h.lower() for h in limited[0].headers.keys()}
+
+
+def test_document_upload_rejects_oversized_file(client, test_user, monkeypatch):
+    """The real streamed byte count is checked against MAX_UPLOAD_SIZE,
+    not just a trusted Content-Length header - proven here by shrinking
+    the configured limit rather than generating a genuinely huge upload."""
+    from app.modules.documents import api as documents_api
+    monkeypatch.setattr(documents_api.settings, "MAX_UPLOAD_SIZE", 10)
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Oversized Upload Client", "phone": "9000010096"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
+    }).json()
+    files = {"file": ("too_big.pdf", io.BytesIO(b"%PDF-1.4 " + b"x" * 200), "application/pdf")}
+    resp = client.post(f"/api/documents/order/{order['id']}", files=files)
+    assert resp.status_code == 400
+    assert "size limit" in resp.json()["detail"].lower()
+
+
+def test_document_upload_ignores_path_traversal_filename(client, test_user):
+    """The stored filename is always a random server-side token, never
+    derived from the client-supplied name - so a path-traversal-style
+    filename can't escape the intended storage directory. Verified
+    indirectly: the upload/download round-trip still works and returns
+    exactly the bytes uploaded, proving no path from the malicious name
+    reached the filesystem."""
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Traversal Filename Client", "phone": "9000010097"}).json()["id"]
+    order = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "1000", "advance": "0",
+    }).json()
+    malicious_name = "../../../../etc/passwd.pdf"
+    files = {"file": (malicious_name, io.BytesIO(b"%PDF-1.4 traversal probe"), "application/pdf")}
+    resp = client.post(f"/api/documents/order/{order['id']}", files=files)
+    assert resp.status_code == 201
+    # The original (attempted) filename is stored only as harmless
+    # metadata for display - it must never be echoed back as a
+    # filesystem path, and the download must still work normally.
+    assert resp.json()["original_filename"] == malicious_name
+    download = client.get(f"/api/documents/order/{order['id']}/{resp.json()['id']}/download")
+    assert download.status_code == 200
+    assert download.content == b"%PDF-1.4 traversal probe"
 
 
 def test_document_delete_through_abstraction_removes_the_stored_file(client, test_user):
@@ -2371,6 +2580,14 @@ def _prod_settings_kwargs(**overrides):
         COOKIE_SECURE=True,
         CORS_ORIGINS="https://app.example.com",
         RATE_LIMIT_BACKEND="redis",
+        # Without this, the default ("redis://localhost:6379/0") trips
+        # the separate "REDIS_URL must not be localhost in production"
+        # validator on every call that doesn't override it - a pre-
+        # existing gap in this helper (test_production_allows_redis_
+        # rate_limit_backend below would otherwise itself raise rather
+        # than assert what it claims to).
+        REDIS_URL="redis://prod-redis.example.com:6379/0",
+        FORWARDED_ALLOW_IPS="203.0.113.10",
     )
     base.update(overrides)
     return base
@@ -2401,6 +2618,31 @@ def test_production_rejects_empty_cors_origins():
     import pytest
     with pytest.raises(Exception):
         Settings(**_prod_settings_kwargs(CORS_ORIGINS=""))
+
+
+def test_production_rejects_wildcard_forwarded_allow_ips():
+    """FORWARDED_ALLOW_IPS='*' would let any client spoof
+    X-Forwarded-For and defeat every IP-based rate limit/backoff -
+    must be refused at startup in production."""
+    from app.platform.config import Settings
+    import pytest
+    with pytest.raises(Exception):
+        Settings(**_prod_settings_kwargs(FORWARDED_ALLOW_IPS="*"))
+
+
+def test_production_allows_specific_forwarded_allow_ips():
+    from app.platform.config import Settings
+    s = Settings(**_prod_settings_kwargs(FORWARDED_ALLOW_IPS="203.0.113.10"))
+    assert s.FORWARDED_ALLOW_IPS == "203.0.113.10"
+
+
+def test_non_production_allows_wildcard_forwarded_allow_ips():
+    """Only gated on ENVIRONMENT=production - a local/dev/staging
+    environment is free to use '*' if that's genuinely useful there."""
+    from app.platform.config import Settings
+    s = Settings(SECRET_KEY="a" * 48, DATABASE_URL="sqlite:///test.db",
+                 ENVIRONMENT="development", FORWARDED_ALLOW_IPS="*")
+    assert s.FORWARDED_ALLOW_IPS == "*"
 
 
 def test_wildcard_cors_origin_rejected_in_any_environment():
@@ -2653,6 +2895,41 @@ def test_in_memory_backend_window_expires():
     assert backend.is_allowed("test-key", max_requests=3, window_seconds=1) is True
 
 
+# --- item 22: a REJECTED request must never be counted into the
+# Redis-backed sliding window - only genuinely allowed requests add a
+# window entry. Requires the `redis` package and a reachable Redis
+# server; skips cleanly (rather than failing) when either is absent,
+# since the default "memory" backend used elsewhere in this suite
+# never needs them. See app/platform/security.py's _RedisBackend for
+# the Lua-script-based atomic check-and-add this exercises.
+def test_redis_backend_does_not_count_rejected_requests_into_window():
+    redis = pytest.importorskip("redis")
+    from app.platform.security import _RedisBackend
+    from app.platform.config import settings
+
+    try:
+        probe = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        probe.ping()
+    except Exception:
+        pytest.skip("No reachable Redis server for this environment.")
+
+    backend = _RedisBackend()
+    key = "item22-test-key"
+    probe.delete(f"ratelimit:{key}")
+    try:
+        for _ in range(3):
+            assert backend.is_allowed(key, max_requests=3, window_seconds=60) is True
+        # 4th and 5th requests are rejected - and, critically, must not
+        # grow the window each additional rejected attempt.
+        assert backend.is_allowed(key, max_requests=3, window_seconds=60) is False
+        count_after_first_rejection = probe.zcard(f"ratelimit:{key}")
+        assert count_after_first_rejection == 3
+        assert backend.is_allowed(key, max_requests=3, window_seconds=60) is False
+        assert probe.zcard(f"ratelimit:{key}") == 3
+    finally:
+        probe.delete(f"ratelimit:{key}")
+
+
 def test_redis_is_not_imported_at_module_level():
     """The core requirement - a plain local dev environment must never
     need the redis package installed just to import this file."""
@@ -2680,6 +2957,318 @@ def test_chat_endpoint_is_rate_limited(client, test_user):
     from app.platform.config import settings
     responses = [client.post("/api/chat/", json={"message": "hello"}) for _ in range(settings.RATE_LIMIT_CHAT_PER_MINUTE + 3)]
     assert any(r.status_code == 429 for r in responses)
+
+
+# --- Security hardening: rate limiting (Retry-After, exponential
+# backoff, account-level limits, config-driven thresholds) ---
+
+def test_rate_limited_response_includes_retry_after_header(client, test_user):
+    """A 429 from the per-IP rate_limit() dependency must carry a
+    Retry-After header, not just a generic error body - lets a
+    well-behaved client (or the browser's own fetch layer) back off
+    correctly instead of guessing or immediately retrying."""
+    from app.platform.config import settings
+    responses = [
+        client.post("/api/auth/login", json={"identifier": "nonexistent@example.com", "password": "wrong"})
+        for _ in range(settings.RATE_LIMIT_LOGIN_PER_MINUTE + 2)
+    ]
+    limited = [r for r in responses if r.status_code == 429]
+    assert limited, "expected at least one 429 once the per-IP login limit is exceeded"
+    assert "retry-after" in {h.lower() for h in limited[0].headers.keys()}
+    assert int(limited[0].headers["Retry-After"]) > 0
+
+
+def test_global_rate_limit_response_includes_retry_after_header(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+    from app.platform.config import settings
+    responses = [client.get("/api/materials/") for _ in range(settings.RATE_LIMIT_DEFAULT_PER_MINUTE + 5)]
+    limited = [r for r in responses if r.status_code == 429]
+    assert limited
+    assert "retry-after" in {h.lower() for h in limited[0].headers.keys()}
+
+
+def test_login_account_rate_limit_is_independent_of_ip_limit(client, test_user):
+    """check_account_rate_limit keys on the identifier, not the
+    client IP - a distinct dimension from the per-IP rate_limit()
+    dependency, both applied on the same endpoint independently."""
+    from app.platform.security import check_account_rate_limit, reset_rate_limits
+    reset_rate_limits()
+    for _ in range(3):
+        check_account_rate_limit("test-account-bucket", "someone@example.com", max_requests=3, window_seconds=60)
+    with pytest.raises(HTTPException) as exc_info:
+        check_account_rate_limit("test-account-bucket", "someone@example.com", max_requests=3, window_seconds=60)
+    assert exc_info.value.status_code == 429
+    assert "retry-after" in {h.lower() for h in (exc_info.value.headers or {}).keys()}
+    # A different account's own budget is completely unaffected.
+    check_account_rate_limit("test-account-bucket", "someone-else@example.com", max_requests=3, window_seconds=60)
+
+
+def test_login_backoff_grows_exponentially_with_repeated_failures(monkeypatch):
+    """check_login_backoff/record_login_failure directly - the
+    documented formula is
+    wait = min(BASE * 2^(count - THRESHOLD), MAX). Tested at the
+    function level (not through the real /api/auth/login rate-limited
+    endpoint) so the per-IP/per-account request limiters covered by
+    the tests above don't interfere with isolating backoff's own
+    growth curve."""
+    from app.platform import security as security_module
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_THRESHOLD", 2)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_BASE_SECONDS", 10)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_MAX_SECONDS", 10000)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_RESET_SECONDS", 3600)
+    security_module.reset_login_backoff_state()
+    identifier = "backoff-growth-test@example.com"
+
+    # Below the threshold: no backoff yet, regardless of how many
+    # failures have been recorded.
+    security_module.record_login_failure(identifier)
+    security_module.check_login_backoff(identifier)  # must not raise
+
+    # At the threshold (2nd failure): wait = 10 * 2^(2-2) = 10s -
+    # a fresh failure was JUST recorded, so elapsed time is ~0 and
+    # well under the wait - must now raise.
+    security_module.record_login_failure(identifier)
+    with pytest.raises(HTTPException) as first:
+        security_module.check_login_backoff(identifier)
+    first_wait = int(first.value.headers["Retry-After"])
+    assert first_wait == 10
+
+    # One more failure (3rd, count-threshold=1): wait = 10 * 2^1 = 20s -
+    # strictly larger than the previous wait, proving the growth is
+    # exponential, not flat/linear.
+    security_module.record_login_failure(identifier)
+    with pytest.raises(HTTPException) as second:
+        security_module.check_login_backoff(identifier)
+    second_wait = int(second.value.headers["Retry-After"])
+    assert second_wait > first_wait
+    assert second_wait == 20
+
+
+def test_login_backoff_is_capped_at_configured_maximum(monkeypatch):
+    """However many consecutive failures pile up, the wait must never
+    exceed LOGIN_BACKOFF_MAX_SECONDS - there is no unbounded/permanent
+    lockout, matching the explicit "no hard account lockout"
+    requirement."""
+    from app.platform import security as security_module
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_THRESHOLD", 2)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_BASE_SECONDS", 10)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_MAX_SECONDS", 30)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_RESET_SECONDS", 3600)
+    security_module.reset_login_backoff_state()
+    identifier = "backoff-cap-test@example.com"
+
+    for _ in range(10):  # far more than enough to blow past the 30s cap uncapped
+        security_module.record_login_failure(identifier)
+    with pytest.raises(HTTPException) as exc_info:
+        security_module.check_login_backoff(identifier)
+    assert int(exc_info.value.headers["Retry-After"]) <= 30
+
+
+def test_login_backoff_resets_after_long_inactivity(monkeypatch):
+    """A stale failure streak (older than LOGIN_BACKOFF_RESET_SECONDS)
+    must be cleared automatically rather than backing off forever -
+    this IS the "no permanent lockout" guarantee for someone who simply
+    comes back much later."""
+    from app.platform import security as security_module
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_THRESHOLD", 2)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_BASE_SECONDS", 10)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_MAX_SECONDS", 300)
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_RESET_SECONDS", 0.05)
+    security_module.reset_login_backoff_state()
+    identifier = "backoff-reset-test@example.com"
+
+    security_module.record_login_failure(identifier)
+    security_module.record_login_failure(identifier)
+    with pytest.raises(HTTPException):
+        security_module.check_login_backoff(identifier)
+
+    time.sleep(0.1)
+    security_module.check_login_backoff(identifier)  # must not raise - the streak has expired
+
+
+def test_successful_login_clears_backoff_failure_state(client, test_user, monkeypatch):
+    """A genuinely successful login must clear the account's
+    accumulated failure count - it should not take a fresh set of
+    failures on top of old ones to trigger backoff again next time,
+    and a legitimate user who eventually gets their password right
+    should not stay throttled."""
+    from app.platform import security as security_module
+    monkeypatch.setattr(security_module.settings, "LOGIN_BACKOFF_THRESHOLD", 2)
+    security_module.reset_login_backoff_state()
+
+    client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "wrong-1"})
+    client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "wrong-2"})
+    count_before, _ = security_module._get_attempt_backend().get_state("test@example.com")
+    assert count_before >= 2
+
+    success = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert success.status_code == 200
+
+    count_after, _ = security_module._get_attempt_backend().get_state("test@example.com")
+    assert count_after == 0
+
+
+def test_rate_limit_thresholds_are_configurable_not_hardcoded(monkeypatch):
+    """The per-IP rate_limit() dependency must read its limit from
+    whatever bucket/max_requests/window_seconds it's called with at
+    request time - not a value baked into the function itself - so
+    that changing the relevant Settings field actually changes
+    enforcement. Proven by constructing the dependency with two
+    different max_requests values and confirming each honors its own
+    configured limit independently."""
+    from app.platform.security import rate_limit, reset_rate_limits
+    from starlette.requests import Request
+
+    def _fake_request(ip: str) -> Request:
+        scope = {"type": "http", "client": (ip, 1234), "headers": []}
+        return Request(scope)
+
+    reset_rate_limits()
+    tight = rate_limit("config-override-tight", max_requests=2, window_seconds=60)
+    loose = rate_limit("config-override-loose", max_requests=20, window_seconds=60)
+
+    req = _fake_request("10.0.0.1")
+    tight(req)
+    tight(req)
+    with pytest.raises(HTTPException):
+        tight(req)  # the tight bucket's own low limit is enforced
+
+    for _ in range(10):
+        loose(req)  # comfortably under the loose bucket's own much higher limit
+
+
+_LEAK_MARKERS = ("Traceback", "traceback", "/home/", "site-packages", "sqlalchemy", "psycopg2",
+                  ".py\", line", "File \"", "SECRET_KEY", "DATABASE_URL", "password_hash")
+
+
+def test_real_404_response_does_not_leak_internals(client, test_user):
+    """A genuine not-found route, hit through the real app (not a
+    throwaway test app), must return a clean 404 with no filesystem
+    paths, driver names, or stack-frame text."""
+    _login(client, test_user)
+    resp = client.get("/api/this-route-does-not-exist-at-all")
+    assert resp.status_code == 404
+    body_text = resp.text
+    for marker in _LEAK_MARKERS:
+        assert marker not in body_text, f"leaked internal detail: {marker!r}"
+
+
+def test_real_422_validation_error_does_not_leak_internals(client, test_user):
+    """A genuine Pydantic validation failure on a real endpoint returns
+    field-level messages only - never a Python traceback, internal
+    path, or driver/library name."""
+    _login(client, test_user)
+    resp = client.post("/api/materials/", json={"name": 12345, "unit": "Sheets"})
+    assert resp.status_code == 422
+    body_text = resp.text
+    for marker in _LEAK_MARKERS:
+        assert marker not in body_text, f"leaked internal detail: {marker!r}"
+
+
+def test_login_rejects_oversized_identifier(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "a" * 300 + "@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 422
+
+
+def test_login_rejects_oversized_password(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "x" * 300})
+    assert resp.status_code == 422
+
+
+def test_login_rejects_empty_identifier(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "", "password": "TestPass123!"})
+    assert resp.status_code == 422
+
+
+def test_login_rejects_unexpected_field(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!", "remember_me": True})
+    assert resp.status_code == 422
+
+
+def test_forgot_password_rejects_oversized_identifier(client, test_user):
+    resp = client.post("/api/auth/forgot-password", json={"identifier": "a" * 300})
+    assert resp.status_code == 422
+
+
+def test_reset_password_rejects_oversized_token(client, test_user):
+    resp = client.post("/api/auth/reset-password", json={"token": "a" * 500, "new_password": "ValidPass123!"})
+    assert resp.status_code == 422
+
+
+def test_reset_password_rejects_short_new_password_at_schema_level(client, test_user):
+    """Pydantic's min_length=8 rejects this before the route body's own
+    len() check ever runs - both now agree on the same 8-char minimum,
+    the schema is just earlier/stricter (a 422, not the route's 400)."""
+    resp = client.post("/api/auth/reset-password", json={"token": "anything", "new_password": "short"})
+    assert resp.status_code == 422
+
+
+def test_reset_password_rejects_unexpected_field(client, test_user):
+    resp = client.post("/api/auth/reset-password", json={"token": "anything", "new_password": "ValidPass123!", "confirm_password": "ValidPass123!"})
+    assert resp.status_code == 422
+
+
+def test_create_user_rejects_short_password(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Validation Test Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "shortpassuser", "email": "shortpass@example.com", "password": "short7c",
+        "full_name": "Short Pass User", "role": "user", "employee_id": employee["id"],
+    })
+    assert resp.status_code == 422
+
+
+def test_create_user_rejects_invalid_role(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Role Validation Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "badroleuser", "email": "badrole@example.com", "password": "ValidPass123!",
+        "full_name": "Bad Role User", "role": "superadmin", "employee_id": employee["id"],
+    })
+    assert resp.status_code == 422
+
+
+def test_create_user_rejects_malformed_username(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Username Validation Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "bad username with spaces", "email": "badusername@example.com", "password": "ValidPass123!",
+        "full_name": "Bad Username User", "role": "user", "employee_id": employee["id"],
+    })
+    assert resp.status_code == 422
+
+
+def test_create_user_rejects_malformed_phone(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Phone Validation Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "badphoneuser", "email": "badphone@example.com", "password": "ValidPass123!",
+        "full_name": "Bad Phone User", "role": "user", "employee_id": employee["id"], "phone": "123",
+    })
+    assert resp.status_code == 422
+
+
+def test_create_user_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Extra Field Validation Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "extrafielduser", "email": "extrafield@example.com", "password": "ValidPass123!",
+        "full_name": "Extra Field User", "role": "user", "employee_id": employee["id"], "is_superuser": True,
+    })
+    assert resp.status_code == 422
+
+
+def test_create_user_still_succeeds_with_valid_data(client, test_user):
+    """Regression guard: the new bounds/validators must not reject
+    genuinely valid Woodful business data."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Valid Create Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "valid.user-1", "email": "validuser1@example.com", "password": "ValidPass123!",
+        "full_name": "Valid User", "role": "user", "employee_id": employee["id"], "phone": "9876543210",
+    })
+    assert resp.status_code == 201
 
 
 def test_login_success_sets_cookie_and_omits_token_from_body(client, test_user):

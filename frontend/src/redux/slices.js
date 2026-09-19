@@ -122,15 +122,33 @@ function mapItem(apiItem, currentStock) {
 // stock (not part of the cart record itself - the cart snapshots the
 // material's name/rate at add-time, but stock changes constantly and
 // must always be current for the shortage math in CartDrawer).
+//
+// Previously one materialsAPI.get(id) request per cart line (an N+1 -
+// a 12-item cart meant 12 separate stock round-trips). Batched into a
+// single materialsAPI.list({ ids }) call against the existing
+// GET /api/materials/ endpoint (its new optional `ids` filter -
+// see backend app/modules/inventory/api.py's list_materials - composes
+// with the endpoint's existing filters/pagination rather than being a
+// new endpoint). A batch failure falls every item's stock back to null
+// (same "stock unknown, not blocking" meaning the old per-item catch
+// used for an individual failure) rather than partially succeeding -
+// an acceptable, documented trade-off of one request replacing many.
 export const fetchCart = createAsyncThunk('cart/fetchCart', async () => {
   const res = await personalCartAPI.list();
   const items = res.data;
-  const stockLookups = await Promise.all(
-    items.map((item) =>
-      materialsAPI.get(item.material_id).then((r) => r.data.current_stock).catch(() => null)
-    )
-  );
-  return items.map((item, i) => mapItem(item, stockLookups[i]));
+  const uniqueMaterialIds = [...new Set(items.map((item) => item.material_id))];
+  let stockByMaterialId = {};
+  if (uniqueMaterialIds.length > 0) {
+    try {
+      const materialsRes = await materialsAPI.list({ ids: uniqueMaterialIds.join(',') });
+      stockByMaterialId = Object.fromEntries(
+        materialsRes.data.map((m) => [m.id, m.current_stock])
+      );
+    } catch {
+      stockByMaterialId = {};
+    }
+  }
+  return items.map((item) => mapItem(item, stockByMaterialId[item.material_id] ?? null));
 });
 
 export const addToCart = createAsyncThunk('cart/addToCart', async (payload) => {

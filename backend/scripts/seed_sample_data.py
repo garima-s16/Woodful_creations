@@ -1177,7 +1177,7 @@ if __name__ == "__main__":
     db = SessionLocal()
 
     def _run_phase(name, fn, *args, **kwargs):
-        """Family 131 seeding-reliability fix: pinpoints exactly which
+        """Pinpoints exactly which
         phase failed and the real exception, rather than leaving a bare
         ROLLBACK as the only visible signal (the observed failure mode
         this whole diagnostic exists to fix). Re-raises after logging -

@@ -657,6 +657,17 @@
   padding: var(--space-4);
   background: var(--surface);
 }
+/* Final Form Modal skin: the line-item editor renders inside the
+   Estimate/Order Wide modal (.modal-content--wide), so it needs the
+   same theme-specific surface treatment as every other field in that
+   modal rather than the app-wide card tokens above, which would now
+   read as a visible mismatch against the modal's own new palette.
+   Scoped exactly like every other .modal-content override elsewhere
+   in this stylesheet/components.css. */
+.modal-content .line-item-card {
+  border-color: var(--modal-border);
+  background: var(--modal-surface-footer);
+}
 
 .line-item-primary-row {
   display: grid;
@@ -666,6 +677,7 @@
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-color);
 }
+.modal-content .line-item-primary-row { border-bottom-color: var(--modal-border); }
 
 .line-item-secondary-row {
   display: flex;
@@ -696,17 +708,29 @@
   background: var(--surface-elevated);
   color: var(--text-primary);
 }
+.modal-content .line-item-card input,
+.modal-content .line-item-card select {
+  border-color: var(--modal-border-input);
+  border-radius: var(--radius-md);
+  background: var(--modal-surface-input);
+  color: var(--modal-text-primary);
+}
 
 .line-item-card input::placeholder {
   color: var(--text-secondary);
   opacity: 0.85;
 }
+.modal-content .line-item-card input::placeholder { color: var(--modal-text-faint); opacity: 1; }
 
 .line-item-card input:focus,
 .line-item-card select:focus {
   outline: none;
   box-shadow: var(--focus-ring);
   border-color: var(--color-gold);
+}
+.modal-content .line-item-card input:focus,
+.modal-content .line-item-card select:focus {
+  border-color: var(--modal-accent);
 }
 
 .line-item-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -723,6 +747,7 @@
   letter-spacing: 0.03em;
   color: var(--text-secondary);
 }
+.modal-content .line-item-field::before { color: var(--modal-text-muted); }
 
 .product-picker { position: relative; display: flex; flex-direction: column; gap: 2px; }
 .product-picker input.product-id-missing { border-color: var(--danger); }
@@ -1133,74 +1158,11 @@
   margin-top: 10px;
 }
 
-/* --- Client Portal (Family 137, features 1 and 3) ---
-   Public, unauthenticated pages - deliberately not using the internal
-   app's Sidebar/Navbar shell. Reuses the same design tokens as the
-   rest of the app (no new palette/typography), just a simple centered
-   container instead of the internal layout chrome. */
-.client-portal-page {
-  min-height: 100vh;
-  background: var(--surface-elevated);
-  padding: var(--space-6) var(--space-4);
-}
-
-.client-portal-container {
-  max-width: 760px;
-  margin: 0 auto;
-}
-
-.client-portal-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: var(--space-5);
-}
-
-.client-portal-logo {
-  height: 32px;
-}
-
-.client-portal-header h1 {
-  font-size: 1.1rem;
-  margin: 0;
-}
-
-.client-portal-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: var(--space-4);
-}
-
-.client-portal-summary-item .label {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 2px;
-}
-
-.client-portal-summary-item .value {
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.client-portal-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: var(--space-5);
-  flex-wrap: wrap;
-}
-
-.client-portal-footer-note {
-  text-align: center;
-  font-size: 0.76rem;
-  color: var(--text-secondary);
-  margin-top: var(--space-6);
-}
+/* Client Portal CSS removed - the public, unauthenticated portal pages
+   these classes styled were removed from the frontend (see App.jsx's
+   own comment) and the backend no longer serves /api/client-portal/*
+   at all (see backend app/api/routes.py). Nothing references
+   .client-portal-* anymore. */
 
 /* ==========================================================================
    Atelier Command Centre — Home dashboard redesign additions.
@@ -1537,3 +1499,302 @@
 }
 .task-check-btn:hover { color: var(--success); border-color: var(--success); background: var(--success-bg); }
 .task-check-btn svg { width: 16px; height: 16px; }
+
+/* ==========================================================================
+   Orders Workspace — the Stitch-approved Orders command-center layout:
+   KPI strip, right-aligned action toolbar, four summary cards, then a
+   68/32 master-detail workspace (compact order list + inline selected
+   Order Details). Reuses the exact same tokens/card treatment as the
+   Home dashboard above (.kpi-strip/.kpi-pill, .home-card family,
+   .order-health-chips) - every color here is one of those existing
+   variables, nothing new. Only the layout geometry below (toolbar,
+   4-card grid, the 68/32 split, fixed-height panels, compact table,
+   3-zone detail panel) is new, since the Home dashboard has no
+   equivalent of it.
+   ========================================================================== */
+
+.orders-workspace-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.orders-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.orders-summary-cards .home-card {
+  min-height: 130px;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 1100px) { .orders-summary-cards { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .orders-summary-cards { grid-template-columns: 1fr; } }
+
+.orders-card-body {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+.orders-card-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.orders-card-stat-row strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+/* --- Hero-stat card body: a large headline number with a short caption
+   and a right-aligned secondary line on one row, plus a bottom
+   cross-reference row separated by a divider - a richer presentation of
+   the same summary-card data, built entirely from existing tokens (no
+   new colors). Used by the four Orders/Clients/Estimates summary cards
+   alongside .orders-card-body's existing stat-row content. */
+.orders-card-hero {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 0 var(--space-2);
+}
+.orders-card-hero-number {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.65rem;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.orders-card-hero-caption {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-bg);
+  border-radius: 100px;
+  padding: 2px 8px;
+}
+.orders-card-hero-side {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: right;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orders-card-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+.orders-card-footer-row strong { color: var(--text-primary); font-weight: 700; }
+
+.orders-workspace-grid {
+  display: grid;
+  grid-template-columns: 68% 32%;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+@media (max-width: 1100px) {
+  .orders-workspace-grid { grid-template-columns: 1fr; }
+}
+
+.orders-workspace-panel {
+  height: 540px;
+  min-height: 540px;
+  max-height: 540px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .orders-workspace-panel { height: 480px; min-height: 480px; max-height: 480px; }
+}
+
+.orders-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.orders-panel-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.orders-panel-title h3 { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin: 0; color: var(--text-primary); }
+.orders-panel-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.orders-panel-tab {
+  padding: 4px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.orders-panel-tab.active { background: var(--color-gold); border-color: var(--color-gold); color: var(--color-ink); font-weight: 700; }
+.orders-panel-tab:hover:not(.active) { color: var(--text-primary); border-color: var(--color-gold-soft); }
+
+.orders-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.orders-table-scroll .data-table { margin: 0; }
+.orders-table-scroll .data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.orders-table-scroll .data-table td,
+.orders-table-scroll .data-table th {
+  padding: 8px var(--space-3);
+  font-size: 0.82rem;
+}
+.orders-row-selected { background: rgba(155, 130, 107, 0.14); }
+.orders-row-selected td { color: var(--text-primary); }
+
+.orders-panel-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* Order Details panel: fixed header / scrollable middle / fixed footer */
+.order-detail-top {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.order-detail-top h3 { margin: 0 0 4px; font-family: var(--font-display); font-size: 1rem; color: var(--text-primary); }
+.order-detail-top-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: 6px; }
+.order-detail-client { font-size: 0.82rem; color: var(--text-secondary); }
+/* Status pill variant with a small leading dot (currentColor, so it
+   automatically matches whichever .status-* tone class is also applied)
+   - scoped to this modifier only, so every other .status-badge in the
+   app (tables, list rows) is completely unaffected. */
+.status-badge-dot { display: inline-flex; align-items: center; gap: 5px; text-transform: none; letter-spacing: normal; }
+.status-badge-dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* Small round icon-only affordance for the detail panel header (e.g.
+   Print) - reuses the same border/hover language as .btn-secondary. */
+.order-detail-icon-btn {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 100px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  transition: all var(--transition);
+}
+.order-detail-icon-btn:hover { background: var(--surface-elevated); color: var(--text-primary); border-color: var(--color-gold-soft); }
+.order-detail-icon-btn svg { width: 14px; height: 14px; }
+/* Two-tone split bar (received vs outstanding) - purely a richer
+   presentation of the same total_received/balance figures already
+   shown as text nearby, never a second calculation. */
+.order-detail-split-bar {
+  width: 100%; height: 6px; border-radius: 100px; overflow: hidden;
+  display: flex; gap: 2px; background: var(--border-subtle); margin: 6px 0;
+}
+.order-detail-split-bar-received { height: 100%; background: var(--success); }
+.order-detail-split-bar-pending { height: 100%; background: var(--danger); }
+.order-detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.order-detail-bottom {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.order-detail-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: var(--space-5);
+  text-align: center;
+}
+.order-detail-section-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.order-detail-progress-track {
+  height: 8px;
+  border-radius: 100px;
+  background: var(--surface-elevated);
+  overflow: hidden;
+}
+.order-detail-progress-fill {
+  height: 100%;
+  background: var(--color-gold);
+  border-radius: 100px;
+  transition: width var(--transition-spring);
+}
+.order-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.order-detail-row strong { color: var(--text-primary); font-weight: 600; }
+.order-detail-item-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-detail-item-row:last-child { border-bottom: none; }
+.order-detail-comment {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.order-detail-comment:last-child { border-bottom: none; }
+.order-detail-comment strong { color: var(--text-primary); }

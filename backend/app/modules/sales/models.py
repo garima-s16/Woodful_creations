@@ -44,6 +44,25 @@ ORDER_PRIORITIES = {"Low", "Medium", "High", "Urgent"}
 
 PAYMENT_TYPES = ("Advance", "Progress Payment", "Internal")
 
+# The one authoritative "is this estimate still open" definition -
+# every module that needs to count/filter open estimates (Sales,
+# Clients, Dashboard/reporting, estimate conversion logic) imports this
+# instead of redeclaring its own copy of the tuple. Previously
+# duplicated verbatim in app/modules/sales/api.py and
+# app/modules/clients/api.py - a silent drift risk if one were ever
+# edited without the other. Values unchanged from what both call sites
+# already agreed on: an estimate a client hasn't yet finally accepted,
+# rejected, expired, or converted.
+#
+# Not the same concept as inventory/api.py's dead-stock-redirection
+# filter (Estimate.status.in_(["draft", "sent"])) - that is a
+# deliberately narrower, differently-scoped business rule (excludes
+# "approved"/"changes_requested" because those estimates are too close
+# to conversion to be a real opportunity to redirect idle material
+# toward) and is left as its own, already-documented definition rather
+# than being forced to share this one.
+OPEN_ESTIMATE_STATUSES = ("draft", "sent", "changes_requested", "approved")
+
 
 class Estimate(BaseModel):
     """Cost estimate for a client/order - material + labor cost, tax,
@@ -78,7 +97,7 @@ class Estimate(BaseModel):
     valid_until = Column(DateTime, nullable=True)
     remarks = Column(Text, nullable=True)
 
-    # Family 137, feature 1 - Client Approval Hub. Set only via the
+    # Client Approval Hub. Set only via the
     # client-facing portal (clients/portal_api.py), never by internal
     # staff editing - approved_by is the client's own typed name, not
     # a staff member's. client_decision_comments holds whichever note
@@ -147,8 +166,8 @@ class EstimateLineItem(BaseModel):
     applied_margin_percent = Column(Numeric(5, 2), nullable=True)
     # Cost basis (Product.cost_price or suggested_cost_price) at the moment
     # this line was priced - the missing half of pricing_rule_applied/
-    # applied_margin_percent needed to detect Cost-Drift (Family 137,
-    # feature 9): those two record what pricing DECISION was made, this
+    # applied_margin_percent needed to detect Cost-Drift:
+    # those two record what pricing DECISION was made, this
     # records what the underlying COST actually was at that time, so a
     # later change in material/product cost is a comparison against a
     # real number, not a guess. Nullable and never backfilled for rows
@@ -168,6 +187,34 @@ class EstimateLineItem(BaseModel):
         return self.product.product_code if self.product else None
 
 
+# The one authoritative "is this order active" definition - every
+# module that needs to count/filter active orders (Dashboard, Orders,
+# Clients, Reporting/Analytics, Communications, Production/Operations,
+# Inventory risk calculations) uses this instead of redeclaring its own
+# inline status check. Before this, some call sites excluded only
+# "Completed" while inventory/services.py's material-at-risk logic (and
+# reporting/services.py's own already-existing, now-retired
+# _ORDER_TERMINAL_STATUSES) correctly excluded both "Completed" and
+# "Cancelled" - a real inconsistency: a Cancelled order was still being
+# counted as "active" by the Dashboard/Orders/Clients/Communications
+# call sites, which could disagree with Inventory and Reporting on the
+# exact same business question. "Cancelled" is a real, reachable
+# terminal status, not a new one invented here - a status update to
+# "Cancelled" is logged as its own "cancel_order" audit action (see
+# sales/api.py's update_order), and it is a selectable status in the
+# Orders UI - so it belongs in this set on the same footing as
+# "Completed".
+ORDER_TERMINAL_STATUSES = ("Completed", "Cancelled")
+
+
+def is_active_order_status(status: Optional[str]) -> bool:
+    """Python-side check for a single already-loaded Order's
+    project_status - same definition active_order_filter() below
+    applies in SQL, for code that already has the status string in hand
+    and would otherwise re-derive this inline."""
+    return status not in ORDER_TERMINAL_STATUSES
+
+
 class Order(BaseModel):
     """Order & Project Management. total_received/balance are derived from
     advance + other_received (kept as stored columns for fast dashboard
@@ -181,7 +228,14 @@ class Order(BaseModel):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
     project_type = Column(String(100), nullable=True)
     order_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    delivery_date = Column(DateTime, nullable=True)
+    # Indexed for the dashboard's "upcoming deliveries" widget
+    # (app/modules/reporting - filters delivery_date within the next N
+    # days on every dashboard load) and the equivalent
+    # upcoming_delivery_within_days filter on GET /api/orders/ - both a
+    # direct range filter on this column, previously with no index of
+    # its own to support it (order_date's own index above does not help
+    # a delivery_date filter).
+    delivery_date = Column(DateTime, nullable=True, index=True)
     order_value = Column(Numeric(12, 2), nullable=False, default=0)
     # discount is an absolute amount (same meaning as Estimate.discount,
     # not a percentage) - see app/modules/sales/services.py's compute_totals function, the same
@@ -200,7 +254,16 @@ class Order(BaseModel):
     execution_status = Column(String(50), nullable=False, default="Pending")
     delivery_status = Column(String(50), nullable=False, default="Pending")
     progress_percent = Column(Integer, nullable=False, default=0)
-    priority = Column(String(20), nullable=True)
+    # Indexed for the Orders workspace/list's priority filter
+    # (GET /api/orders/, /api/orders/workspace, and the Orders Excel
+    # export all do Order.priority == <value>) - previously unindexed
+    # despite being filtered the same way project_status is (which
+    # already has its own index above). Low cardinality, exact-match
+    # filter, same shape as project_status - not a substring/LIKE
+    # search, so a plain index helps here unlike the new client/order
+    # search filters below (see migration 0080's own notes on why those
+    # are deliberately NOT indexed).
+    priority = Column(String(20), nullable=True, index=True)
     supervisor = Column(String(255), nullable=True)
     site_address = Column(Text, nullable=True)
     remarks = Column(Text, nullable=True)
@@ -269,6 +332,17 @@ class Order(BaseModel):
         total = (self.advance or Decimal("0")) + payments_total
         self.total_received = total
         self.balance = (self.order_value or Decimal("0")) - total
+
+
+def active_order_filter():
+    """SQLAlchemy filter expression for "this order is active" -
+    Order.project_status.notin_(ORDER_TERMINAL_STATUSES). The one
+    authoritative filter every query that needs "active orders" should
+    pass to .filter(...)/.where(...), instead of redeclaring
+    `Order.project_status != "Completed"` (or some other ad hoc
+    exclusion) inline. Does not touch historical data - only changes
+    which rows a query counts as active."""
+    return Order.project_status.notin_(ORDER_TERMINAL_STATUSES)
 
 
 class OrderItem(BaseModel):
@@ -380,7 +454,7 @@ APPROVED_SPECIFICATION_STATUSES = ("approved", "superseded", "change_requested")
 
 
 class ApprovedSpecification(BaseModel):
-    """Approved Specification / Sample Lock (Family 137, feature 8).
+    """Approved Specification / Sample Lock.
 
     The authoritative, versioned record of the exact material/finish/
     hardware specification a client actually approved for an Order -

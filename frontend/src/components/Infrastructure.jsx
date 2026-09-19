@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Navigate } from 'react-router-dom';
 import { onQueueChange, replayQueue, watchConnectivity } from '../utils/utils';
+import { BrandLogo } from './Navigation';
 import '../styles/components.css';
 
 // --- ProtectedRoute.jsx ---
@@ -49,10 +50,16 @@ function ProtectedRoute({ children }) {
  * the real content is ready.
  */
 function LoadingShell() {
+  // The active theme is resolved synchronously before first paint
+  // (see index.jsx's resolveInitialTheme call, which themeSlice's
+  // initial state agrees with) - so it's always safe to read here,
+  // never a guess made after the fact. Reuses BrandLogo, the same
+  // single implementation the Navbar and every auth page already use,
+  // rather than re-deciding the asset here.
   return (
     <div className="loading-shell" role="status" aria-live="polite" aria-label="Loading Woodful">
       <div className="loading-shell-navbar">
-        <div className="loading-shell-bar loading-shell-logo" />
+        <BrandLogo className="loading-shell-logo" />
         <div className="loading-shell-bar loading-shell-icon" />
       </div>
       <div className="loading-shell-body">

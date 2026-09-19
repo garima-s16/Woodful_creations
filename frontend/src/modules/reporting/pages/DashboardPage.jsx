@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI, clientActivitiesAPI } from '../../../utils/api';
@@ -9,8 +9,8 @@ import { SimpleBarChart } from '../../../components/common/UI';
 import { LoadingShell } from '../../../components/Infrastructure';
 import { formatCurrency, today } from '../../../utils/utils';
 import {
-  MaterialIcon, AlertTriangleIcon, TruckIcon, PaymentIcon, EmployeeIcon, ArrowUpRightIcon,
-  CompassIcon, CheckCircleIcon, PurchaseIcon, ProductionIcon,
+  AlertTriangleIcon, TruckIcon, PaymentIcon, EmployeeIcon, ArrowUpRightIcon,
+  CompassIcon, CheckCircleIcon, PurchaseIcon,
 } from '../../../components/icons';
 
 /* ==========================================================================
@@ -103,7 +103,13 @@ function AttentionAccordion({ stock, orders, pendingTasks, upcomingDeliveries, p
   const tasks = (pendingTasks || []).slice(0, 4);
   const materialAtRisk = (atRiskOrders || []).slice(0, 4);
 
-  const sections = [
+  // Memoized (not rebuilt fresh on every render) so the effect below
+  // can depend on `sections` itself - a reference that only actually
+  // changes when the underlying data does - instead of the previous
+  // `sections.map((s) => s.key).join(',')` primitive-string workaround
+  // used purely to get something stable enough to put in a dependency
+  // array.
+  const sections = React.useMemo(() => [
     {
       key: 'materialAtRisk', label: 'Orders At Risk - Material Shortage', items: materialAtRisk,
       renderItem: (o) => {
@@ -190,19 +196,35 @@ function AttentionAccordion({ stock, orders, pendingTasks, upcomingDeliveries, p
         </button>
       ),
     },
-  ].filter((s) => s.items.length > 0);
+  ].filter((s) => s.items.length > 0), [
+    stock, orders, pendingTasks, upcomingDeliveries, pendingPurchases, delayedProduction, atRiskOrders, navigate,
+  ]);
 
   const [openKey, setOpenKey] = useState(() => sections[0]?.key || null);
+  // Always-current openKey without adding it to the effect's own
+  // dependency array below - the same ref pattern this file already
+  // uses for loadFollowUpsRef/loadCriticalDashboardDataRef further
+  // down. openKey changes on every manual accordion click; depending
+  // on it directly would re-run this effect on every such click for no
+  // reason (it would never actually change setOpenKey's outcome, since
+  // a manually-opened key is always a currently-valid one) - exactly
+  // the unnecessary rerun this must avoid.
+  const openKeyRef = useRef(openKey);
+  openKeyRef.current = openKey;
   // Re-open the first genuinely populated section whenever the
   // populated set changes shape (e.g. everything just cleared, or the
   // previously-open section emptied out) - never leaves the accordion
-  // stuck open on a section with nothing left in it.
+  // stuck open on a section with nothing left in it. `sections` is now
+  // a real, correctly-tracked dependency (memoized above against the
+  // actual underlying data) rather than a stringified stand-in, so
+  // this fires exactly when the section set's content genuinely
+  // changes - no more, no less - and no longer needs an
+  // eslint-disable to justify the dependency array.
   useEffect(() => {
-    if (!sections.some((s) => s.key === openKey)) {
+    if (!sections.some((s) => s.key === openKeyRef.current)) {
       setOpenKey(sections[0]?.key || null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sections.map((s) => s.key).join(',')]);
+  }, [sections]);
 
   if (!sections.length) {
     return (
@@ -330,63 +352,111 @@ function DashboardPage() {
       .catch((err) => setWidgetErrors((prev) => ({ ...prev, atRisk: classifyError(err) })));
   };
 
+  // loadFollowUps/loadCriticalDashboardData are plain functions redefined
+  // every render (loadCriticalDashboardData genuinely needs to read the
+  // latest stock/orders/staff on each call, for the isFirstLoad check
+  // above) - listing either of them directly in the mount effect's own
+  // dependency array below would make that effect re-fire every time
+  // stock/orders/staff update, i.e. right after the very load it just
+  // triggered, which is exactly the duplicate-call loop this must avoid.
+  // Refs mirroring the latest closure sidestep that: reassigned on every
+  // render (a plain assignment, not inside an effect, so it's never
+  // stale), and reading/writing a ref's .current is exempt from
+  // exhaustive-deps, so the effect below can call the always-current
+  // function without needing either one as a dependency.
+  const loadFollowUpsRef = useRef(loadFollowUps);
+  loadFollowUpsRef.current = loadFollowUps;
+  const loadCriticalDashboardDataRef = useRef(loadCriticalDashboardData);
+  loadCriticalDashboardDataRef.current = loadCriticalDashboardData;
+
   useEffect(() => {
-    loadFollowUps();
-    loadCriticalDashboardData();
-    // limit bumped 4 -> 8: this same list now backs both the
-    // Attention accordion (top 4, unchanged) and the new Task
-    // Progress card (up to 6) below, instead of fetching it twice.
-    dailyTasksAPI.list({ status: 'TO DO', limit: 8 }).then((res) => setPendingTasks(res.data)).catch(() => {});
-    if (!isPrivileged) {
-      // Excludes DONE tasks in SQL now - all 4 counts below only need
-      // active work, not the employee's entire task history.
-      dailyTasksAPI.list({ mine: true, exclude_status: 'DONE' }).then((res) => setMyTasks(res.data)).catch(() => {});
-    }
+    // Critical, above-the-fold path first and unconditionally - the
+    // KPI strip/operations snapshot render gate (allCriticalSettled
+    // below) only ever waits on this.
+    loadCriticalDashboardDataRef.current();
 
-    // Upcoming deliveries: orders with a delivery_date in the next 14
-    // days that aren't already completed - filtered/sorted/limited in
-    // SQL now (upcoming_delivery_within_days), not by downloading
-    // every order ever placed and filtering in React.
-    ordersAPI.list({ upcoming_delivery_within_days: 14, limit: 4 }).then((res) => {
-      setUpcomingDeliveries(res.data);
-    }).catch(() => {});
+    // Everything below (Follow-ups, Task Progress, Upcoming Deliveries,
+    // Production Execution, and the master-only Recent Activity feed)
+    // renders further down the page, below the hero/operations-snapshot
+    // content - see this file's own top-of-file layout comment. None of
+    // it was ever part of the render gate (criticalSettled only tracks
+    // stock/orders/staff), so this is a network-timing change only, not
+    // a rendering one: deferred one idle tick past the critical calls
+    // above (falling back to a macrotask where requestIdleCallback
+    // isn't available) purely so 8 additional requests don't all
+    // compete with stock/orders/staff/at-risk-orders for the browser's
+    // limited concurrent-connection pool the instant the page mounts.
+    // Same requests, same endpoints, same data, same
+    // isPrivileged gating - just issued a beat later. Cancelled on
+    // unmount/re-run so a fast navigation-away can't still fire these
+    // for a page that's no longer there.
+    let cancelled = false;
+    const loadSecondaryDashboardData = () => {
+      if (cancelled) return;
+      loadFollowUpsRef.current();
+      // limit bumped 4 -> 8: this same list now backs both the
+      // Attention accordion (top 4, unchanged) and the new Task
+      // Progress card (up to 6) below, instead of fetching it twice.
+      dailyTasksAPI.list({ status: 'TO DO', limit: 8 }).then((res) => setPendingTasks(res.data)).catch(() => {});
+      if (!isPrivileged) {
+        // Excludes DONE tasks in SQL now - all 4 counts below only need
+        // active work, not the employee's entire task history.
+        dailyTasksAPI.list({ mine: true, exclude_status: 'DONE' }).then((res) => setMyTasks(res.data)).catch(() => {});
+      }
 
-    // Production jobs open 7+ days: there is no planned-completion-date
-    // field on ProductionJob, so this is a stated approximation (same
-    // pattern as the Orders "30+ days overdue" filter) - not a precise
-    // "delayed" status the data doesn't actually support. Filtered/
-    // limited in SQL now (open_longer_than_days), not by downloading
-    // the entire table.
-    productionJobsAPI.list({ open_longer_than_days: 7, limit: 4 }).then((res) => {
-      setDelayedProduction(res.data);
-    }).catch(() => {});
+      // Upcoming deliveries: orders with a delivery_date in the next 14
+      // days that aren't already completed - filtered/sorted/limited in
+      // SQL now (upcoming_delivery_within_days), not by downloading
+      // every order ever placed and filtering in React.
+      ordersAPI.list({ upcoming_delivery_within_days: 14, limit: 4 }).then((res) => {
+        if (cancelled) return;
+        setUpcomingDeliveries(res.data);
+      }).catch(() => {});
 
-    // Defect repair (P1-4): purchases/payments endpoints are
-    // Depends(require_role("master")) server-side - a non-master
-    // (employee) user firing these unconditionally was guaranteed 3
-    // wasted round-trips per dashboard load, every one of them a 403.
-    // Gated behind isPrivileged like the other master-only widgets.
-    if (isPrivileged) {
-      Promise.all([
-        purchasesAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
-        paymentsAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
-        purchasesAPI.list({ pending_payment_only: true, limit: 4 }).then((r) => r.data).catch(() => []),
-      ]).then(([recentPurchases, recentPayments, pendingPurchasesData]) => {
-        const feed = [
-          ...recentPurchases.map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${formatCurrency(p.invoice_total)}`, date: p.date })),
-          ...recentPayments.map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
-        ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
-        setActivity(feed);
+      // Production jobs open 7+ days: there is no planned-completion-date
+      // field on ProductionJob, so this is a stated approximation (same
+      // pattern as the Orders "30+ days overdue" filter) - not a precise
+      // "delayed" status the data doesn't actually support. Filtered/
+      // limited in SQL now (open_longer_than_days), not by downloading
+      // the entire table.
+      productionJobsAPI.list({ open_longer_than_days: 7, limit: 4 }).then((res) => {
+        if (cancelled) return;
+        setDelayedProduction(res.data);
+      }).catch(() => {});
 
-        // Purchases still pending payment to the supplier - its own
-        // bounded, filtered request now, not derived from the same
-        // unbounded list used for the activity feed above.
-        setPendingPurchases(pendingPurchasesData);
-      });
-    } else {
-      setActivity([]);
-      setPendingPurchases([]);
-    }
+      // Purchases/payments endpoints are
+      // Depends(require_role("master")) server-side - a non-master
+      // (employee) user firing these unconditionally was guaranteed 3
+      // wasted round-trips per dashboard load, every one of them a 403.
+      // Gated behind isPrivileged like the other master-only widgets.
+      if (isPrivileged) {
+        Promise.all([
+          purchasesAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
+          paymentsAPI.list({ limit: 4 }).then((r) => r.data).catch(() => []),
+          purchasesAPI.list({ pending_payment_only: true, limit: 4 }).then((r) => r.data).catch(() => []),
+        ]).then(([recentPurchases, recentPayments, pendingPurchasesData]) => {
+          if (cancelled) return;
+          const feed = [
+            ...recentPurchases.map((p) => ({ type: 'Purchase', description: `${p.purchase_code} - ${formatCurrency(p.invoice_total)}`, date: p.date })),
+            ...recentPayments.map((p) => ({ type: 'Payment', description: `${p.receipt_code} - ${formatCurrency(p.amount)}`, date: p.date })),
+          ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8);
+          setActivity(feed);
+
+          // Purchases still pending payment to the supplier - its own
+          // bounded, filtered request now, not derived from the same
+          // unbounded list used for the activity feed above.
+          setPendingPurchases(pendingPurchasesData);
+        });
+      } else {
+        setActivity([]);
+        setPendingPurchases([]);
+      }
+    };
+
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
+    const cancelIdle = window.cancelIdleCallback || clearTimeout;
+    const idleHandle = idle(loadSecondaryDashboardData);
+    return () => { cancelled = true; cancelIdle(idleHandle); };
   }, [isPrivileged]);
 
   const allCriticalSettled = criticalSettled.stock && criticalSettled.orders && criticalSettled.staff;

@@ -25,7 +25,11 @@ def test_docx_resume_upload_succeeds(client, test_user):
     _login(client, test_user)
     candidate_id = client.post("/api/candidates/", json={"name": "DOCX Resume Candidate"}).json()["id"]
 
-    fake_docx = io.BytesIO(b"fake docx binary content")
+    # docx is a zip container - its real magic bytes are the PK local-file-
+    # header signature (validate_file_signature checks this), so the fake
+    # body must start with it or this upload would be correctly rejected
+    # as a signature mismatch rather than exercising the success path.
+    fake_docx = io.BytesIO(b"PK\x03\x04fake docx binary content")
     resp = client.post(
         f"/api/candidates/{candidate_id}/resume",
         files={"file": ("resume.docx", fake_docx,
@@ -39,7 +43,9 @@ def test_doc_resume_upload_succeeds(client, test_user):
     _login(client, test_user)
     candidate_id = client.post("/api/candidates/", json={"name": "DOC Resume Candidate"}).json()["id"]
 
-    fake_doc = io.BytesIO(b"fake old-format doc content")
+    # Legacy .doc is an OLE compound file - real magic bytes below, same
+    # reasoning as the .docx fix above.
+    fake_doc = io.BytesIO(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1fake old-format doc content")
     resp = client.post(
         f"/api/candidates/{candidate_id}/resume",
         files={"file": ("resume.doc", fake_doc, "application/msword")},

@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.platform.audit import log_action
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from app.platform.database import get_db
 from app.platform.security import get_current_user, require_role
@@ -76,7 +77,7 @@ def _serialize_employees(employees, role: str, own_employee_id):
     requester's own, for non-privileged roles. Master accounts see
     everyone's.
 
-    exit_reason (Family 137, section 13.9/13.16) joins this same list
+    exit_reason joins this same list
     - a free-text reason someone left is exactly the kind of sensitive
     HR detail this rule already exists for. exit_date is left visible
     (the bare fact that/when someone left is ordinary directory
@@ -100,7 +101,7 @@ def _serialize_employee(employee, role: str, own_employee_id):
 
 
 def _require_own_or_master(auth: dict, employee_id: int) -> bool:
-    """Family 137 (Employee 360, section 13.16) - "do not rely on
+    """Employee 360 - "do not rely on
     frontend visibility as authorization; prevent users from accessing
     another employee's information unless explicitly authorized."
     Every Employee 360 read below is master-or-self, the same rule
@@ -148,13 +149,13 @@ def create_employee(data: EmployeeCreate, request: Request, db: Session = Depend
             db.rollback()
             continue
         db.refresh(employee)
-        # Family 137 (Employee 360, section 13.10/13.16) - an employee
+        # An employee
         # record being created is itself a consequential HR event and
         # the Employee Activity Timeline's first entry.
         log_action(db, request, user_id=auth.get("user_id"), action="create_employee", module_name="employees",
                    record_id=employee.id, new_value={"name": employee.name, "designation": employee.designation,
                                                        "department": employee.department, "status": employee.status})
-        # Defect repair (P1-9): pre-seed the onboarding checklist here,
+        # Pre-seed the onboarding checklist here,
         # at the one moment an employee record is genuinely created -
         # this route already writes, so there is nothing to lose by
         # provisioning the checklist now, and it means the very first
@@ -164,6 +165,171 @@ def create_employee(data: EmployeeCreate, request: Request, db: Session = Depend
         employee_lifecycle(db, employee.id, "onboarding")
         return employee
     raise HTTPException(status_code=500, detail="Unable to generate a unique employee code, please try again")
+
+
+def _build_workspace_selected_employee(db: Session, selected_employee_id: int, role: str, own_employee_id):
+    """Compact identity payload for the Employees workspace's right-
+    hand inspector - reuses _serialize_employee for the EXACT same
+    role-based salary/PAN/UAN/bank-detail redaction every other
+    Employee read in this module already applies (never a second/
+    parallel redaction rule). The rich Employee 360 content
+    (attendance/leave/tasks/salary/onboarding/activity) is rendered by
+    the existing Employee 360 endpoints below once the inspector
+    mounts for this employee - this function only backs the compact
+    identity strip shown immediately on selection, mirroring
+    _build_workspace_selected_supplier/_client's role in their own
+    workspaces. Returns None if the employee does not exist (e.g.
+    deleted between the list load and the selection)."""
+    employee = db.query(Employee).filter(Employee.id == selected_employee_id).first()
+    if employee is None:
+        return None
+    return _serialize_employee(employee, role, own_employee_id).model_dump(mode="json")
+
+
+@employees_router.get("/workspace")
+def employees_workspace(
+    department: Optional[str] = Query(None), status: Optional[str] = Query(None), search: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_employee_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_employee_id is set), skip recomputing summary/employees and "
+                    "return only selected_employee - mirrors the Orders/Clients/Suppliers workspace's own "
+                    "detail_only fast path.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Purpose-built, bounded response for the compact Employees
+    command-center workspace (KPI strip + 4 summary cards + compact
+    employee list + inline selected-employee identity panel) - modeled
+    directly on GET /api/clients/workspace and GET /api/suppliers/workspace,
+    the finalized visual/architectural reference for this layout. One
+    request on page load, at most one more per row selection
+    (detail_only=True) - never a full workspace reload just to change
+    the selected row.
+
+    Reuses the SAME search filter (name/employee_code/designation/
+    phone/email) as the existing GET /api/employees/ list, and the
+    SAME _serialize_employees/_serialize_employee role-based redaction
+    used everywhere else in this module - this endpoint decides only
+    what shape to return, never how any figure is computed or
+    redacted. The full Employee 360 experience (attendance, leave,
+    tasks, salary, onboarding/offboarding, activity timeline) is
+    rendered by the existing dedicated Employee 360 endpoints below,
+    called directly by the workspace's inspector component once an
+    employee is selected - never duplicated here."""
+    role = auth.get("role", "user")
+    own_employee_id = auth.get("employee_id")
+
+    if detail_only:
+        return {
+            "summary": None, "employees": None,
+            "selected_employee": (
+                _build_workspace_selected_employee(db, selected_employee_id, role, own_employee_id)
+                if selected_employee_id else None
+            ),
+        }
+
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+
+    # --- summary: cheap, business-wide aggregates --------------------
+    total_employees = db.query(func.count(Employee.id)).scalar() or 0
+    active_employees = db.query(func.count(Employee.id)).filter(Employee.status == "Active").scalar() or 0
+    inactive_employees = max(0, total_employees - active_employees)
+
+    department_rows = db.query(Employee.department, func.count(Employee.id)).group_by(Employee.department).all()
+    department_breakdown = sorted(
+        [{"department": d or "Unassigned", "count": n} for d, n in department_rows],
+        key=lambda row: -row["count"],
+    )
+    department_count = len([d for d in department_breakdown if d["department"] != "Unassigned"])
+
+    designation_rows = db.query(Employee.designation, func.count(Employee.id)).filter(
+        Employee.designation.isnot(None)
+    ).group_by(Employee.designation).all()
+    designation_breakdown = sorted(
+        [{"designation": d, "count": n} for d, n in designation_rows], key=lambda row: -row["count"]
+    )
+
+    # On Leave Today: a real, derivable aggregate from the existing
+    # Leave model (an Approved leave whose date range spans today) -
+    # Employee has no dedicated "on leave" flag, so this is not
+    # invented, the same treatment as Suppliers' own missing-status
+    # handling in suppliers_workspace.
+    on_leave_today = db.query(func.count(func.distinct(Leave.employee_id))).filter(
+        Leave.status == "Approved", Leave.start_date <= today_end, Leave.end_date >= today_start,
+    ).scalar() or 0
+
+    # Present/Absent/Half Day today: real Attendance rows actually
+    # recorded for today - never invented, and never every attendance
+    # record ever fetched client-side (see Section K performance
+    # rules) - just today's three counts, computed in SQL.
+    present_today = db.query(func.count(Attendance.id)).filter(
+        Attendance.date >= today_start, Attendance.date < today_end, Attendance.attendance_status == "Present",
+    ).scalar() or 0
+    absent_today = db.query(func.count(Attendance.id)).filter(
+        Attendance.date >= today_start, Attendance.date < today_end, Attendance.attendance_status == "Absent",
+    ).scalar() or 0
+    half_day_today = db.query(func.count(Attendance.id)).filter(
+        Attendance.date >= today_start, Attendance.date < today_end, Attendance.attendance_status == "Half Day",
+    ).scalar() or 0
+
+    summary = {
+        "total_employees": total_employees,
+        "active_employees": active_employees,
+        "inactive_employees": inactive_employees,
+        "on_leave_today": on_leave_today,
+        "present_today": present_today,
+        "overview": {
+            "total_employees": total_employees, "active_employees": active_employees,
+            "inactive_employees": inactive_employees, "department_count": department_count,
+        },
+        "active_breakdown": {
+            "active_employees": active_employees,
+            "department_breakdown": department_breakdown[:5],
+        },
+        "attendance_availability": {
+            "present_today": present_today, "absent_today": absent_today, "half_day_today": half_day_today,
+            "on_leave_today": on_leave_today,
+        },
+        "department_role_mix": {
+            "department_breakdown": department_breakdown[:5],
+            "designation_breakdown": designation_breakdown[:5],
+        },
+    }
+
+    # --- list: reuses the exact same search filter as GET /api/employees/,
+    # plus bounded server-side pagination -----------------------------
+    query = db.query(Employee)
+    if department:
+        query = query.filter(Employee.department == department)
+    if status:
+        query = query.filter(Employee.status == status)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            (Employee.name.ilike(like)) | (Employee.employee_code.ilike(like))
+            | (Employee.designation.ilike(like)) | (Employee.phone.ilike(like)) | (Employee.email.ilike(like))
+        )
+    query = query.order_by(Employee.name)
+    total_count = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    # _serialize_employees is the one place role-based salary/PAN/UAN/
+    # bank-detail redaction happens for employee listings - reused
+    # here verbatim, never reimplemented.
+    items = [e.model_dump(mode="json") for e in _serialize_employees(rows, role, own_employee_id)]
+
+    selected_employee = None
+    if selected_employee_id:
+        selected_employee = _build_workspace_selected_employee(db, selected_employee_id, role, own_employee_id)
+
+    return {
+        "summary": summary,
+        "employees": {"items": items, "total_count": total_count, "limit": limit, "offset": offset},
+        "selected_employee": selected_employee,
+    }
 
 
 @employees_router.get("/{employee_id}", response_model=EmployeeResponse)
@@ -191,14 +357,14 @@ def update_employee(employee_id: int, data: EmployeeUpdate, request: Request, db
     db.refresh(employee)
     new_snapshot = serializable_fields(employee, tracked_fields)
     if old_snapshot != new_snapshot:
-        # Family 137 (Employee 360, section 13.10/13.16) - designation/
+        # designation/
         # department/status/salary/manager are exactly the "designation
         # changes, salary changes" the Employee Activity Timeline spec
         # calls out; only logged when something tracked actually moved,
         # not on every no-op save.
         log_action(db, request, user_id=auth.get("user_id"), action="update_employee", module_name="employees",
                    record_id=employee.id, old_value=old_snapshot, new_value=new_snapshot)
-    # Defect repair (P1-9): re-sync the checklist here, at an actual
+    # Re-sync the checklist here, at an actual
     # write, rather than relying on the next GET to do it. designation/
     # manager (auto-derived onboarding items) and status (whether
     # offboarding should now be tracked at all) can all change via
@@ -218,8 +384,8 @@ def delete_employee(employee_id: int, request: Request, db: Session = Depends(ge
     from app.modules.hr.models import Attendance
     from app.modules.operations.models import DailyTask
     from app.modules.hr.models import Leave
-    from app.modules.operations.models import ProductionJob
-    from app.modules.hr.models import SalarySlip
+    from app.modules.operations.models import ProductionJob, ProductionOperation
+    from app.modules.hr.models import SalarySlip, SalaryAdvance, OvertimeRequest, EmployeeLifecycleItem
     from app.modules.auth.auth import User
 
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
@@ -234,7 +400,11 @@ def delete_employee(employee_id: int, request: Request, db: Session = Depends(ge
         ("daily tasks", db.query(DailyTask).filter(DailyTask.employee_id == employee_id).first()),
         ("leave records", db.query(Leave).filter(Leave.employee_id == employee_id).first()),
         ("production jobs", db.query(ProductionJob).filter(ProductionJob.employee_id == employee_id).first()),
+        ("production operations", db.query(ProductionOperation).filter(ProductionOperation.employee_id == employee_id).first()),
         ("salary slips", db.query(SalarySlip).filter(SalarySlip.employee_id == employee_id).first()),
+        ("salary advances", db.query(SalaryAdvance).filter(SalaryAdvance.employee_id == employee_id).first()),
+        ("overtime requests", db.query(OvertimeRequest).filter(OvertimeRequest.employee_id == employee_id).first()),
+        ("onboarding/offboarding checklist items", db.query(EmployeeLifecycleItem).filter(EmployeeLifecycleItem.employee_id == employee_id).first()),
         ("a linked login account", db.query(User).filter(User.employee_id == employee_id).first()),
     ]
     blocking = [label for label, found in reference_checks if found is not None]
@@ -252,7 +422,7 @@ def delete_employee(employee_id: int, request: Request, db: Session = Depends(ge
                record_id=employee_id, old_value={"name": employee_name})
 
 
-# --- Employee 360 / HR Command Center (Family 137, section 13) ---
+# --- Employee 360 / HR Command Center ---
 # Every route below is read-only aggregation over existing HR/
 # Productivity/Documents/audit data (see hr/services.py's own module
 # docstring for the full reuse rationale), gated master-or-self via
@@ -403,7 +573,7 @@ def list_attendance(employee_id: Optional[int] = Query(None), date: Optional[dat
 def mark_attendance(data: AttendanceCreate, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     if auth.get("role", "user") not in ("master",) and data.employee_id != auth.get("employee_id"):
         raise HTTPException(status_code=403, detail="You can only mark attendance for yourself.")
-    # Family P0.43 - overtime is a Master decision, never something an
+    # Overtime is a Master decision, never something an
     # employee can grant themselves by marking their own attendance
     # (spec: "employee must not be able to add overtime for themselves
     # without the required workflow"). Zero is always allowed (the
@@ -828,7 +998,7 @@ def _compute_net(data) -> None:
     gross = data.basic + data.da + data.hra + data.overtime_amount
     # advance_deduction is never on SalarySlipCreate/Update - the only
     # way it becomes non-zero is the salary-advance recovery action
-    # (Family P0.44), which sets it directly on the model and calls
+    # which sets it directly on the model and calls
     # this same function to recompute net_salary rather than
     # duplicating the arithmetic. getattr keeps this function safe to
     # call with either a Create/Update schema (no such field, so 0)
@@ -867,7 +1037,7 @@ def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session
     ).all()
 
     working_days_this_month = compute_working_days(db, period_start.year, period_start.month)
-    # Family P0.43's own explicit formula (Monday-Saturday working
+    # The explicit formula (Monday-Saturday working
     # days minus APPROVED leave) - a theoretical full-pay day count,
     # distinct from suggested_paid_days below (which reflects actual
     # recorded attendance and can differ, e.g. an unmarked absence
@@ -876,7 +1046,7 @@ def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session
     # replacing the other.
     salary_days_breakdown = compute_salary_days(db, employee_id, period_start.year, period_start.month)
 
-    # Defect repair: this used to hardcode its own copy of the
+    # This used to hardcode its own copy of the
     # Present=1/Half Day=0.5/Absent=0/Leave=0 day-value table. Now
     # reuses the one authoritative ATTENDANCE_DAY_VALUE constant
     # (hr/services.py) that attendance_period_summary/team_attendance_grid
@@ -905,7 +1075,7 @@ def suggest_from_attendance(employee_id: int, month: str, year: str, db: Session
 
 @salary_slips_router.get("/payroll-summary")
 def payroll_summary(month: str, year: str, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family P0.43 - pure aggregation over SalarySlip.status and
+    """Pure aggregation over SalarySlip.status and
     SalaryAdvance (see hr/payroll_service.py) - not a second payroll
     engine. Master-only: this is company-wide financial/payroll
     information."""
@@ -1018,8 +1188,8 @@ def update_salary_slip(slip_id: int, data: SalarySlipUpdate, request: Request, d
 
 
 # --- salary_advances.py ---
-"""Family P0.44 - Salary Advance Management API. The complete workflow
-(spec section 5): Employee/Master request -> Master approve/reject ->
+"""Salary Advance Management API. The complete workflow:
+Employee/Master request -> Master approve/reject ->
 recovery against real SalarySlips. Recovery reuses
 salary_slips.py's own _compute_net (imported, not reimplemented) so
 net_salary is never calculated two different ways."""
@@ -1144,6 +1314,12 @@ def approve_salary_advance(advance_id: int, data: SalaryAdvanceApprove,
     if advance.status != "Pending":
         raise HTTPException(status_code=409, detail=f"This advance is already {advance.status.lower()} - cannot approve it again.")
 
+    if data.approved_amount is not None and data.approved_amount > advance.requested_amount:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Approved amount ({data.approved_amount}) cannot exceed the requested amount ({advance.requested_amount}).",
+        )
+
     advance.approved_amount = data.approved_amount if data.approved_amount is not None else advance.requested_amount
     advance.approved_by = auth.get("username") or str(auth.get("user_id"))
     from datetime import datetime
@@ -1209,6 +1385,21 @@ def record_salary_advance_recovery(advance_id: int, data: SalaryAdvanceRecovery,
         raise HTTPException(
             status_code=404,
             detail=f"No salary slip exists for this employee for {data.month} {data.year} - create it before recording recovery against it.",
+        )
+
+    # No carry-forward/negative-payroll mechanism exists in this project
+    # (recovery is only ever deducted from the same month's slip) - so a
+    # recovery that would push this slip's net payable below zero has
+    # nowhere valid to go and must be rejected rather than silently
+    # capped or allowed to produce a negative payslip.
+    gross_before = slip.basic + slip.da + slip.hra + slip.overtime_amount
+    deductions_before = slip.pf_deduction + slip.tds_deduction + slip.other_deductions + (slip.advance_deduction or Decimal("0"))
+    currently_recoverable = max(gross_before - deductions_before, Decimal("0"))
+    if data.amount > currently_recoverable:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot recover {data.amount} against the {data.month} {data.year} salary slip - "
+                   f"it would make the net payable negative. Only {currently_recoverable} is recoverable from this slip.",
         )
 
     advance.recovered_amount = (advance.recovered_amount or 0) + data.amount

@@ -1,4 +1,4 @@
-// Defect repair (F138 P16): this file previously implied more than it
+// This file previously implied more than it
 // actually did, in both directions.
 //
 // (1) The app-shell/static-asset path (`/`, JS/CSS/images) matched
@@ -12,13 +12,17 @@
 //     own comment claiming this "lets the app work offline", nothing
 //     beyond the bare index.html document was ever actually available
 //     without a network connection. Fixed below with a real
-//     stale-while-revalidate-on-first-fetch: a same-origin static asset
-//     that is fetched successfully gets written into the cache at that
-//     point, so it - and only it, nothing pre-declared or guessed at -
-//     is available offline on a later visit. This is still only the
+//     cache-first-after-first-fetch strategy (see the "Every other
+//     same-origin asset" handler further down): a same-origin static
+//     asset is served straight from cache once present (no background
+//     revalidation request - this is cache-first, not stale-while-
+//     revalidate), and on a cache miss is fetched from the network and
+//     - only on success - written into the cache at that point, so it
+//     - and only it, nothing pre-declared or guessed at - becomes
+//     available offline from then on. This is still only the
 //     app shell (HTML/JS/CSS/images), never business data - it does
 //     not turn Woodful into an offline-capable ERP, which is
-//     deliberately out of scope (see the F138 brief).
+//     deliberately out of scope.
 //
 // (2) The `/api/` path's `fetch(request).catch(() => caches.match(...))`
 //     read as if a failed API call could fall back to a cached
@@ -41,7 +45,21 @@
 //     watcher) is what decides what the user sees - this file must
 //     never make that decision for them by quietly answering with old
 //     data.
-const CACHE_NAME = 'woodful-static-v2';
+// (3) The app-shell document itself (`/`, `/index.html`) was served
+//     cache-first, same as every other same-origin asset. Unlike a
+//     content-hashed JS/CSS bundle (safe to cache forever - a changed
+//     file gets a new filename), index.html's filename never changes
+//     between deployments, so once it was cached on a first visit it
+//     was served from that cache on every later visit - a new
+//     deployment's index.html (and the new hashed bundle filenames it
+//     references) could never actually reach a returning visitor.
+//     Fixed below: the app-shell document is now network-first (try
+//     the network, cache the successful response for next time, and
+//     only fall back to whatever shell was last cached on a genuine
+//     network failure/offline). Everything else same-origin keeps the
+//     cache-first policy from (1) above, since that really is safe for
+//     content-hashed filenames.
+const CACHE_NAME = 'woodful-static-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -92,7 +110,39 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Same-origin static asset (the app shell's HTML/JS/CSS/images):
+  // The app-shell document (a real navigation, or a direct request for
+  // "/"/"/index.html") - network-first, see (3) above. This is the
+  // fix: a new deployment's index.html is always fetched fresh when
+  // the network is available, and the cache is only a fallback for
+  // when it genuinely isn't.
+  const isAppShellRequest =
+    request.mode === 'navigate' ||
+    (request.headers.get('accept') || '').includes('text/html') ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html';
+
+  if (isAppShellRequest) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.ok) {
+            const responseCopy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy));
+          }
+          return response;
+        })
+        .catch(() =>
+          // Offline/network failure: fall back to whatever shell was
+          // cached from the last successful visit, never a manufactured
+          // response - if nothing was ever cached either, this rejects
+          // normally like any other failed fetch.
+          caches.match(request).then((cached) => cached || caches.match('/index.html'))
+        )
+    );
+    return;
+  }
+
+  // Every other same-origin asset (content-hashed JS/CSS/images):
   // serve from cache if already present, otherwise fetch from the
   // network and - only on a genuine success - store a copy for next
   // time. A failed fetch with nothing cached yet is left to fail

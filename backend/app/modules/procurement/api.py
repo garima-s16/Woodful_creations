@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.platform.audit import log_action
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from app.platform.database import get_db
 from app.platform.security import get_current_user, require_role
@@ -82,6 +83,239 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db),
     raise HTTPException(status_code=500, detail="Unable to generate a unique supplier code, please try again")
 
 
+def _build_workspace_selected_supplier(db: Session, selected_supplier_id: int, is_privileged: bool):
+    """Compact detail payload for the Suppliers workspace's right-hand
+    panel: supplier details, purchase summary, materials supplied (via
+    the existing supplier-material relationship, never duplicated),
+    and recent purchase history - all read from the same Purchase/
+    SupplierMaterial data SupplierDetailPage and the supplier-materials
+    endpoints already expose, never a second/parallel calculation.
+    Financial figures (totals, invoice amounts) stay master-only,
+    exactly mirroring SupplierDetailPage's own existing
+    isPrivileged-gated Total Purchased/Purchase Count/Unpaid-Part-Paid
+    and Purchase History sections. Returns None if the supplier does
+    not exist (e.g. deleted between the list load and the selection)."""
+    supplier = db.query(Supplier).filter(Supplier.id == selected_supplier_id).first()
+    if supplier is None:
+        return None
+
+    # Purchase aggregates (total purchased, purchase count, outstanding
+    # invoice count) are computed via SQL aggregation over the FULL,
+    # unbounded Purchase set for this supplier - never from a Python
+    # sum/len over a loaded list - so they stay authoritative no matter
+    # how many rows purchase_history below actually returns. Skipped
+    # entirely for non-privileged viewers, who never see these figures
+    # anyway (mirrors SupplierDetailPage's own isPrivileged gating).
+    if is_privileged:
+        purchase_count = (
+            db.query(func.count(Purchase.id)).filter(Purchase.supplier_id == selected_supplier_id).scalar() or 0
+        )
+        total_purchased = float(
+            db.query(func.coalesce(func.sum(Purchase.invoice_total), 0))
+            .filter(Purchase.supplier_id == selected_supplier_id).scalar() or 0
+        )
+        outstanding_invoice_count = (
+            db.query(func.count(Purchase.id))
+            .filter(Purchase.supplier_id == selected_supplier_id, Purchase.payment_status != "Paid")
+            .scalar() or 0
+        )
+    else:
+        purchase_count = total_purchased = outstanding_invoice_count = None
+
+    # Purchase History display: bounded at the database to exactly the
+    # newest PURCHASE_HISTORY_LIMIT rows (same 20 the old Python-side
+    # purchases[:20] slice displayed) - never an unbounded .all() that
+    # loads every purchase this supplier has ever had just to show 20.
+    # Only fetched for privileged viewers, matching the existing
+    # isPrivileged-gated Purchase History section (non-privileged gets
+    # [] below, same as before).
+    PURCHASE_HISTORY_LIMIT = 20
+    purchase_history_rows = (
+        db.query(Purchase).filter(Purchase.supplier_id == selected_supplier_id)
+        .order_by(Purchase.date.desc()).limit(PURCHASE_HISTORY_LIMIT).all()
+    ) if is_privileged else []
+
+    # SupplierMaterial relationships: bounded rather than an unbounded
+    # .all() - a supplier with a very large catalogue could otherwise
+    # load every linked material row into memory for a panel that only
+    # ever displays a finite list. No explicit ordering existed before
+    # (default insertion/PK order), preserved here via id ascending.
+    SUPPLIER_MATERIAL_DETAIL_LIMIT = 50
+    materials_links = (
+        db.query(SupplierMaterial).filter(SupplierMaterial.supplier_id == selected_supplier_id)
+        .order_by(SupplierMaterial.id.asc()).limit(SUPPLIER_MATERIAL_DETAIL_LIMIT).all()
+    )
+
+    return {
+        "id": supplier.id, "supplier_code": supplier.supplier_code, "business_id": supplier.business_id,
+        "name": supplier.name, "category": supplier.category,
+        "details": {
+            "contact_person": supplier.contact_person, "phone": supplier.phone, "address": supplier.address,
+            "gstin": supplier.gstin, "payment_terms": supplier.payment_terms, "remarks": supplier.remarks,
+        },
+        "purchase_summary": {
+            "total_purchased": total_purchased,
+            "purchase_count": purchase_count,
+            "outstanding_invoice_count": outstanding_invoice_count,
+        },
+        "materials_supplied": [
+            {
+                "link_id": m.id, "material_id": m.material_id, "material_name": m.material_name,
+                "supplier_sku": m.supplier_sku,
+                "supplier_price": float(m.supplier_price) if is_privileged and m.supplier_price is not None else None,
+                "last_purchase_price": float(m.last_purchase_price) if is_privileged and m.last_purchase_price is not None else None,
+                "moq": m.moq, "lead_time_days": m.lead_time_days, "is_preferred": m.is_preferred,
+            }
+            for m in materials_links
+        ],
+        "purchase_history": [
+            {
+                "id": p.id, "purchase_code": p.purchase_code,
+                "date": p.date.isoformat() if p.date else None,
+                "quantity": float(p.quantity) if p.quantity is not None else None, "unit": p.unit,
+                "invoice_total": float(p.invoice_total) if p.invoice_total is not None else None,
+                "payment_status": p.payment_status, "receipt_status": p.receipt_status,
+            }
+            for p in purchase_history_rows
+        ],
+    }
+
+
+@suppliers_router.get("/workspace")
+def suppliers_workspace(
+    search: Optional[str] = Query(None), category: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_supplier_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_supplier_id is set), skip recomputing summary/suppliers and "
+                    "return only selected_supplier - mirrors the Orders/Clients workspace's own detail_only fast path.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Purpose-built, bounded response for the compact Suppliers
+    command-center workspace (KPI strip + 4 summary cards + compact
+    supplier list + inline selected-supplier detail panel) - modeled
+    directly on GET /api/clients/workspace and GET /api/orders/workspace,
+    the finalized visual/architectural reference for this layout. One
+    request on page load, at most one more per row selection
+    (detail_only=True).
+
+    The Supplier model has no status field - "active supplier" is not
+    invented here. Instead this reuses the one real, already-established
+    business rule from SupplierDetailPage itself: Purchase.payment_status
+    != 'Paid' is "outstanding/payables" (existing values are exactly
+    Paid/Part Paid/Credit - see inventory/schemas.py's
+    PURCHASE_CREATE_RECEIPT_STATUSES and the Purchase create form), and
+    "suppliers with purchase activity" (a real, derivable aggregate) is
+    used instead of a nonexistent active-supplier flag."""
+    is_privileged = auth.get("role", "user") in ("master",)
+
+    if detail_only:
+        return {
+            "summary": None, "suppliers": None,
+            "selected_supplier": (
+                _build_workspace_selected_supplier(db, selected_supplier_id, is_privileged)
+                if selected_supplier_id else None
+            ),
+        }
+
+    # --- summary: cheap, business-wide aggregates --------------------
+    total_suppliers = db.query(func.count(Supplier.id)).scalar() or 0
+
+    category_rows = db.query(Supplier.category, func.count(Supplier.id)).group_by(Supplier.category).all()
+    category_breakdown = [{"category": c or "Uncategorized", "count": n} for c, n in category_rows]
+
+    # No Supplier.status field exists - "suppliers with purchase
+    # activity" is a real, derivable aggregate from Purchase, not an
+    # invented status concept.
+    suppliers_with_purchases = db.query(func.count(func.distinct(Purchase.supplier_id))).scalar() or 0
+    total_purchase_count = db.query(func.count(Purchase.id)).scalar() or 0
+    total_purchased_value = (
+        float(db.query(func.sum(Purchase.invoice_total)).scalar() or 0) if is_privileged else None
+    )
+
+    # Payables/outstanding: the same payment_status != 'Paid' rule
+    # SupplierDetailPage's own outstanding filter already uses.
+    outstanding_invoice_count = db.query(func.count(Purchase.id)).filter(Purchase.payment_status != "Paid").scalar() or 0
+    outstanding_amount = (
+        float(db.query(func.sum(Purchase.invoice_total)).filter(Purchase.payment_status != "Paid").scalar() or 0)
+        if is_privileged else None
+    )
+
+    receipt_status_rows = db.query(Purchase.receipt_status, func.count(Purchase.id)).group_by(Purchase.receipt_status).all()
+    receipt_status_breakdown = [{"status": s, "count": n} for s, n in receipt_status_rows]
+
+    summary = {
+        "total_suppliers": total_suppliers,
+        "suppliers_with_purchases": suppliers_with_purchases,
+        "total_purchase_count": total_purchase_count,
+        "outstanding_invoice_count": outstanding_invoice_count,
+        "outstanding_amount": outstanding_amount,
+        "total_purchased_value": total_purchased_value,
+        "overview": {
+            "total_suppliers": total_suppliers, "category_breakdown": category_breakdown,
+        },
+        "purchase_activity": {
+            "total_purchase_count": total_purchase_count,
+            "suppliers_with_purchases": suppliers_with_purchases,
+            "total_purchased_value": total_purchased_value,
+        },
+        "payables_overview": {
+            "outstanding_invoice_count": outstanding_invoice_count,
+            "outstanding_amount": outstanding_amount,
+        },
+        "performance": {
+            "receipt_status_breakdown": receipt_status_breakdown,
+        },
+    }
+
+    # --- list: server-side search + filter + bounded pagination ------
+    query = db.query(Supplier)
+    if category:
+        query = query.filter(Supplier.category == category)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            Supplier.supplier_code.ilike(like) | Supplier.business_id.ilike(like) | Supplier.name.ilike(like)
+            | Supplier.category.ilike(like) | Supplier.contact_person.ilike(like) | Supplier.phone.ilike(like)
+        )
+    query = query.order_by(Supplier.name)
+    total_count = query.count()
+    rows = query.offset(offset).limit(limit).all()
+
+    # Per-row outstanding indicator, computed in one grouped query
+    # scoped to just this page's rows - never a per-row query (N+1).
+    row_ids = [r.id for r in rows]
+    outstanding_by_supplier = {}
+    if row_ids and is_privileged:
+        outstanding_by_supplier = dict(
+            db.query(Purchase.supplier_id, func.count(Purchase.id))
+            .filter(Purchase.supplier_id.in_(row_ids), Purchase.payment_status != "Paid")
+            .group_by(Purchase.supplier_id).all()
+        )
+
+    items = [
+        {
+            "id": s.id, "supplier_code": s.supplier_code, "business_id": s.business_id,
+            "name": s.name, "category": s.category, "contact_person": s.contact_person,
+            "phone": s.phone, "payment_terms": s.payment_terms,
+            "outstanding_purchase_count": outstanding_by_supplier.get(s.id, 0) if is_privileged else None,
+        }
+        for s in rows
+    ]
+
+    selected_supplier = None
+    if selected_supplier_id:
+        selected_supplier = _build_workspace_selected_supplier(db, selected_supplier_id, is_privileged)
+
+    return {
+        "summary": summary,
+        "suppliers": {"items": items, "total_count": total_count, "limit": limit, "offset": offset},
+        "selected_supplier": selected_supplier,
+    }
+
+
 @suppliers_router.get("/{supplier_id}", response_model=SupplierResponse)
 def get_supplier(supplier_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -114,7 +348,7 @@ def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="This supplier has purchase history and cannot be deleted.")
     if db.query(SupplierMaterial).filter(SupplierMaterial.supplier_id == supplier_id).first():
         raise HTTPException(status_code=400, detail="This supplier is linked to materials and cannot be deleted. Remove those links first.")
-    # Defect repair (F138 P2): Material.supplier_id ("primary supplier",
+    # Material.supplier_id ("primary supplier",
     # nullable FK, distinct from the SupplierMaterial link table already
     # checked above - see Material's own docstring) was never checked
     # here, so a supplier set as a material's primary supplier with no
@@ -124,8 +358,8 @@ def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(ge
     # other in-use check on this endpoint.
     if db.query(Material).filter(Material.supplier_id == supplier_id).first():
         raise HTTPException(status_code=400, detail="This supplier is set as a material's primary supplier and cannot be deleted. Change that material's primary supplier first.")
-    # Defect repair (F138 P2): SupplierDecision.recommended_supplier_id/
-    # selected_supplier_id are a real, persisted decision record (P0.2.3)
+    # SupplierDecision.recommended_supplier_id/
+    # selected_supplier_id are a real, persisted decision record
     # - a decision can exist with no Purchase yet (record_supplier_decision
     # doesn't require one), so the Purchase check above alone doesn't
     # cover it. Never hard-delete a supplier a decision record still
@@ -328,7 +562,7 @@ def delete_purchase(purchase_id: int, request: Request, db: Session = Depends(ge
     right one. Correcting a received purchase's stock impact is a
     separate, deliberate action, not something this deletion silently
     attempts. Also blocked if a ProcurementRequirement is linked to
-    this purchase (P0.2.5) - deleting it would leave that requirement
+    this purchase - deleting it would leave that requirement
     pointing at a purchase that no longer exists."""
     purchase = db.query(Purchase).filter(Purchase.id == purchase_id).first()
     if not purchase:
@@ -621,7 +855,7 @@ def list_procurement_requirements(order_id: Optional[int] = Query(None), status:
                                    response: Response = None,
                                    limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                                    db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    # Defect repair (F138 P1): ProcurementRequirement is a persisted,
+    # ProcurementRequirement is a persisted,
     # never-pruned procurement decision record (see its own docstring)
     # that only accumulates over time - an unfiltered call (no order_id
     # or status) previously fetched every requirement ever created with
@@ -645,7 +879,7 @@ def create_procurement_requirement(data: ProcurementRequirementCreate, db: Sessi
     """Snapshots the CURRENT shortage from the one authoritative
     calculation (StockService.calculate_order_material_requirements) -
     required/available/shortage are never accepted from the client,
-    exactly the P0.2.1 requirement that this must not become a second,
+    since this must not become a second,
     independently-drifting shortage engine."""
     from app.modules.inventory.services import StockService
 
@@ -717,7 +951,7 @@ def get_requirement_supplier_options(requirement_id: int, db: Session = Depends(
 @procurement_requirements_router.post("/{requirement_id}/decision", response_model=SupplierDecisionResponse, status_code=201)
 def record_supplier_decision(requirement_id: int, data: SupplierDecisionCreate, db: Session = Depends(get_db),
                               auth=Depends(require_role("master"))):
-    """Preserves the distinction P0.2.3 requires: what the system
+    """Preserves the distinction between what the system
     recommended versus what the Master actually chose. The
     recommendation is snapshotted here, at decision time, from the
     same supplier-options calculation the material-requirements
@@ -732,7 +966,7 @@ def record_supplier_decision(requirement_id: int, data: SupplierDecisionCreate, 
     if requirement.decision is not None:
         raise HTTPException(status_code=409, detail="A supplier decision has already been recorded for this requirement.")
 
-    # P0.2.4: the selected supplier must actually be able to supply this
+    # The selected supplier must actually be able to supply this
     # material - never trust a frontend dropdown to have filtered this
     # correctly. A supplier with no SupplierMaterial link for this exact
     # material is rejected here, in the backend, regardless of what the
@@ -785,7 +1019,7 @@ def record_supplier_decision(requirement_id: int, data: SupplierDecisionCreate, 
 @procurement_requirements_router.post("/{requirement_id}/purchase", response_model=PurchaseResponse, status_code=201)
 def create_purchase_from_requirement(requirement_id: int, data: RequirementPurchaseCreate,
                                       db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """P0.2.5 traceability: the resulting Purchase is persisted back onto
+    """Traceability: the resulting Purchase is persisted back onto
     the requirement (requirement.purchase_id), and a requirement that
     already has one cannot create a second - the two known failure
     modes section 12 names ("known related records become disconnected"

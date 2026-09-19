@@ -46,22 +46,31 @@ def at_risk_orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_cur
     material and client/order status" rather than the Master-only
     redaction the stock/orders dashboards apply to money figures.
 
-    Defect repair (P1-6): the widget this feeds only ever renders the
-    first 4 orders (DashboardPage.jsx slices client-side), but the
-    unlimited call used to build and return the full business-wide
-    at-risk list - every open order with a shortage, each with a full
-    materials + supplier_options breakdown - on every dashboard load
-    for every user. limit=TOP_ORDERS_LIMIT (same bound already used
-    for the "top orders" list a few widgets over) skips the supplier-
-    options enrichment and result-assembly work for every order beyond
-    what's actually shown; at_risk_order_count reflects the (now
-    bounded) returned list, consistent with every other bounded
-    dashboard widget on this page."""
+    The widget this feeds only ever renders the
+    first 4 orders (DashboardPage.jsx slices client-side), so
+    limit=TOP_AT_RISK_LIMIT (same bound already used for the "top
+    orders" list a few widgets over) skips the supplier-options
+    enrichment and result-assembly work for every order beyond what's
+    actually shown.
+
+    at_risk_order_count is the TRUE, business-wide count - computed via
+    the same count_only=True fast path the Orders workspace's own
+    "Materials at Risk" KPI chip already uses (see
+    StockService.calculate_at_risk_orders and
+    app/modules/sales/api.py's materials_at_risk_count), never
+    len(orders). Deriving the count from the bounded `orders` list
+    would silently cap it at TOP_AT_RISK_LIMIT even when far more
+    orders are actually at risk, causing the Dashboard to disagree
+    with the Orders page's own count for the exact same underlying
+    condition. Both counts now come from the identical, unbounded
+    ranking pass - same shortage formula, same qualifying orders - so
+    they can never drift apart."""
     TOP_AT_RISK_LIMIT = 10
-    at_risk = StockService.calculate_at_risk_orders(db, limit=TOP_AT_RISK_LIMIT)
+    at_risk_order_count = StockService.calculate_at_risk_orders(db, count_only=True)
+    orders = StockService.calculate_at_risk_orders(db, limit=TOP_AT_RISK_LIMIT)
     return {
-        "at_risk_order_count": len(at_risk),
-        "orders": at_risk,
+        "at_risk_order_count": at_risk_order_count,
+        "orders": orders,
     }
 
 
@@ -166,23 +175,18 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
     total_order_value = db.query(func.sum(Order.order_value)).scalar() or 0
     total_received = db.query(func.sum(Order.total_received)).scalar() or 0
     pending_payment = db.query(func.sum(Order.balance)).scalar() or 0
-    active_order_ids = [
-        r[0] for r in db.query(Order.id).filter(Order.project_status != "Completed").all()
-    ]
-    active_orders = len(active_order_ids)
     pipeline_rows = db.query(Order.project_status, func.count(Order.id)).group_by(Order.project_status).all()
 
-    # Delivery risk summary (P0.50 section 23) - counts ONLY active
-    # (not yet Completed) orders, since a completed order's historical
-    # delivery timing is not an actionable "needs attention today"
-    # signal. Reuses bulk_attention_flags exactly - the same
-    # calculation the Orders List's sort=risk and attention_risk_level
-    # already use, never a separately-derived count.
-    risk_counts = {"CRITICAL": 0, "AT_RISK": 0, "WATCH": 0, "ON_TRACK": 0}
-    if active_order_ids:
-        flags = OrderService.bulk_attention_flags(db, active_order_ids)
-        for flag in flags.values():
-            risk_counts[flag["risk_level"]] = risk_counts.get(flag["risk_level"], 0) + 1
+    # Delivery risk summary - counts ONLY active (not yet Completed)
+    # orders, since a completed order's historical delivery timing is
+    # not an actionable "needs attention today" signal.
+    # OrderService.business_wide_risk_summary is the exact same shared
+    # calculation the Orders workspace's own Delivery & Risk card uses
+    # (see that method's own docstring) - never a separately-derived
+    # count that could silently disagree with the Orders page.
+    risk_summary = OrderService.business_wide_risk_summary(db)
+    active_orders = risk_summary["active_orders_count"]
+    risk_counts = risk_summary["risk_counts"]
 
     # "Top orders" is a bounded highlight list, not the full order
     # history - the previous version loaded and returned every order
@@ -231,7 +235,7 @@ def orders_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_use
 
 @dashboard_router.get("/staff")
 def staff_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    # Defect repair (P1-5): this route backs the main Dashboard's
+    # This route backs the main Dashboard's
     # "staff" widget, which only ever reads active_employees,
     # pending_tasks, completed_tasks and production_status_summary
     # (see DashboardPage.jsx) - fired on every dashboard load, for
@@ -270,7 +274,7 @@ def staff_dashboard(db: Session = Depends(get_db), auth=Depends(get_current_user
 
 @dashboard_router.get("/cash-flow-forecast")
 def cash_flow_forecast_dashboard(weeks: int = 6, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137 feature 12 - Forward Cash-Flow Forecast. See
+    """Forward Cash-Flow Forecast. See
     svc.cash_flow_forecast's own docstring for exactly how EXPECTED /
     ACTUAL / OVERDUE / FORECAST are distinguished. Master-only - this
     is entirely financial data."""
@@ -281,7 +285,7 @@ def cash_flow_forecast_dashboard(weeks: int = 6, db: Session = Depends(get_db), 
 @dashboard_router.get("/owner-briefing")
 def owner_briefing_dashboard(period: str = "daily", db: Session = Depends(get_db),
                               auth=Depends(require_role("master"))):
-    """Family 137 feature 11 - Owner Daily/Weekly Business Briefing.
+    """Owner Daily/Weekly Business Briefing.
     See svc.owner_briefing's own docstring for the real, existing
     signals synthesized. Master-only - this briefing surfaces
     financial and HR detail throughout."""
@@ -482,8 +486,8 @@ def global_search(q: Optional[str] = Query(None, min_length=1), db: Session = De
 
 
 # --- business_decisions.py ---
-"""Family P0.49 (Cross-Module Business Risk) + P0.51 (Business
-Decision Centre) API. Given its own business_decisions_router/prefix rather than folded
+"""Cross-Module Business Risk + Business
+Decision Centre API. Given its own business_decisions_router/prefix rather than folded
 into dashboard.py's widget list, so a developer searching for
 "business risk" or "business decision" finds this file directly
 (section 4's discoverability requirement) - the underlying
@@ -496,7 +500,7 @@ business_decisions_router = APIRouter(prefix="/api/business-decisions", tags=["b
 
 @business_decisions_router.get("/")
 def list_business_decisions(db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """The P0.51 Business Decision Centre's single data source: a
+    """The Business Decision Centre's single data source: a
     prioritized list of cross-module business risks plus a summary
     count. Financial/payroll risk items are only included for MASTER
     (sections 17/18/21) - an employee genuinely receives a shorter

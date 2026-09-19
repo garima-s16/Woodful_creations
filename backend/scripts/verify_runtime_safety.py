@@ -9,8 +9,12 @@ Two genuinely independent, dependency-light checks:
    this session's development.
 
 2. The rate limiter's test-isolation reset, genuinely executed against
-   the real app/platform/security/rate_limit.py code (with a minimal
-   FastAPI stub for the one class this file doesn't exercise).
+   the real app/platform/security.py code (the rate limiter was later
+   consolidated into this single module, no longer its own
+   security/rate_limit.py file) - with minimal stubs for fastapi,
+   app.platform.config, and app.platform.database so this check can
+   run without a full .env (SECRET_KEY, DATABASE_URL, etc.) configured,
+   exactly like before.
 """
 import ast
 import builtins
@@ -131,11 +135,28 @@ def verify_rate_limiter_isolation() -> list:
         fake_config.settings = FakeSettings()
         sys.modules["app.platform.config"] = fake_config
 
-    import importlib.util
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "platform", "security", "rate_limit.py")
-    spec = importlib.util.spec_from_file_location("rate_limit_under_verification", path)
-    rate_limit = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(rate_limit)
+    if "app.platform.database" not in sys.modules:
+        # security.py imports get_db from here purely for a route
+        # dependency type hint elsewhere in the module - the rate
+        # limiter path this check exercises never calls it, so a bare
+        # stub is enough to avoid database.py's own module-level
+        # settings.DATABASE_URL/create_engine() calls, which would
+        # otherwise require a full, real .env just to import this file.
+        fake_database = types.ModuleType("app.platform.database")
+        def get_db():
+            raise NotImplementedError("stub get_db - not exercised by this check")
+        fake_database.get_db = get_db
+        sys.modules["app.platform.database"] = fake_database
+
+    # Import the real, current module (the rate limiter was
+    # consolidated into app/platform/security.py; it no longer has its
+    # own security/rate_limit.py file) rather than exec'ing a path that
+    # no longer exists. The two sys.modules stubs above make this a
+    # genuine import of the real rate-limiter code without needing a
+    # real .env configured.
+    if "app.platform.security" in sys.modules:
+        del sys.modules["app.platform.security"]
+    from app.platform import security as rate_limit
 
     results = []
     backend1 = rate_limit._get_backend()

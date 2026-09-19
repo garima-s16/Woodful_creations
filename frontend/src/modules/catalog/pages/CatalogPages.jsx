@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { documentsAPI, productImportAPI, productsAPI, rateImportAPI, ratesAPI, reportsAPI } from '../../../utils/api';
 import { Alert, Card, ConfirmDialog, Form, KpiCard, Modal, Table } from '../../../components/common/UI';
-import { classifyLoadError, formatCurrency } from '../../../utils/utils';
+import { classifyLoadError, formatCurrency, formatPercent } from '../../../utils/utils';
 import { DocumentsPanel } from '../../../components/Assistant';
 
 // --- ProductsPage.jsx ---
@@ -346,7 +346,12 @@ function ProductDetailPage() {
         <Card title="Costing">
           <div className="detail-meta">
             <div className="detail-meta-item"><span className="detail-meta-label">Cost Price</span><span className="detail-meta-value">{product.cost_price != null ? formatCurrency(product.cost_price) : '-'}</span></div>
-            <div className="detail-meta-item"><span className="detail-meta-label">Margin</span><span className="detail-meta-value">{product.margin != null ? formatCurrency(product.margin) : '-'}</span></div>
+            {/* product.margin is selling_price - cost_price (absolute gross
+                profit, not a percentage) - labeled accordingly so it isn't
+                mistaken for the margin %. The actual percentage, when
+                available, is the separate actual_margin_percent field. */}
+            <div className="detail-meta-item"><span className="detail-meta-label">Gross Profit</span><span className="detail-meta-value">{product.margin != null ? formatCurrency(product.margin) : '-'}</span></div>
+            <div className="detail-meta-item"><span className="detail-meta-label">Margin %</span><span className="detail-meta-value">{product.actual_margin_percent != null ? formatPercent(product.actual_margin_percent) : '-'}</span></div>
           </div>
         </Card>
       )}

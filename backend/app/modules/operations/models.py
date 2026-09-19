@@ -95,12 +95,12 @@ class TaskComment(BaseModel):
 
 
 class WorkCentre(BaseModel):
-    """A configurable production resource (P0.3.5) - CNC, Cutting, Edge
+    """A configurable production resource - CNC, Cutting, Edge
     Banding, Assembly, Finishing, or any other resource this business
     actually has, never a hardcoded list. capacity_hours_per_day is a
     simple, honest daily-capacity figure - not a full working-calendar
     system (holidays, shift patterns, per-day overrides), which this
-    codebase has no existing model for and which P0.3.6's capacity
+    codebase has no existing model for and which the capacity
     check does not yet need; building one now would be exactly the
     "fabricated architecture" the brief warns against."""
     __tablename__ = "work_centres"
@@ -145,7 +145,7 @@ class ProductionJob(BaseModel):
 
 
 class ProductionOperation(BaseModel):
-    """A single manufacturing step within a ProductionJob (P0.3.3/3.4) -
+    """A single manufacturing step within a ProductionJob -
     e.g. Cutting -> CNC -> Edge Banding -> Assembly -> Finishing.
     Deliberately a simple, linear dependency (depends_on_operation_id,
     at most one predecessor) rather than a general workflow/DAG engine -
@@ -155,7 +155,7 @@ class ProductionOperation(BaseModel):
 
     resource is free text for now, matching ProductionJob.machine's
     existing convention - work_centre_id below is the newer, optional
-    link to a real, configured WorkCentre (P0.3.5); both exist
+    link to a real, configured WorkCentre; both exist
     side by side so operations recorded before WorkCentre existed
     remain valid without a backfill."""
     __tablename__ = "production_operations"
@@ -260,8 +260,8 @@ class ProjectExpense(BaseModel):
 
 
 class CuttingRequirement(BaseModel):
-    """A single part that needs to be cut from a material sheet (P0.3
-    section 25) - one row per part, not a single lump quantity, so
+    """A single part that needs to be cut from a material sheet
+    - one row per part, not a single lump quantity, so
     each part's own dimensions/grain/rotation constraint is tracked
     individually rather than collapsed into free text (the brief's own
     "do not store critical cutting data only as free text"). Creating

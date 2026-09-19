@@ -305,7 +305,7 @@ def _daily_briefing(db: Session, user_role: str):
 
 
 # --- nesting_service.py (shelf_nest: cutting-layout nesting) ---
-"""Family 131 section 13 - Nesting.
+"""Nesting.
 
 A real, deterministic nesting calculation - not a fake "AI optimizer"
 button. Given real CuttingRequirement rows (part dimensions already

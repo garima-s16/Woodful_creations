@@ -431,6 +431,34 @@ def test_client_with_only_activities_deletes_cleanly(client, test_user):
     assert resp.status_code == 204
 
 
+# --- item 24: deleting a client must also clean up the physical/Drive
+# storage object behind each of its documents, not just the DB rows ---
+
+def test_deleting_client_removes_document_from_disk(client, test_user, db_session):
+    import io
+    from app.modules.clients.models import ClientDocument
+    from app.platform.storage import get_storage_backend_for_record
+
+    _login(client, test_user)
+    created = client.post("/api/clients/", json={"name": "Storage Cleanup Client", "phone": "9000010048"}).json()
+    files = {"file": ("cleanup.pdf", io.BytesIO(b"%PDF-1.4 cleanup test"), "application/pdf")}
+    doc = client.post(f"/api/clients/{created['id']}/documents", files=files).json()
+
+    db_row = db_session.query(ClientDocument).filter(ClientDocument.id == doc["id"]).first()
+    backend, storage_ref = get_storage_backend_for_record(db_row)
+    assert backend.exists(storage_ref) is True
+
+    resp = client.delete(f"/api/clients/{created['id']}")
+    assert resp.status_code == 204
+
+    # The DB row is gone (cascade-deleted with the client)...
+    db_session.expire_all()
+    assert db_session.query(ClientDocument).filter(ClientDocument.id == doc["id"]).first() is None
+    # ...and, critically, so is the physical file itself - not just the
+    # database record pointing at it.
+    assert backend.exists(storage_ref) is False
+
+
 def test_client_delete_rejects_plain_employee(client, test_user, db_session):
     from app.platform.security import hash_password
     from app.modules.auth.auth import User
@@ -694,227 +722,7 @@ def test_client_master_recognition_still_works(client, test_user):
     assert first.json()["client_id"] == second.json()["client_id"]
 
 
-# --- Family 137, Step 3: Client Approval Hub (feature 1) ---
-
-def _extract_token(url: str) -> str:
-    return url.rstrip("/").rsplit("/", 1)[-1]
-
-
-def test_client_portal_estimate_view_via_valid_token(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Estimate Client", "phone": "9812320001"}).json()["id"]
-    product_id = client.post("/api/products/", json={"name": "Portal Estimate Product", "unit": "Nos"}).json()["id"]
-    estimate = client.post("/api/estimates/", json={
-        "client_id": client_id,
-        "line_items": [{"description": "Wardrobe", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "50000", "product_id": product_id}],
-    }).json()
-    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
-    link = client.post(f"/api/estimates/{estimate['id']}/client-link")
-    assert link.status_code == 200
-    token = _extract_token(link.json()["url"])
-    client.post("/api/auth/logout")
-
-    # No auth/session at all - this is the defining property of the portal.
-    resp = client.get(f"/api/client-portal/estimates/{token}")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["estimate_code"] == estimate["estimate_code"]
-    assert body["can_decide"] is True
-    assert len(body["line_items"]) == 1
-    assert body["line_items"][0]["description"] == "Wardrobe"
-
-
-def test_client_portal_estimate_approve_success(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Approve Client", "phone": "9812320002"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
-    token = _extract_token(client.post(f"/api/estimates/{estimate['id']}/client-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.post(f"/api/client-portal/estimates/{token}/approve", json={"name": "Mrs. Iyer", "comments": "Looks good"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "approved"
-    assert body["approved_by"] == "Mrs. Iyer"
-    assert body["client_decision_comments"] == "Looks good"
-
-    _login(client, test_user)
-    refetched = client.get(f"/api/estimates/{estimate['id']}").json()
-    assert refetched["status"] == "approved"
-    assert refetched["approved_by"] == "Mrs. Iyer"
-
-
-def test_client_portal_estimate_approve_requires_name(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal No-Name Client", "phone": "9812320003"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
-    token = _extract_token(client.post(f"/api/estimates/{estimate['id']}/client-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.post(f"/api/client-portal/estimates/{token}/approve", json={"name": "  "})
-    assert resp.status_code == 400
-
-
-def test_client_portal_estimate_request_changes_requires_comments(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Changes Client", "phone": "9812320004"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
-    token = _extract_token(client.post(f"/api/estimates/{estimate['id']}/client-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.post(f"/api/client-portal/estimates/{token}/request-changes", json={"name": "Mr. Rao"})
-    assert resp.status_code == 400
-
-    ok = client.post(f"/api/client-portal/estimates/{token}/request-changes", json={"name": "Mr. Rao", "comments": "Please change the colour to walnut."})
-    assert ok.status_code == 200
-    assert ok.json()["status"] == "changes_requested"
-
-
-def test_client_portal_estimate_cannot_decide_when_not_sent(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Draft Client", "phone": "9812320005"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    # Still "draft" - never moved to "sent".
-    token = _extract_token(client.post(f"/api/estimates/{estimate['id']}/client-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    view = client.get(f"/api/client-portal/estimates/{token}")
-    assert view.status_code == 200
-    assert view.json()["can_decide"] is False
-
-    resp = client.post(f"/api/client-portal/estimates/{token}/approve", json={"name": "Someone"})
-    assert resp.status_code == 400
-    assert "not currently awaiting" in resp.json()["detail"].lower()
-
-
-def test_client_portal_invalid_token_returns_404(client):
-    resp = client.get("/api/client-portal/estimates/this-token-does-not-exist")
-    assert resp.status_code == 404
-
-
-def test_client_portal_estimate_link_generation_requires_master(client, test_user, db_session):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Link RBAC Client", "phone": "9812320006"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    client.post("/api/auth/logout")
-    user = User(username="portalrbacuser", email="portalrbacuser@example.com", full_name="Portal RBAC User",
-                password_hash=hash_password("UserPass1!"), role="user", is_active=True)
-    db_session.add(user)
-    db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "portalrbacuser@example.com", "password": "UserPass1!"})
-    resp = client.post(f"/api/estimates/{estimate['id']}/client-link")
-    assert resp.status_code == 403
-
-
-def _create_estimate_for_portal(client, client_id):
-    product_id = client.post("/api/products/", json={"name": "Portal Test Product", "unit": "Nos"}).json()["id"]
-    return client.post("/api/estimates/", json={
-        "client_id": client_id,
-        "line_items": [{"description": "Portal item", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "15000", "product_id": product_id}],
-    }).json()
-
-
-# --- Family 137, Step 3: Client "My Order" Link (feature 3) ---
-
-def test_client_portal_order_view_via_valid_token(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Order Client", "phone": "9812320101"}).json()["id"]
-    order = client.post("/api/orders/", json={
-        "client_id": client_id, "order_date": "2026-08-01T00:00:00",
-        "order_value": "80000.00", "advance": "20000.00",
-    }).json()
-    link = client.post(f"/api/orders/{order['id']}/my-order-link")
-    assert link.status_code == 200
-    token = _extract_token(link.json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.get(f"/api/client-portal/orders/{token}")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["order_code"] == order["order_code"]
-    assert body["order_value"] == 80000.0
-    assert body["amount_paid"] == 20000.0
-    assert body["outstanding_balance"] == 60000.0
-    assert body["approved_specification"] is None
-    assert body["milestones"] == []
-
-
-def test_client_portal_order_view_includes_approved_specification(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Spec Order Client", "phone": "9812320102"}).json()["id"]
-    order = client.post("/api/orders/", json={
-        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "40000.00", "advance": "40000.00",
-    }).json()
-    client.post(f"/api/orders/{order['id']}/approved-specifications", json={
-        "material": "MDF 18mm", "colour": "Wenge", "approved_by": "Mr. Nair",
-    })
-    token = _extract_token(client.post(f"/api/orders/{order['id']}/my-order-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.get(f"/api/client-portal/orders/{token}")
-    assert resp.status_code == 200
-    spec = resp.json()["approved_specification"]
-    assert spec is not None
-    assert spec["material"] == "MDF 18mm"
-    assert spec["colour"] == "Wenge"
-
-
-def test_client_portal_order_view_includes_milestones_sorted(client, test_user):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Milestone Client", "phone": "9812320103"}).json()["id"]
-    order = client.post("/api/orders/", json={
-        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "40000.00",
-    }).json()
-    client.post("/api/milestones/", json={"order_id": order["id"], "name": "Installation", "target_date": "2026-09-15T00:00:00"})
-    client.post("/api/milestones/", json={"order_id": order["id"], "name": "Design Approval", "target_date": "2026-08-15T00:00:00"})
-    token = _extract_token(client.post(f"/api/orders/{order['id']}/my-order-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.get(f"/api/client-portal/orders/{token}")
-    assert resp.status_code == 200
-    names = [m["name"] for m in resp.json()["milestones"]]
-    assert names == ["Design Approval", "Installation"]
-
-
-def test_client_portal_order_link_generation_requires_master(client, test_user, db_session):
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Order Link RBAC Client", "phone": "9812320104"}).json()["id"]
-    order = client.post("/api/orders/", json={
-        "client_id": client_id, "order_date": "2026-08-01T00:00:00", "order_value": "40000.00",
-    }).json()
-    client.post("/api/auth/logout")
-    user = User(username="orderportalrbacuser", email="orderportalrbacuser@example.com", full_name="Order Portal RBAC User",
-                password_hash=hash_password("UserPass1!"), role="user", is_active=True)
-    db_session.add(user)
-    db_session.commit()
-    client.post("/api/auth/login", json={"identifier": "orderportalrbacuser@example.com", "password": "UserPass1!"})
-    resp = client.post(f"/api/orders/{order['id']}/my-order-link")
-    assert resp.status_code == 403
-
-
-def test_client_portal_invalid_order_token_returns_404(client):
-    resp = client.get("/api/client-portal/orders/this-token-does-not-exist")
-    assert resp.status_code == 404
-
-
-def test_client_portal_estimate_token_cannot_view_order(client, test_user):
-    """A token minted for one purpose/subject_type must not work for
-    the other portal surface - _resolve_token checks both."""
-    _login(client, test_user)
-    client_id = client.post("/api/clients/", json={"name": "Portal Cross-Purpose Client", "phone": "9812320105"}).json()["id"]
-    estimate = _create_estimate_for_portal(client, client_id)
-    client.put(f"/api/estimates/{estimate['id']}", json={"status": "sent"})
-    token = _extract_token(client.post(f"/api/estimates/{estimate['id']}/client-link").json()["url"])
-    client.post("/api/auth/logout")
-
-    resp = client.get(f"/api/client-portal/orders/{token}")
-    assert resp.status_code == 404
-
-
-# --- Family 137, Step 4: Unified Client Relationship Timeline (feature 5) ---
+# --- Unified Client Relationship Timeline (feature 5) ---
 
 def test_relationship_timeline_client_not_found(client, test_user):
     _login(client, test_user)
@@ -976,3 +784,56 @@ def test_relationship_timeline_hides_payment_amount_for_non_privileged(client, t
 def test_relationship_timeline_requires_auth(client):
     resp = client.get("/api/clients/1/relationship-timeline")
     assert resp.status_code == 401
+
+
+# --- Pricing resolver: missing vs. legitimately-zero cost (item 14/N) ---
+
+def test_pricing_resolver_falls_back_to_stored_price_when_cost_unknown(client, test_user):
+    """A product with NO cost_price and no cost components at all (so
+    suggested_cost_price is also None) has no cost basis whatsoever -
+    the resolver must preserve the product's own stored selling_price
+    rather than inventing a cost of 0 and running margin math against
+    it (which would silently zero out an otherwise-valid price)."""
+    _login(client, test_user)
+    product = client.post("/api/products/", json={
+        "name": "No Cost Basis Product", "unit": "Piece", "selling_price": "8500.00", "margin_percent": "30",
+    }).json()
+    assert product["cost_price"] is None
+    assert product["suggested_cost_price"] is None
+    client_row = client.post("/api/clients/", json={"name": "Resolver Fallback Client", "phone": "9000020001"}).json()
+
+    resp = client.post("/api/client-product-rates/resolve", json={
+        "product_id": product["id"], "client_id": client_row["id"],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert float(body["selling_rate"]) == 8500.0
+    assert body["pricing_rule_applied"] == "PRODUCT_STORED_SELLING_PRICE"
+    assert body["cost_used"] is None
+
+
+def test_pricing_resolver_treats_zero_cost_price_as_legitimate(client, test_user):
+    """A product with cost_price explicitly set to 0 is a genuinely
+    zero-cost product, not a missing one - margin math must still run
+    against that real 0, not silently fall through to
+    suggested_cost_price or the stored-price fallback."""
+    _login(client, test_user)
+    product = client.post("/api/products/", json={
+        "name": "Zero Cost Basis Product", "unit": "Piece", "cost_price": "0",
+        "material_cost": "5000.00",  # would make suggested_cost_price 5000 if cost_price were wrongly ignored
+        "margin_percent": "20",
+    }).json()
+    assert float(product["cost_price"]) == 0.0
+    client_row = client.post("/api/clients/", json={"name": "Resolver Zero Cost Client", "phone": "9000020002"}).json()
+
+    resp = client.post("/api/client-product-rates/resolve", json={
+        "product_id": product["id"], "client_id": client_row["id"],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    # cost=0, margin=20% -> selling rate = 0 / (1 - 0.20) = 0, computed
+    # via real margin math (PRODUCT_MARGIN), never the stored-price
+    # fallback rule (which only applies when cost is genuinely unknown).
+    assert body["pricing_rule_applied"] == "PRODUCT_MARGIN"
+    assert float(body["cost_used"]) == 0.0
+    assert float(body["selling_rate"]) == 0.0

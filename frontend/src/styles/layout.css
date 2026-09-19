@@ -2,22 +2,29 @@
    Centre" chrome (Stitch dashboard redesign). Combines the former
    Navbar.css and components/Sidebar.css.
 
-   Scope split (by explicit user decision when the two theme-matched
-   logo variants were supplied): the Navbar - and, in modules.css, the
-   login screen's brand panel - is now THEME-ADAPTIVE, reversing the
-   earlier "fixed dark chrome" choice for just these logo-bearing
-   areas, so each surface's own light/dark background always pairs
-   with the matching logo artwork (light-colored wordmark on the dark
-   background, wood-tone wordmark on the light one) instead of one
-   fixed asset run through a filter hack. Every hardcoded dark hex
-   value in the Navbar section below was therefore swapped for the
-   semantic --surface/--text-*/--border tokens so its icon chips,
-   profile menu and search bar re-theme along with the bar itself.
+   Scope: the Navbar - and, in modules.css, the login screen's brand
+   panel - was made THEME-ADAPTIVE first (reversing the earlier "fixed
+   dark chrome" choice for these logo-bearing areas), so each surface's
+   own light/dark background always pairs with the matching logo
+   artwork (light-colored wordmark on the dark background, wood-tone
+   wordmark on the light one) instead of one fixed asset run through a
+   filter hack. Every hardcoded dark hex value in the Navbar section
+   below was therefore swapped for the semantic --surface/--text-*/
+   --border tokens so its icon chips, profile menu and search bar
+   re-theme along with the bar itself.
 
-   The Sidebar section further down is UNCHANGED and stays fixed dark
-   in both themes, per the original documented decision (only the
-   Navbar + login brand panel were in scope for this reversal) - its
-   own hardcoded dark hex values are intentional, not an oversight. */
+   The Sidebar section further down has now had the same treatment:
+   every hardcoded dark hex value that matches an existing semantic
+   token exactly has been swapped for that token (byte-identical in
+   dark, correctly re-themed in light). A small number of one-off
+   sidebar-only shades that don't exactly match any semantic token are
+   left as their original literal dark hex (so dark mode is provably
+   unchanged, pixel for pixel) with a `[data-theme='light']` override
+   further down supplying the nearest existing semantic token's light
+   value instead - never an invented color. The gold accent
+   (--color-gold/--color-gold-soft and its rgba tints) stays fixed
+   across both themes throughout the sidebar, same as everywhere else
+   in the app - see --focus-ring's comment above for why. */
 
 /* --- Navbar.css --- */
 .navbar {
@@ -180,7 +187,9 @@
 /* --- components/Sidebar.css --- */
 .sidebar {
   width: 264px;
-  background: var(--color-ink);
+  background: var(--background);
+  /* #1c1c22 has no exact semantic-token match - kept literal here
+     (dark unchanged) with a light-theme override below. */
   border-right: 1px solid #1c1c22;
   overflow-y: auto;
   transition: transform var(--transition);
@@ -202,15 +211,17 @@
   display: flex; align-items: center; gap: 10px;
   padding: 10px var(--space-3);
   border-radius: 100px;
-  background: #17171d; border: 1px solid #282730;
-  color: #b5b0a6; text-decoration: none; font-size: 0.86rem; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-secondary); text-decoration: none; font-size: 0.86rem; font-weight: 600;
   transition: all var(--transition);
   flex-shrink: 0;
 }
-.nav-active-pill:hover { border-color: rgba(155, 130, 107, 0.5); color: var(--color-ivory); }
+.nav-active-pill:hover { border-color: rgba(155, 130, 107, 0.5); color: var(--text-primary); }
 .nav-active-pill .nav-item-icon { color: var(--color-gold); opacity: 1; }
 .nav-active-pill.active {
-  background: #22212a; color: var(--color-ivory); border-color: #353340;
+  /* #22212a/#353340 have no exact semantic-token match - kept literal
+     here (dark unchanged) with a light-theme override below. */
+  background: #22212a; color: var(--text-primary); border-color: #353340;
 }
 
 /* The rounded "card" panel holding the accordion nav groups - the
@@ -219,7 +230,9 @@
 .sidebar-nav {
   display: flex; flex-direction: column; gap: 2px;
   padding: var(--space-3);
-  background: #141418;
+  background: var(--surface-secondary);
+  /* #1c1c22 has no exact semantic-token match - kept literal here
+     (dark unchanged) with a light-theme override below. */
   border: 1px solid #1c1c22;
   border-radius: var(--radius-xl);
   flex: 1;
@@ -236,10 +249,10 @@
   border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: 0.78rem;
-  color: #7d7970; font-weight: 600;
+  color: var(--text-muted); font-weight: 600;
   transition: color var(--transition), background var(--transition);
 }
-.nav-group-header:hover { color: var(--color-ivory); background: #1d1d24; }
+.nav-group-header:hover { color: var(--text-primary); background: var(--surface-elevated); }
 .nav-group-header-label { display: flex; align-items: center; gap: 8px; }
 .nav-group-icon { flex-shrink: 0; opacity: 0.85; width: 14px; height: 14px; }
 
@@ -251,7 +264,7 @@
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px;
-  color: #7d7970;
+  color: var(--text-muted);
   text-decoration: none;
   font-size: 0.84rem;
   font-weight: 500;
@@ -262,8 +275,8 @@
 .nav-item-icon { flex-shrink: 0; opacity: 0.85; transition: opacity var(--transition); width: 16px; height: 16px; }
 
 .nav-item:hover {
-  background-color: #1d1d24;
-  color: var(--color-ivory);
+  background-color: var(--surface-elevated);
+  color: var(--text-primary);
 }
 .nav-item:hover .nav-item-icon { opacity: 1; }
 
@@ -275,6 +288,19 @@
 .nav-item.active .nav-item-icon { opacity: 1; color: var(--color-gold); }
 
 .sidebar-backdrop { display: none; }
+
+/* Light-theme overrides for the handful of sidebar shades above that
+   don't exactly match an existing semantic token (kept as literal
+   dark hex in their base rule so dark mode is provably unchanged).
+   Each override here reuses an existing semantic token's light value
+   - never an invented color - chosen for the closest equivalent role
+   the literal shade was already playing in dark mode. */
+[data-theme='light'] .sidebar { border-right-color: var(--border-subtle); }
+[data-theme='light'] .sidebar-nav { border-color: var(--border-subtle); }
+[data-theme='light'] .nav-active-pill.active {
+  background: var(--surface-elevated);
+  border-color: var(--border);
+}
 
 @media (max-width: 768px) {
   .sidebar {

@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Static regression checks for the WOODFUL AUTH + STARTUP LATENCY
- * DEFECT REPAIR (Requirement 10, frontend A-D). Zero dependencies
+ * Static regression checks for Woodful's auth + startup latency
+ * behavior. Zero dependencies
  * (plain Node `fs`/regex, no jest/testing-library) - this repo's
  * frontend has no test runner configured at all (see package.json),
  * and standing one up is out of scope for an auth/session-stability
- * repair. These are deliberately "static checks", exactly as the
- * defect-repair brief allows for the frontend side, mirroring the
+ * fix. These are deliberately "static checks", mirroring the
  * black-box style of the existing woodful_full_verification.sh/.bat
  * scripts rather than introducing a new framework dependency.
  *

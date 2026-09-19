@@ -24,7 +24,7 @@ class Notification(BaseModel):
     since resolved notifications no longer block a fresh one when the
     same situation recurs later.
 
-    Defect repair (F138 P9.1): the "check for an existing unread row,
+    The "check for an existing unread row,
     then insert if none found" description above is, on its own, a
     classic SELECT-then-INSERT race - two concurrent requests (e.g. two
     dashboard loads, or the on-demand check racing the background
@@ -74,8 +74,7 @@ class Notification(BaseModel):
     related_entity_type = Column(String(30), nullable=True)
     related_entity_id = Column(Integer, nullable=True)
     action_path = Column(String(255), nullable=True)  # frontend deep link, e.g. "/materials/5"
-    # Defect repair (F138 P25 regression audit, item 20 - duplicate
-    # indexes): this column previously also carried index=True, which -
+    # This column previously also carried index=True, which -
     # on a schema built via Base.metadata.create_all() (the test
     # suite's path) - created a SECOND, plain, full-table index on this
     # same column alongside the explicit partial unique index declared
@@ -94,7 +93,7 @@ class Notification(BaseModel):
     recipient = relationship("User")
 
     __table_args__ = (
-        # Defect repair (F138 P9.1) - see the class docstring above for
+        # See the class docstring above for
         # the race this closes and the exact migration an existing
         # database still needs to actually get this index. Partial
         # (WHERE-scoped) unique index: only UNREAD rows with a non-null
@@ -106,6 +105,15 @@ class Notification(BaseModel):
             postgresql_where=(is_read.is_(False) & dedup_key.isnot(None)),
             sqlite_where=(is_read.is_(False) & dedup_key.isnot(None)),
         ),
+        # unread_count() (app/modules/communications/api.py) is the most
+        # frequently-executed query against this table by far - polled
+        # every 60s by every logged-in user's NotificationBell - and
+        # always filters on recipient_user_id (via _visible_to) AND
+        # is_read together, not either column alone. Each column already
+        # has its own single-column index; this composite lets that one
+        # hot-path query resolve from a single index seek instead of
+        # intersecting two separate index scans.
+        Index("ix_notifications_recipient_unread", "recipient_user_id", "is_read"),
     )
 
 

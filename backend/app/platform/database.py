@@ -106,7 +106,7 @@ _MIGRATION_LOCK_KEY = 8825170392  # arbitrary, fixed - see comment above
 
 
 def _alembic_config() -> Config:
-    # Defect repair: this used to walk FOUR parents from
+    # This used to walk FOUR parents from
     # backend/app/platform/database.py, landing one directory too high -
     # at the project root, sibling to backend/ - instead of on backend/
     # itself, where alembic.ini and alembic/ actually live. Three

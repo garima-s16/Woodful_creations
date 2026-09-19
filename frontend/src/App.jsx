@@ -3,12 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { useDispatch, useSelector } from 'react-redux';
 
 import { authAPI } from './utils/api';
-import { setDocumentTitle } from './utils/utils';
+import { setDocumentTitle, syncThemeColorMeta } from './utils/utils';
 import { sessionCheckFinished, sessionCheckFailed, logout as logoutAction } from './redux/slices';
 import { openCart, closeCart, fetchCart, resetCartView } from './redux/slices';
 
-import Navbar from './components/Navbar';
-import Sidebar from './components/Sidebar';
 import { MobileBottomNav } from './components/Navigation';
 import { ProtectedRoute } from './components/Infrastructure';
 import { LoadingShell } from './components/Infrastructure';
@@ -18,7 +16,7 @@ import { Footer } from './components/Navigation';
 import { LoginPage, ForgotPasswordPage, ResetPasswordPage } from './modules/auth/pages/AuthPages';
 import { NotFoundPage } from './pages/SystemPages';
 
-// Defect repair (F138 P1): ChatWidget (components/Assistant.jsx, 600+
+// ChatWidget (components/Assistant.jsx, 600+
 // lines - the Cai assistant UI) and CartDrawer
 // (modules/procurement/pages/RequirementsCartPages.jsx) used to be
 // static imports here. Both only ever render inside AppLayout - i.e.
@@ -32,9 +30,22 @@ import { NotFoundPage } from './pages/SystemPages';
 // while they load in.
 const ChatWidget = React.lazy(() => import('./components/Assistant').then(m => ({ default: m.ChatWidget })));
 const CartDrawer = React.lazy(() => import('./modules/procurement/pages/RequirementsCartPages').then(m => ({ default: m.CartDrawer })));
+// Navbar/Sidebar are only ever rendered inside AppLayout - i.e. only
+// after a successful login, same as ChatWidget/CartDrawer above - and
+// (unlike Navigation.jsx, whose BrandLogo/Footer/BrandBackdrop exports
+// AuthPages.jsx already statically imports for the login screen itself)
+// neither is reachable from anywhere in the public auth pages' module
+// graph, so this genuinely removes them from the bundle the login page
+// needs. Both resolve inside the SAME <Suspense fallback={<LoadingShell
+// />}> that already wraps every route below (including the lazy page
+// components), so on first login this adds no new/worse waterfall -
+// Navbar, Sidebar, and the destination page's own chunk all fetch in
+// parallel behind the one existing fallback, not one after another.
+const Navbar = React.lazy(() => import('./components/Navbar'));
+const Sidebar = React.lazy(() => import('./components/Sidebar'));
 
 const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password'];
-// Defect repair (P1-13): this used to also list the two public,
+// This used to also list the two public,
 // token-based client-portal route prefixes (/review-estimate/,
 // /my-order/). Woodful is internal-only now and the backend no
 // longer serves /api/client-portal/* at all (see backend
@@ -65,11 +76,21 @@ const EstimateImportPage = React.lazy(() => import('./modules/sales/pages/SalesS
 const OrderImportPage = React.lazy(() => import('./modules/sales/pages/SalesSupportPages').then(m => ({ default: m.OrderImportPage })));
 const RateCardsPage = React.lazy(() => import('./modules/catalog/pages/CatalogPages').then(m => ({ default: m.RateCardsPage })));
 const RateCardImportPage = React.lazy(() => import('./modules/catalog/pages/CatalogPages').then(m => ({ default: m.RateCardImportPage })));
-const SupplierDetailPage = React.lazy(() => import('./modules/procurement/pages/ProcurementPages').then(m => ({ default: m.SupplierDetailPage })));
+// SupplierDetailPage's former standalone route now renders SuppliersPage
+// itself (the Suppliers workspace) with that supplier pre-selected - see
+// the /suppliers/:supplierId route below - so there is no separate
+// SupplierDetailPage lazy chunk to load any more.
 const PurchasesPage = React.lazy(() => import('./modules/procurement/pages/ProcurementPages').then(m => ({ default: m.PurchasesPage })));
 const PurchaseDetailPage = React.lazy(() => import('./modules/procurement/pages/ProcurementPages').then(m => ({ default: m.PurchaseDetailPage })));
 const ProcurementRequirementsPage = React.lazy(() => import('./modules/procurement/pages/RequirementsCartPages').then(m => ({ default: m.ProcurementRequirementsPage })));
 const ProcurementRequirementDetailPage = React.lazy(() => import('./modules/procurement/pages/RequirementsCartPages').then(m => ({ default: m.ProcurementRequirementDetailPage })));
+// IA consolidation: PurchasesProcurementHub is the single "Purchases &
+// Procurement" nav destination, combining PurchasesPage/
+// ProcurementRequirementsPage/SuppliersPage (same ProcurementPages
+// chunk PurchasesPage/SuppliersPage already belonged to, plus a named
+// re-export of ProcurementRequirementsPage from RequirementsCartPages
+// - no new chunk, no duplicate implementation).
+const PurchasesProcurementHub = React.lazy(() => import('./modules/procurement/pages/ProcurementPages').then(m => ({ default: m.PurchasesProcurementHub })));
 const IssuesPage = React.lazy(() => import('./modules/operations/pages/OperationsPages').then(m => ({ default: m.IssuesPage })));
 const ClientsPage = React.lazy(() => import('./modules/clients/pages/ClientPages').then(m => ({ default: m.ClientsPage })));
 const ClientDetailPage = React.lazy(() => import('./modules/clients/pages/ClientDetailPage'));
@@ -78,7 +99,12 @@ const OrderDetailPage = React.lazy(() => import('./modules/sales/pages/SalesDeta
 const PaymentsPage = React.lazy(() => import('./modules/sales/pages/SalesSupportPages').then(m => ({ default: m.PaymentsPage })));
 const ProjectExpensesPage = React.lazy(() => import('./modules/operations/pages/OperationsPages').then(m => ({ default: m.ProjectExpensesPage })));
 const EmployeesPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.EmployeesPage })));
-const EmployeeDetailPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.EmployeeDetailPage })));
+// EmployeeDetailPage's former standalone route now renders EmployeesPage
+// itself (the Employees workspace) with that employee pre-selected - the
+// full Employee 360 experience is preserved verbatim as
+// EmployeeInspectorBody, rendered inside the workspace's inspector panel -
+// see the /employees/:employeeId route below - so there is no separate
+// EmployeeDetailPage lazy chunk to load any more.
 const AttendancePage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.AttendancePage })));
 const LeavesPage = React.lazy(() => import('./modules/hr/pages/WorkforcePages').then(m => ({ default: m.LeavesPage })));
 // IA consolidation: AttendanceLeaveHub is the single "Attendance &
@@ -95,7 +121,10 @@ const SettingsPage = React.lazy(() => import('./pages/SystemPages').then(m => ({
 const EstimatesPage = React.lazy(() => import('./modules/sales/pages/SalesListPages').then(m => ({ default: m.EstimatesPage })));
 const EstimateDetailPage = React.lazy(() => import('./modules/sales/pages/SalesDetailPages').then(m => ({ default: m.EstimateDetailPage })));
 const CandidatesPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.CandidatesPage })));
-const CandidateDetailPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.CandidateDetailPage })));
+// CandidateDetailPage's former standalone route now renders
+// CandidatesPage itself (the Candidates workspace) with that candidate
+// pre-selected - see the /candidates/:candidateId route below - so
+// there is no separate CandidateDetailPage lazy chunk to load any more.
 const InterviewsPage = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.InterviewsPage })));
 // IA consolidation: RecruitmentHub is the single "Recruitment" nav
 // destination, combining CandidatesPage/InterviewsPage (same
@@ -103,7 +132,7 @@ const InterviewsPage = React.lazy(() => import('./modules/recruitment/pages/Recr
 const RecruitmentHub = React.lazy(() => import('./modules/recruitment/pages/RecruitmentPages').then(m => ({ default: m.RecruitmentHub })));
 const SalarySlipsPage = React.lazy(() => import('./modules/hr/pages/PayrollPages').then(m => ({ default: m.SalarySlipsPage })));
 const SalaryAdvancesPage = React.lazy(() => import('./modules/hr/pages/PayrollPages').then(m => ({ default: m.SalaryAdvancesPage })));
-// Defect repair (F138 P1): now its own file (see UsersPage.jsx's own
+// Now its own file (see UsersPage.jsx's own
 // comment) - this import previously pointed at AuthPages.jsx, the
 // same module LoginPage is statically imported from above, which
 // silently defeated this lazy() wrapper (webpack already had the
@@ -185,7 +214,7 @@ function AppLayout({ children }) {
       </div>
       <Footer />
       <MobileBottomNav onOpenMenu={() => setSidebarOpen((v) => !v)} />
-      {/* Defect repair (F138 P1): null fallback is deliberate - these
+      {/* Null fallback is deliberate - these
           are floating overlays (chat bubble, cart drawer), not page
           content, so there is nothing meaningful to show while their
           lazy chunk loads and no reason to block the rest of the
@@ -217,8 +246,8 @@ function AppRoutes() {
   // aren't safe to run twice). Without this, the very first page load
   // in development fires authAPI.me() TWICE back-to-back - harmless to
   // the server (it's an idempotent GET, and get_current_user doesn't
-  // mutate anything), but it is real duplicate network work, and (per
-  // this defect repair) exactly the kind of thing that made an
+  // mutate anything), but it is real duplicate network work, and
+  // exactly the kind of thing that made an
   // already-confusing login bug look even more erratic in the
   // browser's network log. hasStartedBootstrap is a ref (not state) so
   // checking and setting it can't itself trigger a re-render/re-run;
@@ -325,11 +354,19 @@ function AppRoutes() {
       <Route path="/rate-master" element={<Protected><RateCardsPage /></Protected>} />
       <Route path="/rate-master/import" element={<Protected><RateCardImportPage /></Protected>} />
       <Route path="/products/:productId" element={<Protected><ProductDetailPage /></Protected>} />
-      <Route path="/suppliers/:supplierId" element={<Protected><SupplierDetailPage /></Protected>} />
+      {/* Route/deep-link compatibility: this used to render a separate
+          SupplierDetailPage - it now renders the Suppliers workspace
+          itself, which reads the :supplierId param and pre-selects
+          that supplier in the inspector panel. */}
+      <Route path="/suppliers/:supplierId" element={<Protected><SuppliersPage /></Protected>} />
       <Route path="/purchases" element={<Protected><PurchasesPage /></Protected>} />
       <Route path="/purchases/:purchaseId" element={<Protected><PurchaseDetailPage /></Protected>} />
       <Route path="/procurement-requirements" element={<Protected><ProcurementRequirementsPage /></Protected>} />
       <Route path="/procurement-requirements/:requirementId" element={<Protected><ProcurementRequirementDetailPage /></Protected>} />
+      {/* IA consolidation: single "Purchases & Procurement" workspace
+          nav destination. /purchases, /procurement-requirements, and
+          /suppliers above are untouched and still directly reachable. */}
+      <Route path="/purchases-procurement" element={<Protected><PurchasesProcurementHub /></Protected>} />
       <Route path="/issues" element={<Protected><IssuesPage /></Protected>} />
       <Route path="/clients" element={<Protected><ClientsPage /></Protected>} />
       <Route path="/clients/:clientId" element={<Protected><ClientDetailPage /></Protected>} />
@@ -338,7 +375,12 @@ function AppRoutes() {
       <Route path="/payments" element={<Protected><PaymentsPage /></Protected>} />
       <Route path="/project-expenses" element={<Protected><ProjectExpensesPage /></Protected>} />
       <Route path="/employees" element={<Protected><EmployeesPage /></Protected>} />
-      <Route path="/employees/:employeeId" element={<Protected><EmployeeDetailPage /></Protected>} />
+      {/* Route/deep-link compatibility: this used to render a separate
+          EmployeeDetailPage - it now renders the Employees workspace
+          itself, which reads the :employeeId param and pre-selects
+          that employee in the inspector panel (Employee 360 preserved
+          verbatim as EmployeeInspectorBody). */}
+      <Route path="/employees/:employeeId" element={<Protected><EmployeesPage /></Protected>} />
       <Route path="/attendance" element={<Protected><AttendancePage /></Protected>} />
       <Route path="/leaves" element={<Protected><LeavesPage /></Protected>} />
       {/* IA consolidation: single "Attendance & Leave" workspace nav
@@ -356,7 +398,11 @@ function AppRoutes() {
       <Route path="/estimates" element={<Protected><EstimatesPage /></Protected>} />
       <Route path="/estimates/:estimateId" element={<Protected><EstimateDetailPage /></Protected>} />
       <Route path="/candidates" element={<Protected><CandidatesPage /></Protected>} />
-      <Route path="/candidates/:candidateId" element={<Protected><CandidateDetailPage /></Protected>} />
+      {/* Route/deep-link compatibility: this used to render a separate
+          CandidateDetailPage - it now renders the Candidates workspace
+          itself, which reads the :candidateId param and pre-selects
+          that candidate in the inspector panel. */}
+      <Route path="/candidates/:candidateId" element={<Protected><CandidatesPage /></Protected>} />
       <Route path="/interviews" element={<Protected><InterviewsPage /></Protected>} />
       {/* IA consolidation: single "Recruitment" workspace nav
           destination. /candidates, /candidates/:id, and /interviews
@@ -383,6 +429,9 @@ function useThemeSync() {
     } else {
       document.documentElement.removeAttribute('data-theme');
     }
+    // Keeps the browser/PWA chrome color in step with every toggle,
+    // not just the very first page load (index.jsx handles that one).
+    syncThemeColorMeta();
   }, [mode]);
 }
 

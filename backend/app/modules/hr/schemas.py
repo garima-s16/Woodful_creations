@@ -1,32 +1,40 @@
 """HR domain Pydantic schemas."""
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from datetime import date as date_type
-from app.modules.hr.models import Employee, Attendance, Leave, SalarySlip, WorkingCalendarSettings, CompanyHoliday, SalaryAdvance, ATTENDANCE_STATUSES, SALARY_SLIP_STATUSES
+from app.modules.hr.models import Employee, Attendance, Leave, SalarySlip, WorkingCalendarSettings, CompanyHoliday, SalaryAdvance, ATTENDANCE_STATUSES, SALARY_SLIP_STATUSES, LEAVE_STATUSES
 from app.shared import validate_phone
+
+# Security-hardening constants (strict input validation pass) - same
+# convention as app/modules/sales/schemas.py and
+# app/modules/clients/services.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_LINE_ITEMS = 500
 
 
 class EmployeeBase(BaseModel):
-    employee_code: Optional[str] = None  # server-generated on create, ignored if supplied
-    name: str
-    designation: Optional[str] = None
-    department: Optional[str] = None
+    employee_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    designation: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    department: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     phone: Optional[str] = None
-    address: Optional[str] = None
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
     email: Optional[EmailStr] = None
-    manager: Optional[str] = None
+    manager: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     joining_date: Optional[datetime] = None
     monthly_salary: Decimal = Decimal("0")
-    status: str = "Active"
-    emergency_contact: Optional[str] = None
-    remarks: Optional[str] = None
-    pan: Optional[str] = None
-    uan: Optional[str] = None
-    bank_name: Optional[str] = None
-    bank_account_number: Optional[str] = None
-    tax_regime: Optional[str] = None
+    status: str = Field(default="Active", max_length=_SHORT_TEXT_MAX)
+    emergency_contact: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    pan: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    uan: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    bank_name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    bank_account_number: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    tax_regime: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
 
     @field_validator("phone")
     @classmethod
@@ -45,32 +53,37 @@ class EmployeeBase(BaseModel):
 
 
 class EmployeeCreate(EmployeeBase):
-    pass
+    # Rejects any field not declared above (e.g. a stray/renamed key) on
+    # this request body - a request schema, never a response model, so
+    # this has no effect on what comes back to the client.
+    model_config = ConfigDict(extra="forbid")
 
 
 class EmployeeUpdate(BaseModel):
-    name: Optional[str] = None
-    designation: Optional[str] = None
-    department: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    designation: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    department: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     phone: Optional[str] = None
-    address: Optional[str] = None
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
     email: Optional[EmailStr] = None
-    manager: Optional[str] = None
+    manager: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     monthly_salary: Optional[Decimal] = None
-    status: Optional[str] = None
-    emergency_contact: Optional[str] = None
-    remarks: Optional[str] = None
-    pan: Optional[str] = None
-    uan: Optional[str] = None
-    bank_name: Optional[str] = None
-    bank_account_number: Optional[str] = None
-    tax_regime: Optional[str] = None
-    # Family 137 (Employee 360, section 13.9) - offboarding facts, set
+    status: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    emergency_contact: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    pan: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    uan: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    bank_name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    bank_account_number: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    tax_regime: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    # Employee 360 offboarding facts, set
     # explicitly by a master rather than inferred from a status change,
     # matching this project's human-in-the-loop rule for consequential
     # HR actions.
     exit_date: Optional[datetime] = None
-    exit_reason: Optional[str] = None
+    exit_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("phone")
     @classmethod
@@ -98,13 +111,15 @@ class EmployeeResponse(EmployeeBase):
 
 
 class EmployeeLifecycleItemUpdate(BaseModel):
-    """Family 137 (Employee 360, section 13.9) - toggling one
+    """Employee 360 - toggling one
     onboarding/offboarding checklist item. is_complete is required
     (never inferred) - this is a human decision, not a derived fact,
     for every item this schema is used on (the auto-derived items
     reject direct toggling server-side - see hr/api.py)."""
     is_complete: bool
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AttendanceBase(BaseModel):
@@ -114,10 +129,10 @@ class AttendanceBase(BaseModel):
     out_time: Optional[datetime] = None
     standard_hours: Decimal = Decimal("8")
     attendance_status: str = "Present"
-    # Family P0.43 - a real, directly-settable fact (see the model
+    # A real, directly-settable fact (see the model
     # column's own comment) - never derived from in_time/out_time.
     overtime_hours: Decimal = Decimal("0")
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
     @field_validator("date")
     @classmethod
@@ -160,7 +175,7 @@ class AttendanceBase(BaseModel):
 
 
 class AttendanceCreate(AttendanceBase):
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
 class AttendanceOvertimeAction(BaseModel):
@@ -171,9 +186,11 @@ class AttendanceOvertimeAction(BaseModel):
     never silently overwrite a value someone already recorded; "Set"
     is the explicit, intentional replacement."""
     employee_id: int
-    dates: List[datetime]
+    dates: List[datetime] = Field(..., max_length=_MAX_LINE_ITEMS)
     hours: Decimal
     mode: str = "add"  # "add" or "set"
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("hours")
     @classmethod
@@ -202,7 +219,9 @@ class AttendanceUpdate(BaseModel):
     out_time: Optional[datetime] = None
     attendance_status: Optional[str] = None
     overtime_hours: Optional[Decimal] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("overtime_hours")
     @classmethod
@@ -242,10 +261,10 @@ class AttendanceResponse(AttendanceBase):
 
 class LeaveBase(BaseModel):
     employee_id: int
-    leave_type: str
+    leave_type: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     start_date: datetime
     end_date: datetime
-    reason: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class LeaveCreate(LeaveBase):
@@ -253,13 +272,30 @@ class LeaveCreate(LeaveBase):
     computed server-side (inclusive calendar-day count) in the leaves route,
     so a bad frontend calculation (or a tampered request) can never produce
     a 0/negative/NaN value in the database."""
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
 class LeaveUpdate(BaseModel):
     status: Optional[str] = None
-    approved_by: Optional[str] = None
-    remarks: Optional[str] = None
+    approved_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("status")
+    @classmethod
+    def status_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        # Same rationale as SalarySlipUpdate.status_must_be_valid above -
+        # the model's status column comment documents Pending/Approved/
+        # Rejected, but nothing previously enforced it, so an arbitrary
+        # string could be persisted and then silently never match the
+        # exact-string filters used elsewhere (e.g. Leave.status ==
+        # "Pending" in the employee-360 pending-leaves count).
+        if v is None:
+            return v
+        if v not in LEAVE_STATUSES:
+            raise ValueError(f"Status must be one of: {', '.join(sorted(LEAVE_STATUSES))}")
+        return v
 
 
 class LeaveResponse(LeaveBase):
@@ -278,8 +314,8 @@ class LeaveResponse(LeaveBase):
 
 class SalarySlipBase(BaseModel):
     employee_id: int
-    month: str
-    year: str
+    month: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    year: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     working_days: Decimal = Decimal("26")
     paid_days: Decimal = Decimal("26")
     basic: Decimal = Decimal("0")
@@ -305,6 +341,8 @@ class SalarySlipBase(BaseModel):
 
 
 class SalarySlipCreate(SalarySlipBase):
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("basic", "da", "hra", "overtime_amount", "pf_deduction", "tds_deduction", "other_deductions")
     @classmethod
     def _monetary_component_not_negative(cls, v, info):
@@ -320,6 +358,8 @@ class SalarySlipUpdate(BaseModel):
     pf_deduction: Optional[Decimal] = None
     tds_deduction: Optional[Decimal] = None
     other_deductions: Optional[Decimal] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("status")
     @classmethod
@@ -353,7 +393,7 @@ class SalarySlipUpdate(BaseModel):
 class SalarySlipResponse(SalarySlipBase):
     id: int
     business_id: str
-    # Family P0.44 - never on Create/Update (see _compute_net's own
+    # Never on Create/Update (see _compute_net's own
     # comment); the only way this becomes non-zero is the salary
     # advance recovery action, so it is read-only here.
     advance_deduction: Decimal = Decimal("0")
@@ -369,6 +409,8 @@ class SalarySlipResponse(SalarySlipBase):
 class WorkingWeekdayUpdate(BaseModel):
     is_working: bool
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class WorkingWeekdayResponse(BaseModel):
     id: int
@@ -381,20 +423,22 @@ class WorkingWeekdayResponse(BaseModel):
 
 class CompanyHolidayBase(BaseModel):
     date: date_type
-    name: str
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     is_working: bool = False  # False = holiday, True = declared special working day
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class CompanyHolidayCreate(CompanyHolidayBase):
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
 class CompanyHolidayUpdate(BaseModel):
     date: Optional[date_type] = None
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     is_working: Optional[bool] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class CompanyHolidayResponse(CompanyHolidayBase):
@@ -415,8 +459,10 @@ class SalaryAdvanceCreate(BaseModel):
     employee_id: int
     requested_amount: Decimal
     request_date: datetime
-    reason: Optional[str] = None
-    remarks: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("requested_amount")
     @classmethod
@@ -431,9 +477,11 @@ class SalaryAdvanceApprove(BaseModel):
     the requested amount" (spec section 7's "approve a different
     amount" is opt-in, not mandatory)."""
     approved_amount: Optional[Decimal] = None
-    recovery_month: str
-    recovery_year: str
-    remarks: Optional[str] = None
+    recovery_month: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    recovery_year: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("approved_amount")
     @classmethod
@@ -444,7 +492,9 @@ class SalaryAdvanceApprove(BaseModel):
 
 
 class SalaryAdvanceReject(BaseModel):
-    rejection_reason: Optional[str] = None
+    rejection_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class SalaryAdvanceRecovery(BaseModel):
@@ -454,8 +504,10 @@ class SalaryAdvanceRecovery(BaseModel):
     route resolves the SalarySlip for (employee_id, month, year) and
     fails if it does not exist, rather than inventing one."""
     amount: Decimal
-    month: str
-    year: str
+    month: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    year: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("amount")
     @classmethod
@@ -488,7 +540,7 @@ class SalaryAdvanceResponse(BaseModel):
     updated_at: datetime
 
     class Config:
-        # Defect repair: every sibling *Response schema in this file
+        # Every sibling *Response schema in this file
         # (EmployeeResponse, AttendanceResponse, LeaveResponse,
         # SalarySlipResponse, WorkingWeekdayResponse,
         # CompanyHolidayResponse, OvertimeRequestResponse) declares
@@ -519,8 +571,10 @@ class OvertimeRequestCreate(BaseModel):
     employee_id: int
     date: datetime
     requested_hours: Decimal
-    reason: Optional[str] = None
-    remarks: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("requested_hours")
     @classmethod
@@ -537,8 +591,10 @@ class OvertimeRequestUpdate(BaseModel):
     route, not here."""
     date: Optional[datetime] = None
     requested_hours: Optional[Decimal] = None
-    reason: Optional[str] = None
-    remarks: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("requested_hours")
     @classmethod
@@ -553,7 +609,9 @@ class OvertimeRequestApprove(BaseModel):
     the requested hours" (same opt-in-different-amount pattern as
     SalaryAdvanceApprove)."""
     approved_hours: Optional[Decimal] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("approved_hours")
     @classmethod
@@ -564,7 +622,9 @@ class OvertimeRequestApprove(BaseModel):
 
 
 class OvertimeRequestReject(BaseModel):
-    rejection_reason: Optional[str] = None
+    rejection_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class OvertimeRequestResponse(BaseModel):

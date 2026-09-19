@@ -77,7 +77,22 @@ if [ ! -f "backend/.env" ]; then
     if [ -f "backend/.env.example" ]; then
         cp backend/.env.example backend/.env
         echo "Created backend/.env from template"
-        echo "IMPORTANT: Please edit backend/.env with your configuration"
+        # SECRET_KEY ships empty in .env.example (never a real secret in a
+        # committed file) - but app/platform/config.py requires a real
+        # 32+ char value just to import the app at all, which the
+        # migration step immediately below does. Left empty, "alembic
+        # upgrade head" below fails on every fresh setup before a user
+        # ever gets a chance to edit the file. Auto-generate a real
+        # local-dev-only secret now, the same way .env.example's own
+        # comment tells a person to by hand - never touches an existing
+        # backend/.env (this whole block is inside the "doesn't exist yet"
+        # branch), so it can never overwrite a value someone already set.
+        GENERATED_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+        # macOS/BSD sed requires an argument to -i (even if empty); GNU
+        # sed accepts -i alone. The portable form below works on both.
+        sed -i.bak "s|^SECRET_KEY=.*|SECRET_KEY=${GENERATED_SECRET_KEY}|" backend/.env && rm -f backend/.env.bak
+        echo "Generated a local-development SECRET_KEY in backend/.env"
+        echo "IMPORTANT: Please review backend/.env - the SECRET_KEY above is fine for local dev only; every other value (database, email, AI keys) still needs your own configuration"
     fi
 else
     echo "backend/.env already exists"
@@ -93,7 +108,24 @@ echo ""
 echo "Running database migrations..."
 source backend/venv/bin/activate
 cd backend
-alembic upgrade head && echo "Migrations applied" || echo "WARNING: Migrations failed - check backend/.env's DATABASE_URL and SECRET_KEY, then run 'cd backend && alembic upgrade head' manually."
+# Previously `alembic upgrade head && echo ... || echo "WARNING: ..."` -
+# that `A && B || C` form always ends on a successful `echo` (C), so its
+# own exit status is 0 regardless of whether the migration itself
+# failed. Combined with `set -e` at the top of this script, a genuinely
+# failed migration was silently swallowed and setup carried on all the
+# way to a misleading "Setup Complete!". A real if/else instead, which
+# does not mask alembic's exit status - a failed migration now stops
+# setup here, with a non-zero exit code, and never reaches "Setup
+# Complete!" below.
+if alembic upgrade head; then
+    echo "Migrations applied"
+else
+    echo ""
+    echo "ERROR: Database migration failed. Check backend/.env's DATABASE_URL and SECRET_KEY, then run 'cd backend && alembic upgrade head' manually to see the full error." >&2
+    cd ..
+    deactivate
+    exit 1
+fi
 cd ..
 deactivate
 echo ""
@@ -129,13 +161,10 @@ echo "1. Configure database (optional - can use SQLite for testing):"
 echo "   - Edit backend/.env with your PostgreSQL credentials"
 echo "   - Or leave as-is to use SQLite"
 echo ""
-echo "2. Start the backend server:"
-echo "   ./start_backend.sh"
+echo "2. Start both servers:"
+echo "   ./start_all.sh"
 echo ""
-echo "3. In another terminal, start the frontend:"
-echo "   ./start_frontend.sh"
-echo ""
-echo "4. Access the application:"
+echo "3. Access the application:"
 echo "   Backend API: http://localhost:8000"
 echo "   API Docs: http://localhost:8000/docs"
 echo "   Frontend: http://localhost:3000"

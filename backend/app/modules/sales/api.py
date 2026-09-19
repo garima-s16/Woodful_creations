@@ -10,7 +10,10 @@ from sqlalchemy.exc import IntegrityError
 from app.platform.database import get_db
 from app.platform.security import get_current_user, require_role
 from app.platform.audit import log_action, serializable_fields
-from app.modules.sales.models import Order, OrderComment, OrderItem, Estimate, Payment, ApprovedSpecification
+from app.modules.sales.models import (
+    Order, OrderComment, OrderItem, Estimate, Payment, ApprovedSpecification,
+    active_order_filter, OPEN_ESTIMATE_STATUSES,
+)
 from app.modules.clients.models import Client, ClientActivity
 from app.modules.reporting.services import AIWorkspaceReport
 from app.modules.catalog.models import Product
@@ -39,6 +42,8 @@ import zipfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import update as sa_update
+from sqlalchemy import func
+from app.modules.hr.models import Employee
 from fastapi.responses import StreamingResponse
 from app.platform.config import settings
 from app.platform.security import require_role
@@ -82,7 +87,7 @@ from fastapi import Request
 from app.modules.sales.models import Payment, PaymentDocument, Order
 from app.modules.sales.schemas import PaymentCreate, PaymentUpdate, PaymentResponse, PaymentDocumentResponse
 from app.modules.sales.exports import generate_invoice_pdf
-from app.shared import validate_file_signature
+from app.shared import safe_content_disposition_filename, stream_upload_to_storage
 from app.platform.storage import get_storage_backend, get_storage_backend_for_record
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -149,6 +154,58 @@ def _serialize_order(order, role: str, db: Session = None):
     return _serialize_orders([order], role, db)[0]
 
 
+def _risk_sorted_page(db: Session, query, offset: int, limit: int):
+    """Shared by GET /api/orders/ (sort=risk) and GET
+    /api/orders/workspace (sort=risk) - risk isn't a stored column, so
+    both need every id matching the current filters classified BEFORE
+    paginating (a CRITICAL order 200 rows in must still surface on page
+    1) - there is no index or precomputed value to sort on instead, so
+    this cannot be pushed down to a plain SQL ORDER BY without either a
+    persisted risk column (which would go stale every day purely from
+    time advancing - "days until delivery" shifts with no underlying
+    row changing - without a scheduled recomputation job this codebase
+    does not have) or reproducing bulk_attention_flags' multi-table
+    classification as raw, dialect-specific SQL that cannot be verified
+    against a live database in this environment. What IS done here:
+    the full-filtered-set classification pass uses
+    bulk_attention_flags(..., risk_level_only=True), which skips
+    building the `reason` text (and the needs_attention flag) for every
+    id - work that, before this change, was done for every matching
+    order and then thrown away for all but the one page actually
+    displayed. Full reason/needs_attention detail is then fetched
+    normally for only the resulting page. Net effect: query count for
+    this path goes from 3 fixed (not N-scaling) queries to 6 - still
+    O(1) round trips regardless of how many orders match, never
+    per-order - in exchange for a real reduction in the Python-side
+    memory/CPU held for the full matching set (short risk_level strings
+    instead of a dict with a reason string per id). The sort itself is
+    still an O(N log N) Python sort of the matching ids - true O(1)-
+    memory database-side sorting was not attempted for the reasons
+    above; see this codebase's own engineering notes on this function
+    for the full tradeoff. This was previously two independently
+    maintained copies of this logic (GET /api/orders/ and GET
+    /api/orders/workspace each had their own); now there is exactly
+    one, so they can never silently drift apart.
+
+    `query` must already have every status/priority/overdue_only/etc.
+    filter applied (but not .order_by/.offset/.limit) - this only adds
+    the risk-priority ordering and pagination on top.
+
+    Returns (page_ids_in_risk_order, total_matching_count, flags_for_the_page_only).
+    Unlike before, the third value covers only the returned page's ids,
+    not every matching id - callers that need a flag for an id outside
+    the returned page must call bulk_attention_flags for it directly.
+    """
+    all_ids = [r[0] for r in query.with_entities(Order.id).all()]
+    total = len(all_ids)
+    risk_levels = OrderService.bulk_attention_flags(db, all_ids, risk_level_only=True) if all_ids else {}
+    rank = {"CRITICAL": 0, "AT_RISK": 1, "WATCH": 2, "ON_TRACK": 3}
+    sorted_ids = sorted(all_ids, key=lambda oid: rank.get(risk_levels.get(oid), 3))
+    page_ids = sorted_ids[offset:offset + limit]
+    flags = OrderService.bulk_attention_flags(db, page_ids) if page_ids else {}
+    return page_ids, total, flags
+
+
 @orders_router.get("/", response_model=List[OrderResponse])
 def list_orders(response: Response, status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
                  priority: Optional[str] = Query(None),
@@ -171,18 +228,18 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
     if priority:
         query = query.filter(Order.priority == priority)
     if active_only:
-        # Defect repair (P1-8) - for a "pick a project to assign this
+        # For a "pick a project to assign this
         # to" dropdown (Employee Detail's task/production-job forms
         # and similar pickers elsewhere), not a report. Same
-        # active-order definition already used by the dashboard's
-        # active_order_ids (app/modules/reporting/api.py) - a
-        # Completed order is never a valid assignment target anyway,
+        # authoritative active_order_filter() every other "active
+        # orders" count/filter in the app now uses - a Completed OR
+        # Cancelled order is never a valid assignment target anyway,
         # so this both bounds the result AND keeps the picker itself
         # meaningful, rather than a caller silently relying on the
         # generic `limit` default (100) and truncating an
         # unfiltered, irrelevantly-ordered list once the business has
         # more than 100 orders total.
-        query = query.filter(Order.project_status != "Completed")
+        query = query.filter(active_order_filter())
     if overdue_only:
         # Same rule the frontend used to apply client-side: balance still
         # outstanding and the order was placed more than 30 days ago.
@@ -195,29 +252,21 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
         # Dashboard "upcoming deliveries" widget - was previously
         # ordersAPI.list() with NO filter (the entire order table,
         # forever) filtered/sliced client-side in React. Same rule,
-        # in SQL: has a delivery_date, not already Completed, and that
-        # date falls within the next N days.
+        # in SQL: has a delivery_date, still active (not Completed or
+        # Cancelled - active_order_filter()), and that date falls
+        # within the next N days.
         now = datetime.utcnow()
         cutoff = now + timedelta(days=upcoming_delivery_within_days)
         query = query.filter(
             Order.delivery_date.isnot(None), Order.delivery_date >= now, Order.delivery_date <= cutoff,
-            Order.project_status != "Completed",
+            active_order_filter(),
         )
         query = query.order_by(Order.delivery_date.asc())
     elif sort == "risk":
-        # Risk-priority sort (P0.50 s.19) needs every matching order's
-        # risk classified BEFORE pagination, not just the page - a
-        # CRITICAL order 200 rows in must still surface on page 1.
-        # bulk_attention_flags is still a fixed, small number of
-        # queries regardless of how many order_ids are passed in (see
-        # its own docstring) - this does not turn into a per-order N+1.
-        all_ids = [r[0] for r in query.with_entities(Order.id).all()]
-        total = len(all_ids)
+        # See _risk_sorted_page's own docstring - shared with the Orders
+        # workspace's identical sort=risk branch below.
+        page_ids, total, flags = _risk_sorted_page(db, query, offset, limit)
         response.headers["X-Total-Count"] = str(total)
-        flags = OrderService.bulk_attention_flags(db, all_ids) if all_ids else {}
-        priority = {"CRITICAL": 0, "AT_RISK": 1, "WATCH": 2, "ON_TRACK": 3}
-        sorted_ids = sorted(all_ids, key=lambda oid: priority.get(flags.get(oid, {}).get("risk_level"), 3))
-        page_ids = sorted_ids[offset:offset + limit]
         if not page_ids:
             return []
         orders_by_id = {o.id: o for o in query.filter(Order.id.in_(page_ids)).all()}
@@ -232,6 +281,305 @@ def list_orders(response: Response, status: Optional[str] = Query(None), client_
     response.headers["X-Total-Count"] = str(total)
 
     return _serialize_orders(query.offset(offset).limit(limit).all(), auth.get("role", "user"), db)
+
+
+def _build_workspace_selected_order(db: Session, selected_order_id: int, is_privileged: bool):
+    """Compact detail payload for the Orders workspace's right-hand
+    panel: header, progress, delivery, financials (master-only), line
+    items, authoritative risk/health, a concise materials-shortage
+    slice, and a few recent comments - everything that panel needs in
+    one query pass, never a chain of separate
+    ordersAPI.get()/health()/comments()/materialRequirements() calls.
+    Reuses OrderService.compute_order_health (the same authoritative
+    health/risk computation the full Order Detail page and chatbot
+    both already use) - not a second, simplified risk calculation.
+    The full /orders/:id page (Overview, Communication, Payments,
+    Expenses, Materials, Tasks, Production, Profitability, AI reports,
+    ...) is untouched and remains the deep-detail destination; this is
+    deliberately a smaller slice for the compact panel. Returns None
+    if the order does not exist (e.g. it was deleted between the list
+    load and the selection)."""
+    order = (
+        db.query(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.product), selectinload(Order.client))
+        .filter(Order.id == selected_order_id).first()
+    )
+    if order is None:
+        return None
+    health = OrderService.compute_order_health(db, order.id)
+    recent_comments = (
+        db.query(OrderComment).filter(OrderComment.order_id == order.id)
+        .order_by(OrderComment.date.desc()).limit(3).all()
+    )
+    return {
+        "id": order.id, "order_code": order.order_code, "status": order.project_status,
+        "design_status": order.design_status, "execution_status": order.execution_status,
+        "delivery_status": order.delivery_status, "priority": order.priority,
+        # project_type/supervisor/site_address: also needed to prefill the
+        # existing "Edit Order Details" form (Form fields: project_type,
+        # order_value, delivery_date, priority, supervisor, site_address,
+        # remarks) now that it's reached from this panel instead of a
+        # per-row table action - not new business data, just carried
+        # through in the same compact detail payload.
+        "project_type": order.project_type, "supervisor": order.supervisor, "site_address": order.site_address,
+        "client": {
+            "id": order.client_id, "name": order.client.name if order.client else None,
+            "contact_person": order.client.contact_person if order.client else None,
+            "phone": order.client.phone if order.client else None,
+            "email": order.client.email if order.client else None,
+            # Same existing classification the Clients workspace already
+            # uses for its "Business / Premium" badge (see
+            # clients/api.py's clients_workspace) - reused here, not a
+            # second/new VIP flag, so the Order detail panel can show the
+            # same real client-tier signal without inventing one.
+            "client_type": order.client.client_type if order.client else None,
+        } if order.client else None,
+        "progress_percent": order.progress_percent,
+        "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
+        "order_value": float(order.order_value) if is_privileged and order.order_value is not None else None,
+        "total_received": float(order.total_received) if is_privileged and order.total_received is not None else None,
+        "balance": float(order.balance) if is_privileged and order.balance is not None else None,
+        "payment_status": order.payment_status if is_privileged else None,
+        "items": [
+            {
+                "id": item.id, "description": item.description, "quantity": float(item.quantity or 0),
+                "unit": item.unit, "product_name": item.product_name, "product_code": item.product_code,
+            }
+            for item in order.items
+        ],
+        "risk": {
+            "risk_level": health["risk_level"], "reasons": health["reasons"][:3],
+            "business_impact": health["business_impact"],
+        } if health else None,
+        "materials": {
+            "materials_issued_count": health["materials_issued_count"],
+            "shortages": [
+                {"material_name": m["material_name"], "unit": m["unit"], "shortage": m["shortage"]}
+                for m in health["material_shortages"][:5]
+            ],
+        } if health else None,
+        "comments": [
+            {"id": c.id, "author": c.author, "text": c.text, "date": c.date.isoformat()}
+            for c in recent_comments
+        ],
+        "remarks": order.remarks,
+    }
+
+
+@orders_router.get("/workspace")
+def orders_workspace(
+    status: Optional[str] = Query(None), priority: Optional[str] = Query(None),
+    overdue_only: bool = Query(False),
+    search: Optional[str] = Query(None, description="Matches order code, order business ID, client name, or client code"),
+    sort: Optional[str] = Query(None, description="Set to 'risk' to sort by delivery-risk severity"),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_order_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_order_id is set), skip recomputing summary/orders "
+                    "and return only selected_order - used when a row selection changes but the "
+                    "filters/page/summary the user is already looking at have not.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Purpose-built, bounded response for the compact Orders
+    command-center workspace (KPI strip + 4 summary cards + compact
+    order list + inline selected-order detail panel) - one request on
+    page load, and at most one more per row selection, instead of the
+    dashboard-style fan-out the previous OrdersPage made (a separate
+    clientsAPI.list() plus a per-row clients.find(...) lookup, and,
+    for a selected order, would otherwise mean chaining
+    ordersAPI.get()/health()/comments()/etc.).
+
+    Reuses the exact same authoritative calculations every other
+    screen already uses - OrderService.bulk_attention_flags,
+    OrderService.compute_order_health,
+    StockService.calculate_at_risk_orders - and the exact same
+    master-only financial redaction _serialize_orders/_serialize_order
+    already apply everywhere else. Nothing here is a second
+    implementation of any business rule; this endpoint only decides
+    what shape to return, never how risk/health/payment figures are
+    computed.
+
+    detail_only=True skips the summary aggregates and the orders list
+    query entirely (both None in the response) - selecting a different
+    row would otherwise recompute the whole page's summary/list on
+    every click for no reason, since the frontend already has that
+    data from the page-level load.
+
+    search matches order_code, business_id, client name, or client
+    code - applied as a database WHERE (ilike), same as every other
+    filter here, never a full table load filtered in Python/the
+    frontend. Composes with status/priority/overdue_only/sort exactly
+    like they already compose with each other."""
+    is_privileged = auth.get("role", "user") in ("master",)
+    now = datetime.utcnow()
+
+    if detail_only:
+        return {
+            "summary": None, "orders": None,
+            "selected_order": _build_workspace_selected_order(db, selected_order_id, is_privileged) if selected_order_id else None,
+        }
+
+    # --- summary: cheap, business-wide aggregates ------------------
+    # active_order_ids/risk_counts/on_track_percent below come from
+    # OrderService.business_wide_risk_summary - the same shared
+    # computation the main Dashboard's orders widget uses (see that
+    # method's own docstring) - never a second, independently-derived
+    # copy of "every open order's risk level."
+    risk_summary = OrderService.business_wide_risk_summary(db)
+    active_orders_count = risk_summary["active_orders_count"]
+    total_orders_count = db.query(func.count(Order.id)).scalar() or 0
+
+    # Materials at risk: the TRUE total count across every open order
+    # (not a top-N sample), using calculate_at_risk_orders'
+    # count_only=True short-circuit - same shortage formula as
+    # everywhere else, just skipping the per-order enrichment a bare
+    # count never needed (see that function's own docstring).
+    materials_at_risk_count = StockService.calculate_at_risk_orders(db, count_only=True)
+
+    # Deliveries due: the same 14-day "upcoming delivery" definition
+    # GET /api/orders/?upcoming_delivery_within_days=14 and the main
+    # Dashboard's own widget already use - not a new definition.
+    deliveries_due_cutoff = now + timedelta(days=14)
+    deliveries_due_count = db.query(func.count(Order.id)).filter(
+        Order.delivery_date.isnot(None), Order.delivery_date >= now, Order.delivery_date <= deliveries_due_cutoff,
+        active_order_filter(),
+    ).scalar() or 0
+
+    active_employees_count = db.query(func.count(Employee.id)).filter(Employee.status == "Active").scalar() or 0
+
+    # Delivery risk: risk_summary above already computed this via the
+    # same shared bulk_attention_flags-based calculation the main
+    # Dashboard's orders_dashboard widget uses - never a second,
+    # independently-derived risk count.
+    risk_counts = risk_summary["risk_counts"]
+    on_track_percent = risk_summary["on_track_percent"]
+
+    # Payment overview: master-only, same aggregate SQL sums
+    # orders_dashboard already uses. None (not merely omitted) for a
+    # non-master viewer - exactly the same all-or-nothing redaction
+    # every other financial figure in this app already follows.
+    payment_overview = None
+    payment_due_count = None
+    if is_privileged:
+        total_order_value = float(db.query(func.sum(Order.order_value)).scalar() or 0)
+        total_received = float(db.query(func.sum(Order.total_received)).scalar() or 0)
+        outstanding_balance = float(db.query(func.sum(Order.balance)).scalar() or 0)
+        payment_overview = {
+            "total_order_value": total_order_value,
+            "total_received": total_received,
+            "outstanding_balance": outstanding_balance,
+            "received_percent": round(100 * total_received / total_order_value, 1) if total_order_value else None,
+        }
+        # "Payment Due" KPI chip is a count, not an amount, but it's
+        # still derived entirely from balance-outstanding orders - so
+        # it follows the same master-only rule as payment_overview
+        # rather than carving out a partial exemption for it.
+        payment_due_count = db.query(func.count(Order.id)).filter(Order.balance > 0).scalar() or 0
+
+    pipeline_rows = db.query(Order.project_status, func.count(Order.id)).group_by(Order.project_status).all()
+
+    summary = {
+        "active_orders": active_orders_count,
+        "materials_at_risk": materials_at_risk_count,
+        "deliveries_due": deliveries_due_count,
+        "payment_due": payment_due_count,
+        "active_employees": active_employees_count,
+        "orders_overview": {
+            "active_order_count": active_orders_count,
+            "total_order_value": payment_overview["total_order_value"] if payment_overview else None,
+            "pipeline_count": total_orders_count,
+        },
+        "delivery_risk": {
+            "on_track_percent": on_track_percent,
+            "critical_count": risk_counts["CRITICAL"],
+            "at_risk_count": risk_counts["AT_RISK"],
+            "watch_count": risk_counts["WATCH"],
+            "deliveries_due_count": deliveries_due_count,
+        },
+        "payment_overview": payment_overview,
+        "order_pipeline": {
+            "total_orders": total_orders_count,
+            "active_orders": active_orders_count,
+            "stage_breakdown": [{"status": s, "count": c} for s, c in pipeline_rows],
+        },
+    }
+
+    # --- orders: compact, paginated rows ----------------------------
+    # client eager-loaded directly (selectinload), so the frontend
+    # never needs its own clientsAPI.list() + per-row clients.find(...)
+    # lookup for display names - the N+1/duplicate-fetch pattern the
+    # previous OrdersPage had.
+    query = db.query(Order).options(selectinload(Order.client))
+    if status:
+        query = query.filter(Order.project_status == status)
+    if priority:
+        query = query.filter(Order.priority == priority)
+    if overdue_only:
+        overdue_cutoff = now - timedelta(days=30)
+        query = query.filter(Order.balance > 0, Order.order_date < overdue_cutoff)
+    if search:
+        # Server-side, database-filtered - never "load every order and
+        # filter in Python/the frontend". Matches the same fields the
+        # Orders list already displays (order_code, business_id,
+        # client name) plus client_code (the other client identifier
+        # already searchable on the Clients page) - not new identifiers
+        # invented for this. isouter join since an order's client is
+        # nullable-in-practice-never-null but should never turn a
+        # legitimate order row into a false negative if it somehow were.
+        like = f"%{search}%"
+        query = query.join(Client, Order.client_id == Client.id, isouter=True).filter(
+            (Order.order_code.ilike(like))
+            | (Order.business_id.ilike(like))
+            | (Client.name.ilike(like))
+            | (Client.client_code.ilike(like))
+        )
+
+    if sort == "risk":
+        # Same shared _risk_sorted_page helper GET /api/orders/?sort=risk
+        # uses - one implementation of "classify every matching order's
+        # risk, then sort/paginate" for both endpoints.
+        page_ids, row_total, flags_for_sort = _risk_sorted_page(db, query, offset, limit)
+        page_orders_by_id = {o.id: o for o in query.filter(Order.id.in_(page_ids)).all()} if page_ids else {}
+        page_orders = [page_orders_by_id[oid] for oid in page_ids if oid in page_orders_by_id]
+        row_flags = flags_for_sort
+    else:
+        query = query.order_by(Order.order_date.desc())
+        row_total = query.count()
+        page_orders = query.offset(offset).limit(limit).all()
+        row_flags = OrderService.bulk_attention_flags(db, [o.id for o in page_orders]) if page_orders else {}
+
+    order_rows = []
+    for o in page_orders:
+        flag = row_flags.get(o.id, {})
+        order_rows.append({
+            "id": o.id, "order_code": o.order_code,
+            "client": {"id": o.client_id, "name": o.client.name if o.client else None},
+            "project_type": o.project_type,
+            "progress_percent": o.progress_percent,
+            "status": o.project_status,
+            "delivery_status": o.delivery_status,
+            "priority": o.priority,
+            "delivery_date": o.delivery_date.isoformat() if o.delivery_date else None,
+            "attention_risk_level": flag.get("risk_level"),
+            "needs_attention": flag.get("needs_attention", False),
+            "order_value": float(o.order_value) if is_privileged and o.order_value is not None else None,
+            "total_received": float(o.total_received) if is_privileged and o.total_received is not None else None,
+            "balance": float(o.balance) if is_privileged and o.balance is not None else None,
+            "payment_status": o.payment_status if is_privileged else None,
+        })
+
+    orders_payload = {"items": order_rows, "total_count": row_total, "limit": limit, "offset": offset}
+
+    # --- selected_order: compact detail, only when requested --------
+    # See _build_workspace_selected_order's own docstring for what this
+    # consolidates and why.
+    selected_order_payload = (
+        _build_workspace_selected_order(db, selected_order_id, is_privileged) if selected_order_id else None
+    )
+
+    return {"summary": summary, "orders": orders_payload, "selected_order": selected_order_payload}
 
 
 def _build_order_items(db, items_data, order_id: int = None):
@@ -276,7 +624,7 @@ def _build_order_items(db, items_data, order_id: int = None):
 @orders_router.post("/", response_model=OrderResponse, status_code=201)
 def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_db),
                   auth=Depends(require_role("master"))):
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_HALF_UP
     from app.modules.clients.services import find_or_create_client
 
     payload = data.dict(exclude={
@@ -376,9 +724,21 @@ def create_order(data: OrderCreate, request: Request, db: Session = Depends(get_
         payload["order_value"] = grand_total
     else:
         # No line items at all - a bare order with just a caller-supplied
-        # total (e.g. a quick internal-work order). discount/tax still
-        # apply to whatever order_value was given, same formula.
-        tax_amount, grand_total = compute_totals(data.order_value, discount, tax_percent)
+        # total (e.g. a quick internal-work order). data.order_value here
+        # IS the final quoted/grand total the client owes, never a
+        # pre-tax subtotal - it was previously fed straight into
+        # compute_totals() as if it were one, which silently added GST
+        # on top of an amount that was already final (order_value=10000
+        # at the default 18% rate was stored as 11800). order_value is
+        # now taken exactly as supplied; tax_amount is still derived -
+        # not left at 0 - by back-solving it out of that final total via
+        # the inverse of compute_totals' own formula, purely so it stays
+        # internally consistent with tax_percent for GST reporting/PDFs
+        # (the same reverse-math update_order's equivalent bare-order
+        # branch already uses below, applied here on the create path).
+        grand_total = data.order_value
+        taxable = grand_total / (Decimal("1") + tax_percent / Decimal("100"))
+        tax_amount = (grand_total - taxable).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         payload["order_value"] = grand_total
     payload["discount"] = discount
     payload["tax_percent"] = tax_percent
@@ -461,7 +821,7 @@ def get_order(order_id: int, db: Session = Depends(get_db), auth=Depends(get_cur
 
 @orders_router.get("/{order_id}/dispatch-check")
 def check_dispatch_readiness(order_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 4 (Balance-Before-Dispatch Guardrail) - a
+    """Balance-Before-Dispatch Guardrail - a
     read-only precheck the frontend calls before showing a "mark as
     delivered/dispatched" confirmation, so the outstanding balance is
     explained BEFORE the person attempts the change, not only as a
@@ -503,11 +863,11 @@ APPROVED_SPEC_MAX_PHOTO_BYTES = 8 * 1024 * 1024
 
 @orders_router.post("/{order_id}/client-link")
 def generate_order_client_link(order_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 3 - Client 'My Order' Link.
+    """Client 'My Order' Link.
 
-    Defect repair (P1-13): disabled - Woodful is internal-only, and
-    the public client-portal router this link would point to is no
-    longer registered (see clients/portal_api.py). Returns 410 Gone
+    Disabled - Woodful is internal-only, and
+    the public client-portal router this link would point to has been
+    removed entirely. Returns 410 Gone
     rather than 404, since this specific endpoint still exists and is
     reachable by staff; it deliberately no longer mints a token or a
     URL that would only 404 for whoever received it."""
@@ -520,7 +880,7 @@ def generate_order_client_link(order_id: int, db: Session = Depends(get_db), aut
 @orders_router.get("/{order_id}/approved-specifications", response_model=List[ApprovedSpecificationResponse])
 def list_approved_specifications(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """Full version history for the order's Approved Specification /
-    Sample Lock (Family 137, feature 8), most recent first - every past
+    Sample Lock, most recent first - every past
     approval stays visible, never deleted, so a client's dispute about
     what was approved can always be answered from a real record."""
     order = db.query(Order).filter(Order.id == order_id).first()
@@ -544,7 +904,7 @@ def create_approved_specification(
     edits an existing row - the previous active version (if any) is
     flipped to "superseded" and this becomes version N+1, linked back
     via supersedes_id, so the full approval history is always
-    reconstructable (Family 137, feature 8's required change flow:
+    reconstructable (the required change flow:
     Original Approved -> Change Requested -> New Version/Sample ->
     Human/Client Approval -> New Approved Version)."""
     order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
@@ -594,7 +954,7 @@ def create_approved_specification(
 @orders_router.put("/{order_id}", response_model=OrderResponse)
 def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session = Depends(get_db),
                   auth=Depends(require_role("master"))):
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_HALF_UP
 
     order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
     if not order:
@@ -616,7 +976,7 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         if error:
             raise HTTPException(status_code=400, detail=error)
 
-    # --- Family 137, feature 4: Balance-Before-Dispatch Guardrail ---
+    # --- Balance-Before-Dispatch Guardrail ---
     # "Dispatched"/"Delivered" has no separate status value in this
     # codebase - delivery_status's real terminal value is "Completed"
     # (see ORDER_SUB_STATUSES) - so that is the one real transition this
@@ -687,6 +1047,7 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
     )
 
     old_items_snapshot = None
+    bare_order_value_supplied = False
     if data.items is not None:
         old_items_snapshot = [
             {
@@ -712,9 +1073,16 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         subtotal_base = order.items_subtotal or Decimal("0")
     elif "order_value" in update_fields:
         # A bare lump-sum order with no line items, and the caller
-        # explicitly supplied a new order_value - that IS the intended
-        # new subtotal input to discount/tax, same as create_order.
-        subtotal_base = order.order_value or Decimal("0")
+        # explicitly supplied a new order_value - same fix as
+        # create_order: that new order_value (already applied to
+        # order.order_value by the setattr loop above) IS the new final
+        # grand total already, never a subtotal to run back through
+        # compute_totals - doing so previously double-applied GST on
+        # top of an amount that was already final. Handled as its own
+        # branch below (bare_order_value_supplied) rather than through
+        # the generic compute_totals call every other branch uses.
+        bare_order_value_supplied = True
+        subtotal_base = None
     else:
         # A bare lump-sum order whose discount/tax_percent changed but
         # order_value itself was NOT explicitly supplied - the stored
@@ -730,7 +1098,19 @@ def update_order(order_id: int, data: OrderUpdate, request: Request, db: Session
         old_taxable = old_order_value / (Decimal("1") + old_tax_percent / Decimal("100"))
         subtotal_base = old_taxable + old_discount
 
-    if recompute_needed:
+    if bare_order_value_supplied:
+        # order.order_value is already correct - set by the setattr
+        # loop above, straight from the caller's supplied final total.
+        # Only tax_amount is derived here, back-solved out of that
+        # final total via the inverse of compute_totals' own formula
+        # (same reverse-math as the "else" branch above), purely so it
+        # stays internally consistent with tax_percent for GST
+        # reporting/PDFs - order.order_value itself is never
+        # recomputed/altered by this.
+        grand_total = order.order_value or Decimal("0")
+        taxable = grand_total / (Decimal("1") + (order.tax_percent or Decimal("0")) / Decimal("100"))
+        order.tax_amount = (grand_total - taxable).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    elif recompute_needed:
         tax_amount, grand_total = compute_totals(subtotal_base, order.discount, order.tax_percent)
         order.tax_amount = tax_amount
         order.order_value = grand_total
@@ -806,7 +1186,7 @@ def preview_order_email(order_id: int, kind: str = Query("order", pattern="^(ord
             f"Regards,\nWoodful Creations"
         )
         attachment_filename = f"Order-{order.order_code}.pdf"
-    # Defect repair (P1-13): this preview used to note that the actual
+    # This preview used to note that the actual
     # sent email would have a client-portal tracking link appended -
     # send_order_email no longer does that (Woodful is internal-only),
     # so the body shown here now matches exactly what gets sent.
@@ -826,11 +1206,11 @@ def send_order_email(order_id: int, data: ClientEmailSendRequest, request: Reque
     if not data.recipient_email or "@" not in data.recipient_email:
         raise HTTPException(status_code=400, detail="A valid recipient email is required")
 
-    # Defect repair (P1-13): Family 137 feature 3's persistent
+    # The persistent
     # order-tracking link used to be appended to every order-related
     # email here. Woodful is internal-only now and the public
-    # client-portal route that link pointed to is no longer served
-    # (see clients/portal_api.py), so nothing is generated or
+    # client-portal route that link pointed to has been removed
+    # entirely, so nothing is generated or
     # appended anymore - the email still sends normally with whatever
     # body/attachment staff prepared, just without a link that would
     # only 404 for the client who received it.
@@ -881,7 +1261,7 @@ def send_order_email(order_id: int, data: ClientEmailSendRequest, request: Reque
 
 @orders_router.get("/{order_id}/health")
 def get_order_health(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Deterministic, explainable Order Health/Risk (Family 130 P0.1) -
+    """Deterministic, explainable Order Health/Risk -
     the authoritative contract this order's frontend Command Centre,
     the chatbot's "what is blocking this order" workspace, and any
     future AI/agent should all read from, rather than each re-deriving
@@ -904,7 +1284,7 @@ def get_order_health(order_id: int, db: Session = Depends(get_db), auth=Depends(
 def get_order_what_if(order_id: int, new_delivery_date: datetime = Query(
                            ..., description="ISO 8601 datetime - the hypothetical delivery date to simulate"),
                        db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """What-If Scheduling (P0.50 section 11) - "what happens if this
+    """What-If Scheduling - "what happens if this
     order's delivery date changes to X". Reuses
     OrderService.compute_order_health exactly via its
     override_delivery_date parameter - never a second, simplified risk
@@ -928,7 +1308,7 @@ def get_order_what_if(order_id: int, new_delivery_date: datetime = Query(
 
 @orders_router.get("/{order_id}/build-timeline")
 def get_order_build_timeline(order_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Family 137 feature 2 - Visual Build Timeline. A read-only view
+    """Visual Build Timeline. A read-only view
     over this order's real Milestone and ProductionJob data - see
     OrderService.build_timeline's own docstring for exactly how each
     milestone's status (planned/current/completed/delayed/at_risk) is
@@ -945,7 +1325,7 @@ def get_order_delivery_promise(order_id: int,
                                 requested_date: datetime = Query(
                                     ..., description="ISO 8601 datetime - the delivery date being considered"),
                                 db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Family 137 feature 12 - Capacity-Aware Delivery Promise
+    """Capacity-Aware Delivery Promise
     (evaluation half). Read-only - see OrderService.
     evaluate_delivery_promise's own docstring for the real signals
     used. This is a PREDICTION plus a RECOMMENDATION, never a promise:
@@ -960,7 +1340,7 @@ def get_order_delivery_promise(order_id: int,
 @orders_router.post("/{order_id}/delivery-promise")
 def record_order_delivery_promise(order_id: int, data: DeliveryPromiseRecord, request: Request,
                                    db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137 feature 12 - Capacity-Aware Delivery Promise
+    """Capacity-Aware Delivery Promise
     (decision half). The system only ever recommends (see the GET
     evaluation above) - this is the one place a human's final promised
     date is actually recorded, on the existing Order.delivery_date
@@ -1504,7 +1884,8 @@ def commit_order_import(data: OrderImportCommitRequest, request: Request, db: Se
 estimates_router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
 
-def _build_line_items(db, line_items_data, estimate_id: int = None):
+def _build_line_items(db, line_items_data, estimate_id: int = None, client_id: int = None,
+                       estimate_margin_percent: Decimal = None):
     """Computes amount = quantity * rate server-side for each line item -
     the frontend may show a running total for UX, but the stored amount
     is never taken from client input directly.
@@ -1516,6 +1897,7 @@ def _build_line_items(db, line_items_data, estimate_id: int = None):
     equivalent Order builder, kept consistent since an order's items
     are frequently copied straight from an estimate's."""
     from app.modules.catalog.models import Product
+    from app.modules.catalog.pricing import resolve_product_pricing_snapshot
 
     product_ids = {item.product_id for item in line_items_data if item.product_id is not None}
     if product_ids:
@@ -1533,7 +1915,7 @@ def _build_line_items(db, line_items_data, estimate_id: int = None):
     items = []
     for idx, item in enumerate(line_items_data):
         amount = (item.quantity * item.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        # Family 137, feature 9 (Cost-Drift Alert): snapshot the cost
+        # Cost-Drift Alert: snapshot the cost
         # basis actually in effect right now, at the moment this line is
         # priced - the same cost_price/suggested_cost_price a later
         # cost-drift check compares against. None for a custom item with
@@ -1542,17 +1924,29 @@ def _build_line_items(db, line_items_data, estimate_id: int = None):
         # excluded from drift math rather than reported as "cost fell to
         # zero".
         cost_at_creation = None
+        pricing_rule_applied = None
+        applied_margin_percent = None
         if item.product_id is not None:
             product = found_products.get(item.product_id)
             if product is not None:
-                cost_basis = product.cost_price if product.cost_price is not None else product.suggested_cost_price
-                if cost_basis is not None:
-                    cost_at_creation = Decimal(str(cost_basis))
+                # Same resolver the /resolve preview endpoint uses (see
+                # catalog/pricing.resolve_product_pricing_snapshot) -
+                # snapshots which pricing rule/margin/cost basis was in
+                # effect right now, at creation time (spec section 13),
+                # without overriding the actual rate/amount above, which
+                # always stays exactly whatever was supplied.
+                snapshot = resolve_product_pricing_snapshot(
+                    db, product, client_id=client_id, estimate_margin_percent=estimate_margin_percent,
+                )
+                cost_at_creation = snapshot.cost_at_creation
+                pricing_rule_applied = snapshot.pricing_rule_applied
+                applied_margin_percent = snapshot.applied_margin_percent
         items.append(EstimateLineItem(
             estimate_id=estimate_id, description=item.description, category=item.category,
             quantity=item.quantity, unit=item.unit, rate=item.rate, amount=amount, sort_order=idx,
             product_id=item.product_id, is_custom_item=item.is_custom_item,
-            cost_at_creation=cost_at_creation,
+            cost_at_creation=cost_at_creation, pricing_rule_applied=pricing_rule_applied,
+            applied_margin_percent=applied_margin_percent,
         ))
     return items
 
@@ -1609,7 +2003,7 @@ def create_estimate(data: EstimateCreate, request: Request, db: Session = Depend
             )
 
     if data.line_items:
-        line_items = _build_line_items(db, data.line_items)
+        line_items = _build_line_items(db, data.line_items, client_id=data.client_id)
         subtotal = sum((item.amount for item in line_items), Decimal("0"))
         # material_cost/labor_cost are legacy summary fields - when real
         # line items are supplied, keep them in sync by category rather
@@ -1649,6 +2043,233 @@ def create_estimate(data: EstimateCreate, request: Request, db: Session = Depend
     raise HTTPException(status_code=500, detail="Unable to generate a unique estimate code, please try again")
 
 
+def _build_workspace_selected_estimate(db: Session, selected_estimate_id: int, is_privileged: bool):
+    """Compact detail payload for the Estimates workspace's right-hand
+    panel: client, summary totals, line items, pricing/tax, validity,
+    conversion status, a compact activity list, and notes - mirroring
+    _build_workspace_selected_order's role for the Orders workspace.
+    Cost/margin figures follow the exact same master-only redaction
+    _serialize_estimates already applies everywhere else - never a
+    second rule. Returns None if the estimate no longer exists."""
+    estimate = (
+        db.query(Estimate)
+        .options(selectinload(Estimate.line_items), selectinload(Estimate.client), selectinload(Estimate.order))
+        .filter(Estimate.id == selected_estimate_id).first()
+    )
+    if estimate is None:
+        return None
+
+    # A compact, factual activity list - not a second aggregation
+    # engine like client_relationship_timeline (that spans a whole
+    # client's history across many entities); this is just this one
+    # estimate's own lifecycle fields, already on the row.
+    activity = [{"type": "created", "date": estimate.created_at.isoformat(), "text": f"Estimate {estimate.estimate_code} created (v{estimate.version})."}]
+    if estimate.approved_at:
+        activity.append({
+            "type": "approved", "date": estimate.approved_at.isoformat(),
+            "text": f"Approved{f' by {estimate.approved_by}' if estimate.approved_by else ''}.",
+        })
+    elif estimate.status == "changes_requested" and estimate.client_decision_comments:
+        activity.append({
+            "type": "changes_requested", "date": estimate.updated_at.isoformat(),
+            "text": f"Changes requested: {estimate.client_decision_comments}",
+        })
+    if estimate.order_id:
+        activity.append({
+            "type": "converted", "date": estimate.updated_at.isoformat(),
+            "text": f"Converted to order {estimate.order.order_code if estimate.order else estimate.order_id}.",
+        })
+    activity.sort(key=lambda e: e["date"], reverse=True)
+
+    return {
+        "id": estimate.id, "estimate_code": estimate.estimate_code, "business_id": estimate.business_id,
+        "status": estimate.status, "version": estimate.version,
+        "client": {
+            "id": estimate.client_id, "name": estimate.client.name if estimate.client else None,
+            "contact_person": estimate.client.contact_person if estimate.client else None,
+            "phone": estimate.client.phone if estimate.client else None,
+            "email": estimate.client.email if estimate.client else None,
+        } if estimate.client else None,
+        "created_at": estimate.created_at.isoformat(),
+        "valid_until": estimate.valid_until.isoformat() if estimate.valid_until else None,
+        "description": estimate.description,
+        "summary": {
+            "subtotal": float(estimate.subtotal) if is_privileged and estimate.subtotal is not None else None,
+            "discount": float(estimate.discount) if is_privileged and estimate.discount is not None else None,
+            "tax_percent": float(estimate.tax_percent) if estimate.tax_percent is not None else None,
+            "tax_amount": float(estimate.tax_amount) if is_privileged and estimate.tax_amount is not None else None,
+            "total_cost": float(estimate.total_cost) if is_privileged and estimate.total_cost is not None else None,
+            # Legacy material_cost/labor_cost columns - still the fields
+            # the existing Edit Estimate form (material_cost/labor_cost)
+            # writes to for an estimate with no line items (see
+            # Estimate.subtotal's own docstring). Included here so the
+            # workspace's Edit modal can source its initialValues from
+            # this same already-loaded payload, never a second
+            # estimatesAPI.get() round trip just to populate a form.
+            "material_cost": float(estimate.material_cost) if is_privileged and estimate.material_cost is not None else None,
+            "labor_cost": float(estimate.labor_cost) if is_privileged and estimate.labor_cost is not None else None,
+        },
+        "line_items": [
+            {
+                "id": item.id, "description": item.description, "category": item.category,
+                "quantity": float(item.quantity or 0), "unit": item.unit,
+                "rate": float(item.rate) if is_privileged and item.rate is not None else None,
+                "amount": float(item.amount) if is_privileged and item.amount is not None else None,
+                "product_name": item.product_name, "product_code": item.product_code,
+            }
+            for item in estimate.line_items
+        ],
+        "conversion": {
+            "order_id": estimate.order_id,
+            "order_code": estimate.order.order_code if estimate.order else None,
+            "can_convert": is_privileged and not estimate.order_id and estimate.status == "approved",
+        },
+        "activity": activity[:6],
+        "remarks": estimate.remarks,
+    }
+
+
+@estimates_router.get("/workspace")
+def estimates_workspace(
+    status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+    selected_estimate_id: Optional[int] = Query(None),
+    detail_only: bool = Query(
+        False,
+        description="When true (and selected_estimate_id is set), skip recomputing summary/estimates "
+                    "and return only selected_estimate - mirrors the Orders workspace's own detail_only "
+                    "fast path.",
+    ),
+    db: Session = Depends(get_db), auth=Depends(get_current_user),
+):
+    """Purpose-built, bounded response for the compact Estimates
+    command-center workspace (KPI strip + 4 summary cards + compact
+    estimate list + inline selected-estimate detail panel) - modeled
+    directly on GET /api/orders/workspace, the finalized
+    visual/architectural reference for this page.
+
+    Reuses the exact figures every other Estimates screen already
+    computes (Estimate.subtotal/tax_amount/total_cost, the
+    approved/order_id conversion relationship) and the same
+    master-only cost/margin redaction _serialize_estimates already
+    applies - never a second calculation or a second rule.
+
+    detail_only=True mirrors the Orders workspace exactly."""
+    is_privileged = auth.get("role", "user") in ("master",)
+    now = datetime.utcnow()
+
+    if detail_only:
+        return {
+            "summary": None, "estimates": None,
+            "selected_estimate": _build_workspace_selected_estimate(db, selected_estimate_id, is_privileged) if selected_estimate_id else None,
+        }
+
+    # --- summary: cheap, business-wide aggregates -------------------
+    total_estimates = db.query(func.count(Estimate.id)).scalar() or 0
+    open_estimates_count = db.query(func.count(Estimate.id)).filter(Estimate.status.in_(OPEN_ESTIMATE_STATUSES)).scalar() or 0
+
+    # Estimate value: master-only (cost/margin data), same
+    # Estimate.total_cost figure _serialize_estimates already redacts
+    # everywhere else - never recomputed from line items here.
+    estimate_value = None
+    if is_privileged:
+        open_total_value = float(
+            db.query(func.sum(Estimate.total_cost)).filter(Estimate.status.in_(OPEN_ESTIMATE_STATUSES)).scalar() or 0
+        )
+        average_value = round(open_total_value / open_estimates_count, 2) if open_estimates_count else None
+        estimate_value = {"open_total_value": open_total_value, "average_value": average_value}
+
+    # Pending client response: the existing "sent" status IS the
+    # workflow state for "waiting on the client" - not a new status.
+    pending_response_count = db.query(func.count(Estimate.id)).filter(Estimate.status == "sent").scalar() or 0
+
+    # Conversion pipeline: the existing Estimate.order_id relationship
+    # already established by create_order(from_estimate_id=...) - never
+    # a second conversion-tracking table.
+    converted_count = db.query(func.count(Estimate.id)).filter(Estimate.order_id.isnot(None)).scalar() or 0
+    converted_value = (
+        float(db.query(func.sum(Estimate.total_cost)).filter(Estimate.order_id.isnot(None)).scalar() or 0)
+        if is_privileged else None
+    )
+    conversion_percent = round(100 * converted_count / total_estimates, 1) if total_estimates else None
+
+    # Expiring/follow-up: uses only the existing valid_until date field
+    # and the existing "expired" status value - no invented time
+    # window. An open estimate whose own recorded valid_until date has
+    # already passed is a plain fact, not a new rule; the "expired"
+    # status count is the system's own explicit signal for the rest.
+    expired_status_count = db.query(func.count(Estimate.id)).filter(Estimate.status == "expired").scalar() or 0
+    past_valid_until_count = db.query(func.count(Estimate.id)).filter(
+        Estimate.valid_until.isnot(None), Estimate.valid_until < now, Estimate.status.in_(OPEN_ESTIMATE_STATUSES),
+    ).scalar() or 0
+    expiring_follow_up_count = expired_status_count + past_valid_until_count
+
+    status_rows = db.query(Estimate.status, func.count(Estimate.id)).group_by(Estimate.status).all()
+
+    summary = {
+        "total_estimates": total_estimates,
+        "open_estimates": open_estimates_count,
+        "estimate_value": estimate_value,
+        "pending_client_response": pending_response_count,
+        "conversion_pipeline": {
+            "converted_count": converted_count, "converted_value": converted_value,
+            "conversion_percent": conversion_percent,
+        },
+        "expiring_follow_up": expiring_follow_up_count,
+        "pipeline": {
+            "open_estimates": open_estimates_count, "total_estimates": total_estimates,
+            "status_breakdown": [{"status": s, "count": c} for s, c in status_rows],
+        },
+        "client_response": {
+            "pending": pending_response_count,
+            "value": (
+                float(db.query(func.sum(Estimate.total_cost)).filter(Estimate.status == "sent").scalar() or 0)
+                if is_privileged else None
+            ),
+        },
+    }
+
+    # --- estimates: compact, paginated rows --------------------------
+    # client eager-loaded (selectinload), never a separate
+    # clientsAPI.list()+per-row lookup.
+    query = db.query(Estimate).options(selectinload(Estimate.client))
+    if status:
+        query = query.filter(Estimate.status == status)
+    if client_id:
+        query = query.filter(Estimate.client_id == client_id)
+    if search:
+        # Estimate ID / client name - server-side, same ilike pattern
+        # clients_workspace already uses, never a client-side scan.
+        like = f"%{search}%"
+        query = query.join(Client, Estimate.client_id == Client.id, isouter=True).filter(
+            (Estimate.estimate_code.ilike(like)) | (Client.name.ilike(like))
+        )
+    query = query.order_by(Estimate.created_at.desc())
+    row_total = query.count()
+    page_estimates = query.offset(offset).limit(limit).all()
+
+    estimate_rows = [
+        {
+            "id": e.id, "estimate_code": e.estimate_code,
+            "client": {"id": e.client_id, "name": e.client.name if e.client else None},
+            "created_at": e.created_at.isoformat(),
+            "valid_until": e.valid_until.isoformat() if e.valid_until else None,
+            "total_cost": float(e.total_cost) if is_privileged and e.total_cost is not None else None,
+            "status": e.status,
+        }
+        for e in page_estimates
+    ]
+
+    estimates_payload = {"items": estimate_rows, "total_count": row_total, "limit": limit, "offset": offset}
+
+    selected_estimate_payload = (
+        _build_workspace_selected_estimate(db, selected_estimate_id, is_privileged) if selected_estimate_id else None
+    )
+
+    return {"summary": summary, "estimates": estimates_payload, "selected_estimate": selected_estimate_payload}
+
+
 @estimates_router.get("/{estimate_id}", response_model=EstimateResponse)
 def get_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
     estimate = db.query(Estimate).filter(Estimate.id == estimate_id).first()
@@ -1659,7 +2280,7 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), auth=Depends(g
 
 @estimates_router.get("/{estimate_id}/cost-drift", response_model=CostDriftResponse)
 def get_estimate_cost_drift(estimate_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 9 - Cost-Drift Alert.
+    """Cost-Drift Alert.
 
     Compares each line item's cost_at_creation (the cost basis snapshot
     taken when the line was priced - see _build_line_items) against the
@@ -1754,7 +2375,7 @@ def get_margin_optimization(
     estimate_id: int, data: MarginOptimizationRequest,
     db: Session = Depends(get_db), auth=Depends(require_role("master")),
 ):
-    """Family 137, feature 6 - Smart Estimate / Margin Optimization.
+    """Smart Estimate / Margin Optimization.
 
     When a client pushes back on price, finds like-for-like catalog
     substitutions (same product category/subcategory, a genuinely
@@ -1873,9 +2494,9 @@ def get_margin_optimization(
 
 @estimates_router.post("/{estimate_id}/client-link")
 def generate_estimate_client_link(estimate_id: int, db: Session = Depends(get_db), auth=Depends(require_role("master"))):
-    """Family 137, feature 1 - Client Approval Hub.
+    """Client Approval Hub.
 
-    Defect repair (P1-13): disabled - same reasoning and behavior as
+    Disabled - same reasoning and behavior as
     generate_order_client_link above."""
     raise HTTPException(
         status_code=410,
@@ -1912,11 +2533,11 @@ def send_estimate_email(estimate_id: int, data: ClientEmailSendRequest, request:
     if not data.recipient_email or "@" not in data.recipient_email:
         raise HTTPException(status_code=400, detail="A valid recipient email is required")
 
-    # Family 137, feature 1 - Client Approval Hub: sending this email is
+    # Client Approval Hub: sending this email is
     # what actually puts the estimate in front of the client to decide
     # on - so a still-"draft" estimate moves to "sent" here, the same
     # validated transition the manual status-update endpoint uses. This
-    # part is unchanged by the P1-13 defect repair below - it reflects
+    # part is unchanged below - it reflects
     # a real, internal state transition, independent of any client-
     # portal link.
     if estimate.status == "draft":
@@ -1925,10 +2546,10 @@ def send_estimate_email(estimate_id: int, data: ClientEmailSendRequest, request:
             estimate.status = "sent"
             db.add(estimate)
 
-    # Defect repair (P1-13): the persistent review/approval link used
+    # The persistent review/approval link used
     # to be generated and appended here. Woodful is internal-only now
-    # and the public client-portal route it pointed to is no longer
-    # served (see clients/portal_api.py), so no token is minted and no
+    # and the public client-portal route it pointed to has been removed
+    # entirely, so no token is minted and no
     # link is appended - the estimate PDF still emails normally.
 
     pdf_buffer = generate_estimate_pdf(estimate)
@@ -2018,7 +2639,8 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, request: Request, db
         for existing in list(estimate.line_items):
             db.delete(existing)
         db.flush()
-        new_items = _build_line_items(db, data.line_items, estimate_id=estimate.id)
+        new_items = _build_line_items(db, data.line_items, estimate_id=estimate.id,
+                                       client_id=estimate.client_id, estimate_margin_percent=estimate.margin_percent_override)
         for item in new_items:
             db.add(item)
         db.flush()
@@ -2323,6 +2945,8 @@ def commit_estimate_import(data: EstimateImportCommitRequest, request: Request, 
     existing per-record commit behaviour used by product/purchase
     import. Totals are always recomputed here via compute_totals, never
     taken from the request (spec section 23)."""
+    from app.modules.catalog.pricing import resolve_product_pricing_snapshot
+
     results = []
     created_count = updated_count = skipped_count = error_count = 0
 
@@ -2352,9 +2976,30 @@ def commit_estimate_import(data: EstimateImportCommitRequest, request: Request, 
                 if item.discount_percent:
                     amount = amount - (amount * item.discount_percent / Decimal("100"))
                 amount = amount.quantize(Decimal("0.01"))
+                # Same pricing snapshot normal estimate creation records
+                # (see _build_line_items above) - an imported row's
+                # explicit rate/amount is always preserved exactly as
+                # imported (never recalculated from this), but the
+                # applicable pricing-rule/margin/cost-basis metadata is
+                # still worth recording for later Cost-Drift comparison,
+                # using the same resolver so import and normal creation
+                # can never silently disagree about how it's computed.
+                cost_at_creation = None
+                pricing_rule_applied = None
+                applied_margin_percent = None
+                product = found_products.get(item.product_id)
+                if product is not None:
+                    snapshot = resolve_product_pricing_snapshot(
+                        db, product, client_id=row.client_id, estimate_margin_percent=row.margin_percent,
+                    )
+                    cost_at_creation = snapshot.cost_at_creation
+                    pricing_rule_applied = snapshot.pricing_rule_applied
+                    applied_margin_percent = snapshot.applied_margin_percent
                 line_items.append(EstimateLineItem(
                     description=item.description, category=item.category, quantity=item.quantity,
                     unit=item.unit, rate=item.rate, amount=amount, product_id=item.product_id,
+                    cost_at_creation=cost_at_creation, pricing_rule_applied=pricing_rule_applied,
+                    applied_margin_percent=applied_margin_percent,
                 ))
             subtotal = sum((li.amount for li in line_items), Decimal("0"))
             tax_amount, total_cost = compute_totals(subtotal, row.discount, row.tax_percent)
@@ -2670,7 +3315,9 @@ def list_payment_documents(payment_id: int, db: Session = Depends(get_db), auth=
     ).all()
 
 
-@payments_router.post("/{payment_id}/documents", response_model=PaymentDocumentResponse, status_code=201)
+@payments_router.post("/{payment_id}/documents", response_model=PaymentDocumentResponse, status_code=201, dependencies=[
+    Depends(rate_limit("upload", settings.RATE_LIMIT_UPLOAD_PER_MINUTE))
+])
 def upload_payment_document(payment_id: int, file: UploadFile = File(...), description: Optional[str] = None,
                              request: Request = None, db: Session = Depends(get_db),
                              auth=Depends(require_role("master"))):
@@ -2693,26 +3340,11 @@ def upload_payment_document(payment_id: int, file: UploadFile = File(...), descr
     backend = get_storage_backend()
     stored_filename = f"payment_documents/{secrets.token_hex(16)}.{ext}"
 
-    size = 0
-    first_chunk = True
-    chunks = []
+    # Streams to storage in bounded chunks rather than buffering the
+    # whole upload in memory first - see app/shared.py's
+    # stream_upload_to_storage.
     try:
-        while chunk := file.file.read(1024 * 1024):
-            if first_chunk:
-                if not validate_file_signature(ext, chunk):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="The file's contents don't match its extension. Please upload a genuine file of the stated type.",
-                    )
-                first_chunk = False
-            size += len(chunk)
-            if size > settings.MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB size limit.",
-                )
-            chunks.append(chunk)
-        storage_ref = backend.save(stored_filename, b"".join(chunks))
+        storage_ref = stream_upload_to_storage(backend, stored_filename, file, ext, settings.MAX_UPLOAD_SIZE)
     except HTTPException:
         raise
     except Exception:
@@ -2759,7 +3391,7 @@ def download_payment_document(payment_id: int, document_id: int, db: Session = D
         content=file_bytes, media_type=document.content_type or "application/octet-stream",
         headers={
             "Cache-Control": "no-store, private",
-            "Content-Disposition": f'attachment; filename="{document.original_filename}"',
+            "Content-Disposition": f'attachment; filename="{safe_content_disposition_filename(document.original_filename)}"',
         },
     )
 
@@ -2869,8 +3501,15 @@ def export_payments(
 @reports_router.get("/estimates.xlsx")
 def export_estimates(
     client_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db), auth=Depends(require_role("master")),
 ):
+    """Estimates & Quotations Report export. Mirrors GET
+    /api/estimates/workspace's status/search filters (plus client_id,
+    used elsewhere) - the Estimates page's "Export Estimates" button now
+    passes through the currently-active status tab/search, matching the
+    Orders/Clients export buttons, instead of always exporting every
+    estimate regardless of what's on screen."""
     query = db.query(Estimate).options(selectinload(Estimate.client))
     filters_applied = []
     if client_id:
@@ -2880,6 +3519,12 @@ def export_estimates(
     if status:
         query = query.filter(Estimate.status == status)
         filters_applied.append(f"Status: {status}")
+    if search:
+        like = f"%{search}%"
+        query = query.join(Client, Estimate.client_id == Client.id, isouter=True).filter(
+            (Estimate.estimate_code.ilike(like)) | (Client.name.ilike(like))
+        )
+        filters_applied.append(f'Search: "{search}"')
 
     estimates = query.order_by(Estimate.created_at.desc()).all()
     rows = [{
@@ -2945,13 +3590,19 @@ def export_order_profitability(db: Session = Depends(get_db), auth=Depends(requi
 @reports_router.get("/orders.xlsx")
 def export_orders(
     status: Optional[str] = Query(None), client_id: Optional[int] = Query(None),
+    priority: Optional[str] = Query(None), overdue_only: bool = Query(False),
     db: Session = Depends(get_db), auth=Depends(get_current_user),
 ):
-    """Sales/Orders Register export. Mirrors GET /api/orders/'s
-    status/client_id filters. Financial columns (order value, received,
-    balance) are master-only, exactly matching the redaction
-    _serialize_orders already applies on-screen for a non-master viewer -
-    export inherits the same scope as the list view, never more."""
+    """Sales/Orders Register export. Mirrors GET /api/orders/workspace's
+    status/priority/overdue_only filters (plus client_id, for the
+    per-client "Export Excel" link on the Client Detail page) - the
+    Orders page's "Export Orders" button now passes through whatever the
+    user currently has the workspace filtered to, so the file matches
+    what's on screen instead of always dumping every order regardless of
+    filters. Financial columns (order value, received, balance) are
+    master-only, exactly matching the redaction _serialize_orders
+    already applies on-screen for a non-master viewer - export inherits
+    the same scope as the list view, never more."""
     is_privileged = auth.get("role", "user") in ("master",)
     query = db.query(Order).options(selectinload(Order.client))
     filters_applied = []
@@ -2962,6 +3613,16 @@ def export_orders(
         query = query.filter(Order.client_id == client_id)
         client_obj = db.query(Client).filter(Client.id == client_id).first()
         filters_applied.append(f"Client: {client_obj.name if client_obj else client_id}")
+    if priority:
+        query = query.filter(Order.priority == priority)
+        filters_applied.append(f"Priority: {priority}")
+    if overdue_only:
+        # Same "balance outstanding 30+ days" rule GET /api/orders/ and
+        # the Orders workspace both already apply for overdue_only - not
+        # a new definition invented for the export.
+        overdue_cutoff = datetime.utcnow() - timedelta(days=30)
+        query = query.filter(Order.balance > 0, Order.order_date < overdue_cutoff)
+        filters_applied.append("Balance 30+ Days")
 
     orders = query.order_by(Order.order_date.desc()).all()
     risk_flags = OrderService.bulk_attention_flags(db, [o.id for o in orders]) if orders else {}

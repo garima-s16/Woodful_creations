@@ -6,8 +6,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
-from app.modules.inventory.models import Material
-from app.modules.procurement.models import Purchase, SupplierMaterial
+from app.modules.inventory.models import Material, Location
+from app.modules.procurement.models import Purchase, SupplierMaterial, Supplier
 from app.modules.inventory.schemas import PurchaseCreate
 from app.modules.communications.services import NotificationService
 from app.platform.ids import generate_unique_code, generate_business_id
@@ -27,7 +27,7 @@ from app.shared_imports import normalize_match_key, normalize_number, normalize_
 # --- services.py ---
 """ProcurementService: the purchase business record and supplier
 recommendation logic that genuinely belongs to Procurement, not
-Inventory (Family 130 P0.2 ownership correction, section 11).
+Inventory (an ownership correction).
 
 record_purchase/mark_purchase_received create/update the Purchase
 record and decide WHEN stock should move - but the actual stock
@@ -53,7 +53,16 @@ class ProcurementService:
         if not material:
             raise HTTPException(status_code=404, detail="Material not found")
 
-        # Defect repair (F138 P13.1): Purchase.unit is a separate,
+        # Validate supplier/location as clean application-level errors
+        # before this ever reaches the database FK constraints - an
+        # invalid supplier_id or location_id previously surfaced as an
+        # unhandled IntegrityError/500 instead of a clear 400/404.
+        if not db.query(Supplier).filter(Supplier.id == data.supplier_id).first():
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        if data.location_id is not None and not db.query(Location).filter(Location.id == data.location_id).first():
+            raise HTTPException(status_code=404, detail="Location not found")
+
+        # Purchase.unit is a separate,
         # free-text field from Material.unit, and this quantity is
         # added straight into Material.current_stock/total_purchased
         # with no conversion step anywhere in the codebase - a purchase
@@ -141,6 +150,12 @@ class ProcurementService:
             raise HTTPException(status_code=404, detail="Material not found")
 
         receive_location_id = location_id or purchase.location_id
+        # Validate the resolved location BEFORE any stock/ledger write -
+        # an invalid location_id must not create a purchase receipt or
+        # ledger entry at all (atomic: nothing has been written yet at
+        # this point in either branch this function can reach).
+        if receive_location_id is not None and not db.query(Location).filter(Location.id == receive_location_id).first():
+            raise HTTPException(status_code=404, detail="Location not found")
         StockService._apply_stock_receipt(db, material, quantity_to_receive, purchase.rate, purchase.supplier_id, purchase.material_id, reference_id=purchase.id, location_id=receive_location_id)
         purchase.quantity_received = (purchase.quantity_received or Decimal("0")) + quantity_to_receive
         purchase.receipt_status = "Received" if purchase.quantity_received >= purchase.quantity else "Partially Received"
@@ -155,7 +170,7 @@ class ProcurementService:
     @staticmethod
     def _supplier_options_for_materials(db: Session, material_ids: list, limit_per_material: int = 3) -> dict:
         """Supplier price/lead-time/preference options for a set of
-        materials with a genuine shortage (Family 130 section 8: consider
+        materials with a genuine shortage (consider
         supplier, lead time, recent price and availability when making a
         recommendation - show which supplier options exist). One bulk
         query regardless of how many materials are passed in, not a

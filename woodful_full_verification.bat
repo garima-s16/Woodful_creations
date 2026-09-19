@@ -673,7 +673,7 @@ if %ERRORLEVEL%==0 (
 REM ----------------------------------------------------------------------
 echo.
 echo ======================================================================
-echo AUTH SESSION CONTRACT (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR - static checks)
+echo AUTH SESSION CONTRACT (static checks)
 echo ======================================================================
 REM Zero-dependency (plain node, no node_modules/npm install required) -
 REM see frontend\scripts\verify_auth_session_contract.js's own docstring.
@@ -812,6 +812,44 @@ if "%PYTEST_OK%"=="true" (
 ) else (
     call :record BLOCKED "Authorization (MASTER/USER, financial/HR redaction)" "pytest and/or backend venv/dependencies unavailable"
     call :record BLOCKED "IDOR (identifier substitution rejected)" "pytest and/or backend venv/dependencies unavailable"
+)
+
+REM ----------------------------------------------------------------------
+echo.
+echo ======================================================================
+echo SUPPLIERS/EMPLOYEES/CANDIDATES WORKSPACES + PERFORMANCE REGRESSIONS
+echo ======================================================================
+REM Covers the Suppliers/Employees/Candidates command-center workspace
+REM endpoints (response shape, search, pagination, selected-record
+REM detail, detail_only, summary, role-based redaction) and the later
+REM defect/performance fixes on top of them: the Dashboard's at-risk
+REM order count (must match the Orders workspace's own count, never a
+REM display-limit-capped len()), and the Supplier purchase-history /
+REM Candidate interview-history bounding (history is limited, but the
+REM aggregate counts must still reflect the full dataset). Run as their
+REM own named check (not just swept into "Backend test suite" above) so
+REM a regression here is called out specifically rather than buried in
+REM one full-suite summary line.
+
+if "%PYTEST_OK%"=="true" (
+    set "WORKSPACE_TESTS_FOUND=false"
+    if exist "backend\tests\test_suppliers_workspace.py" if exist "backend\tests\test_employees_workspace.py" if exist "backend\tests\test_candidates_workspace.py" if exist "backend\tests\test_performance_regressions.py" set "WORKSPACE_TESTS_FOUND=true"
+    if "!WORKSPACE_TESTS_FOUND!"=="true" (
+        pushd backend
+        "venv\Scripts\python.exe" -m pytest tests\test_suppliers_workspace.py tests\test_employees_workspace.py tests\test_candidates_workspace.py tests\test_performance_regressions.py -q > "%TEMP_DIR%\pytest_workspace.log" 2>&1
+        set "WORKSPACE_EXIT=!ERRORLEVEL!"
+        popd
+        for /f "delims=" %%l in ('powershell -NoProfile -Command "(Get-Content '%TEMP_DIR%\pytest_workspace.log' | Select-Object -Last 1)"') do set "WORKSPACE_SUMMARY=%%l"
+        if "!WORKSPACE_EXIT!"=="0" (
+            call :record PASS "Suppliers/Employees/Candidates workspaces + performance regressions" "!WORKSPACE_SUMMARY!"
+        ) else (
+            call :record FAIL "Suppliers/Employees/Candidates workspaces + performance regressions" "!WORKSPACE_SUMMARY! - see %TEMP_DIR%\pytest_workspace.log"
+        )
+    ) else (
+        call :record BLOCKED "Suppliers/Employees/Candidates workspaces + performance regressions" "one or more of tests\test_suppliers_workspace.py, tests\test_employees_workspace.py, tests\test_candidates_workspace.py, tests\test_performance_regressions.py not found in this repository"
+    )
+) else (
+    call :record BLOCKED "Suppliers/Employees/Candidates workspaces + performance regressions" "pytest and/or backend venv/dependencies unavailable"
 )
 
 REM ----------------------------------------------------------------------

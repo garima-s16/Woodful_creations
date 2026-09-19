@@ -42,7 +42,7 @@ def list_production_jobs(order_id: Optional[int] = Query(None), machine: Optiona
     if machine:
         query = query.filter(ProductionJob.machine == machine)
     if employee_id:
-        # Defect repair (P1-7) - Employee Detail's Production tab used
+        # Employee Detail's Production tab used
         # to fetch productionJobsAPI.list() with NO filter at all (the
         # entire, ever-growing production_jobs table) and filter down
         # to one employee's jobs in React, because this server-side
@@ -206,7 +206,7 @@ def get_production_job_readiness(job_id: int, db: Session = Depends(get_db), aut
 
 @production_jobs_router.get("/{job_id}/variance")
 def get_production_job_variance(job_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Planned vs Actual (P0.3 section 27/28) - never invents an actual
+    """Planned vs Actual - never invents an actual
     value: duration variance is computed only from operations that
     actually have actual_duration_minutes recorded, and duration_complete
     tells the caller whether that covers every operation or only some
@@ -242,7 +242,7 @@ def get_production_job_variance(job_id: int, db: Session = Depends(get_db), auth
 
 @production_jobs_router.get("/{job_id}/risks")
 def get_production_job_risks(job_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Production Risk (P0.3 section 29): a list of real, individually
+    """Production Risk: a list of real, individually
     explained findings (type/what/why/impact), never a single opaque
     score. Only reports a risk where real data actually supports it -
     covers material shortage, dependency blockage, work-centre capacity
@@ -372,7 +372,7 @@ def update_production_job(job_id: int, data: ProductionJobUpdate, db: Session = 
 
 @production_jobs_router.get("/{job_id}/cut-list")
 def get_cut_list(job_id: int, db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Family 131 section 12 - Cut List. Groups this job's real
+    """Cut List. Groups this job's real
     CuttingRequirement rows by material/thickness for a printable
     view - never a second, invented data source; every row here is
     the exact same data entered against this job via
@@ -416,7 +416,7 @@ def get_nesting(job_id: int,
                  sheet_width_mm: float = Query(1220, gt=0, description="Standard 4ft sheet width by default"),
                  kerf_mm: float = Query(3, ge=0, description="Saw blade width lost per cut"),
                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
-    """Family 131 section 13 - Nesting. Runs the real, deterministic
+    """Nesting. Runs the real, deterministic
     shelf_nest heuristic (see nesting_service.py - verified with
     standalone test cases, not a fake "AI optimizer") against this
     job's actual CuttingRequirement rows, one calculation per material
@@ -531,7 +531,7 @@ def update_production_operation(operation_id: int, data: ProductionOperationUpda
                        f"Not allowed to change: {', '.join(sorted(disallowed))}.",
             )
 
-    # Real enforcement, not just informational display (P0.3.4): a
+    # Real enforcement, not just informational display: a
     # dependent operation cannot actually be started or completed while
     # its declared predecessor is still incomplete.
     if update_data.get("status") in ("In Progress", "Completed") and operation.is_blocked_by_dependency:

@@ -69,12 +69,46 @@ def _serialize_products(products, role: str):
 
 
 def _apply_materials_used(db: Session, product: Product, materials_used):
+    """Validates every BOM line - the referenced material actually
+    exists, and its unit matches the material's own unit - BEFORE
+    touching the product's existing BOM rows at all. Previously the
+    existing rows were deleted first and new ones added after with no
+    validation, so an invalid material_id reached the database FK as an
+    unhandled 500 (and, worse, could leave the product with a
+    half-replaced or entirely empty BOM if a later row in the same
+    request failed). Validating up front means a bad request leaves the
+    existing BOM completely untouched."""
+    from app.modules.inventory.models import Material
+
+    resolved_lines = []
+    for m in materials_used:
+        material = db.query(Material).filter(Material.id == m.material_id).first()
+        if not material:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Material id {m.material_id} does not exist - cannot add it to this product's bill of materials.",
+            )
+        # A BOM line's unit must match the material's own unit -
+        # historical BOM cost/consumption is meaningless otherwise, and
+        # there is no unit-conversion model in this codebase. Reject a
+        # conflicting manually-supplied unit rather than silently
+        # overriding it; when none was supplied at all, derive it from
+        # the material (the only safe source of truth) instead of
+        # leaving it unset.
+        if m.unit and m.unit.strip().lower() != (material.unit or "").strip().lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unit mismatch: this BOM line specifies '{m.unit}' but {material.name} is tracked in '{material.unit}'. "
+                       f"Use the material's own unit.",
+            )
+        resolved_lines.append((m, material.unit))
+
     db.query(ProductMaterial).filter(ProductMaterial.product_id == product.id).delete()
     db.flush()
-    for m in materials_used:
+    for m, resolved_unit in resolved_lines:
         db.add(ProductMaterial(
             product_id=product.id, material_id=m.material_id,
-            quantity_required=m.quantity_required, unit=m.unit, notes=m.notes,
+            quantity_required=m.quantity_required, unit=resolved_unit, notes=m.notes,
         ))
 
 
@@ -200,7 +234,7 @@ def delete_product(product_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="This product has order history and cannot be deleted. Mark it inactive instead.")
     if db.query(EstimateLineItem).filter(EstimateLineItem.product_id == product_id).first():
         raise HTTPException(status_code=400, detail="This product is referenced by an estimate and cannot be deleted. Mark it inactive instead.")
-    # Defect repair (F138 P2): ClientProductRate.product_id is a
+    # ClientProductRate.product_id is a
     # nullable FK with no cascade/back-reference on Product - a
     # customer-specific rate override left dangling here once its
     # product no longer exists is meaningless, not preserved business
@@ -519,11 +553,20 @@ def revise_rate_card(rate_id: int, data: RateCardUpdate, request: Request, db: S
     }
     carried_forward.update(updates)
 
-    old.is_active = False
-    old.effective_to = carried_forward["effective_from"]
-    db.add(old)
-
+    # Deactivating `old` and inserting the new revision must succeed or
+    # fail TOGETHER on every attempt - previously old.is_active/
+    # effective_to were only set once, before the retry loop, so a
+    # rate-code collision's db.rollback() discarded that pending change
+    # (SQLAlchemy expires session objects on rollback) but the loop
+    # never re-applied it on the next attempt. A retry could then
+    # succeed with a new active rate while the old one silently stayed
+    # active too. Re-applying both inside the loop body means a
+    # rollback genuinely restores the previous state and the next
+    # attempt redoes the full, consistent change.
     for _ in range(5):
+        old.is_active = False
+        old.effective_to = carried_forward["effective_from"]
+        db.add(old)
         code = generate_unique_code(db, RateCard, "rate_code", "RATE-")
         new_rate = RateCard(**carried_forward, rate_code=code, business_id=generate_business_id(db),
                              supersedes_id=old.id, is_active=True)

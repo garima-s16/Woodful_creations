@@ -51,6 +51,17 @@ class StorageBackend:
     def save(self, relative_path: str, data: bytes) -> StorageReference:
         raise NotImplementedError
 
+    def save_stream(self, relative_path: str, chunks) -> StorageReference:
+        """Same contract as save(), but takes an iterable of byte
+        chunks instead of one complete `data` blob - so a caller
+        streaming a large upload never has to first assemble the whole
+        file into a single in-memory buffer just to call save(). Both
+        concrete backends below override this with a real streaming
+        implementation; this default (buffer-then-save) only exists as
+        a safety net for a future backend that hasn't been updated yet,
+        and is never exercised by any route in this app today."""
+        return self.save(relative_path, b"".join(chunks))
+
     def read(self, ref: StorageReference) -> bytes:
         raise NotImplementedError
 
@@ -95,6 +106,28 @@ class LocalStorageBackend(StorageBackend):
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
+            os.replace(tmp_path, full_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+        return StorageReference(backend="local", relative_path=relative_path)
+
+    def save_stream(self, relative_path: str, chunks) -> StorageReference:
+        """Same atomic-write-then-rename guarantee as save() above, but
+        each chunk is written to the temp file as it arrives instead of
+        first being joined into one full-size bytes object - memory use
+        stays bounded to a single chunk's size (currently 1MB, set by
+        each upload route's read loop) regardless of how large the
+        upload is, up to whatever MAX_UPLOAD_SIZE allows."""
+        full_path = self._full_path(relative_path)
+        target_dir = os.path.dirname(full_path)
+        os.makedirs(target_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=target_dir, prefix=".tmp_")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for chunk in chunks:
+                    f.write(chunk)
             os.replace(tmp_path, full_path)
         except Exception:
             if os.path.exists(tmp_path):
@@ -244,12 +277,38 @@ class DriveStorageBackend(StorageBackend):
         return folder_id
 
     def save(self, relative_path: str, data: bytes) -> StorageReference:
-        from googleapiclient.http import MediaIoBaseUpload
         import io
+        return self._upload_media(relative_path, io.BytesIO(data))
+
+    def save_stream(self, relative_path: str, chunks) -> StorageReference:
+        """Streaming counterpart to save() - writes each chunk to a
+        SpooledTemporaryFile as it arrives rather than assembling the
+        whole upload into one bytes object first. SpooledTemporaryFile
+        keeps small uploads entirely in memory (no disk I/O for the
+        common case) but automatically spills to a real file on disk
+        once the upload passes the spool threshold, so a large upload
+        never needs a same-size Python bytes buffer - this is the
+        "isolated temporary storage" the streaming requirement calls
+        for, reusing the stdlib rather than a bespoke buffering scheme.
+        MediaIoBaseUpload accepts any file-like object, so the spooled
+        file is handed to it directly, seeked to the start, exactly as
+        io.BytesIO(data) was before."""
+        import tempfile
+        spooled = tempfile.SpooledTemporaryFile(max_size=5 * 1024 * 1024)
+        try:
+            for chunk in chunks:
+                spooled.write(chunk)
+            spooled.seek(0)
+            return self._upload_media(relative_path, spooled)
+        finally:
+            spooled.close()
+
+    def _upload_media(self, relative_path: str, file_like) -> StorageReference:
+        from googleapiclient.http import MediaIoBaseUpload
 
         folder_id = self._resolve_folder_id(self._folder_name_for(relative_path))
         filename = relative_path.rsplit("/", 1)[-1]
-        media = MediaIoBaseUpload(io.BytesIO(data), mimetype="application/octet-stream", resumable=False)
+        media = MediaIoBaseUpload(file_like, mimetype="application/octet-stream", resumable=False)
         metadata = {"name": filename, "parents": [folder_id]}
         created = self._service.files().create(
             body=metadata, media_body=media, fields="id", supportsAllDrives=True,

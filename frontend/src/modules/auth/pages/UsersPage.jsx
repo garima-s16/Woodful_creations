@@ -1,4 +1,4 @@
-// Defect repair (F138 P1): split out of the former combined
+// Split out of the former combined
 // AuthPages.jsx (which held LoginPage, ForgotPasswordPage,
 // ResetPasswordPage, and this UsersPage all in one file/module).
 // LoginPage is statically (eagerly) imported at the top of App.jsx so

@@ -361,7 +361,7 @@ def _staff_summary(db: Session):
 
 
 # --- payroll_service.py ---
-"""Family P0.43 - Payroll Intelligence. A summary aggregation over
+"""Payroll Intelligence. A summary aggregation over
 already-authoritative data (SalarySlip.status, SalaryAdvance) - not a
 second payroll engine. Answers "is payroll ready, what's pending, what
 remains" for one month/year, plus the business-wide (not month-
@@ -520,7 +520,7 @@ def compute_working_days(db: Session, year: int, month: int) -> int:
 
 
 def compute_salary_days(db: Session, employee_id: int, year: int, month: int) -> dict:
-    """Family P0.43 - Salary Days = the actual configured working days
+    """Salary Days = the actual configured working days
     in the month, minus Applicable Leave Days. Only APPROVED leave
     counts, and only the portion of it that actually falls on a real
     working date within this month - a leave day that happens to land
@@ -564,7 +564,7 @@ def compute_salary_days(db: Session, employee_id: int, year: int, month: int) ->
     }
 
 
-# --- Employee 360 / HR Command Center (Family 137, section 13) ---
+# --- Employee 360 / HR Command Center ---
 """Employee 360 aggregation/intelligence functions (spec subsections
 13.1-13.14). Every function below is a read-only presentation layer
 over existing Employee/Attendance/Leave/SalarySlip/SalaryAdvance/
@@ -1477,7 +1477,7 @@ def _onboarding_live_facts(db: Session, employee) -> dict:
 
 
 def employee_onboarding_progress_readonly(db: Session, employee_id: int) -> Optional[dict]:
-    """Defect repair (P1-9, "Employee 360 GET causing DB writes"): a
+    """Avoids Employee 360 GET causing DB writes: a
     pure-read projection of onboarding progress for summary/aggregate
     callers - employee_overview (the Employee 360 Overview tab) and
     employee_needs_attention - that only ever need is_complete per
@@ -1531,7 +1531,7 @@ def employee_lifecycle(db: Session, employee_id: int, phase: str) -> Optional[di
     overview, employee_needs_attention) uses
     employee_onboarding_progress_readonly above instead, specifically
     so opening the 360 Overview tab can never itself write to the
-    database (P1-9).
+    database.
 
     Seeds the fixed catalog for this employee/phase on first read (an
     employee created before this feature existed - or before a given
@@ -1663,7 +1663,7 @@ def employee_activity_timeline(db: Session, employee_id: int, limit: int = 200,
 
     entries = []
 
-    # Defect repair (P1-10): each source used to be loaded via a plain
+    # Each source used to be loaded via a plain
     # .all() with no bound at all - literally this employee's entire
     # history in every one of these six tables, every single time this
     # tab (or the 360 Overview aggregation that also touched it) was
@@ -1793,7 +1793,7 @@ def employee_overview(db: Session, employee_id: int, is_privileged: bool,
         documents_count = db.query(GenericDocument).filter(
             GenericDocument.parent_type == "employee", GenericDocument.parent_id == employee_id,
         ).count()
-    # Defect repair (P1-9): read-only, never writes - see
+    # Read-only, never writes - see
     # employee_onboarding_progress_readonly's own docstring. The
     # Employee 360 Overview GET must never have the side effect of
     # inserting/updating employee_lifecycle_items rows.

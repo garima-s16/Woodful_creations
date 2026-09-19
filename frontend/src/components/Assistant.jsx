@@ -98,12 +98,29 @@ function ChatWidget() {
   // on this endpoint) or any other failure just clears the suggestion -
   // the financial detail behind it stays exactly as restricted as it
   // already was on the order detail page.
+  // Tracks the orderId this widget has already fetched profitability
+  // for (or attempted to, successfully), so reopening the assistant on
+  // the SAME order doesn't refire the request - only a genuinely new
+  // order, or a previous attempt that failed (see the catch below),
+  // triggers another call.
+  const fetchedProfitabilityOrderIdRef = useRef(null);
   useEffect(() => {
     if (!params.orderId) {
       setBudgetSuggestion(null);
+      fetchedProfitabilityOrderIdRef.current = null;
       return undefined;
     }
+    // Deferred until the assistant is actually opened - previously
+    // this fired the moment an order detail page mounted regardless of
+    // whether the chat widget was ever opened, which meant every visit
+    // to an order page cost a profitability request nobody was about
+    // to see. `open` flips to true from the FAB toggle, a pending
+    // command, or the keyboard-triggered open path below - all of
+    // which genuinely mean "the assistant needs this now".
+    if (!open) return undefined;
+    if (fetchedProfitabilityOrderIdRef.current === params.orderId) return undefined;
     let cancelled = false;
+    fetchedProfitabilityOrderIdRef.current = params.orderId;
     ordersAPI.profitability(params.orderId).then((res) => {
       if (cancelled) return;
       const runningAtALoss = Number(res.data?.estimated_gross_profit) < 0;
@@ -111,10 +128,14 @@ function ChatWidget() {
         ? 'Why is this project running at a loss?'
         : "How is this project's profitability tracking?");
     }).catch(() => {
-      if (!cancelled) setBudgetSuggestion(null);
+      if (cancelled) return;
+      setBudgetSuggestion(null);
+      // Allow a retry next time the assistant opens for this order -
+      // a failed attempt should not be remembered as "already have it".
+      fetchedProfitabilityOrderIdRef.current = null;
     });
     return () => { cancelled = true; };
-  }, [params.orderId]);
+  }, [open, params.orderId]);
 
   // The initial greeting's contextual suggestions were only ever computed
   // once at mount (useState's lazy initializer never re-runs) - it never
@@ -319,6 +340,7 @@ function ChatWidget() {
             </div>
             <button className="chat-panel-close" onClick={() => setOpen(false)} aria-label="Close">&times;</button>
           </div>
+          <div className="chat-panel-disclaimer">AI-assisted &mdash; please double-check important details before relying on them.</div>
           <div className="chat-panel-body">
             {messages.map((m, i) => (
               <div key={i} className={`chat-row chat-row-${m.role}`}>
@@ -496,7 +518,7 @@ function AssistantMascot({ size = 40 }) {
  * - already bound to the specific parent, so this component itself never needs to know
  * which document API (generic vs client vs payment) or which parent_type/parent_id it's talking to.
  */
-// Family 137 (Employee 360, section 13.8) - fixed category list offered
+// Fixed category list offered
 // when a caller opts into categorization (documentTypes prop below).
 // Kept here rather than per-page so the same vocabulary is used
 // anywhere it's enabled.

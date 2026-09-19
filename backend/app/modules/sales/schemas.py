@@ -1,16 +1,31 @@
 """Sales domain Pydantic schemas."""
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from app.modules.sales.models import Estimate, EstimateLineItem, Order, OrderItem, OrderComment, Payment, PaymentDocument, WHOLE_NUMBER_UNITS, quantity_violates_whole_unit_rule, LINE_ITEM_CATEGORIES, ORDER_PRIORITIES, PAYMENT_TYPES
+from app.shared import validate_phone, validate_email
+
+# Security-hardening constants (strict input validation pass): centralized
+# here rather than as magic numbers scattered through Field(...) calls
+# below, so every bound in this file traces to one place. Values are
+# generous enough to never constrain genuine business data (the
+# longest real remarks/address/description Woodful staff actually
+# enter are a few hundred characters at most) while still closing off
+# unbounded-payload abuse (a client sending a multi-MB string into a
+# free-text field, or an array with thousands of entries forcing
+# unbounded DB inserts per request).
+_SHORT_TEXT_MAX = 200      # names, single-line labels (supervisor, city, contact person)
+_MEDIUM_TEXT_MAX = 500     # addresses, single-paragraph fields
+_LONG_TEXT_MAX = 5000      # remarks/notes/descriptions/comments
+_MAX_LINE_ITEMS = 500      # a single estimate/order's line items - generous over any real BOM
 
 
 class EstimateLineItemBase(BaseModel):
-    description: str
+    description: str = Field(..., max_length=_LONG_TEXT_MAX)
     category: Optional[str] = None
     quantity: Decimal = Decimal("1")
-    unit: Optional[str] = None
+    unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     rate: Decimal = Decimal("0")
     # Optional link to the Product Master - what was actually quoted,
     # when it corresponds to a real catalog/custom product.
@@ -31,6 +46,12 @@ class EstimateLineItemCreate(EstimateLineItemBase):
     # forced into it - when True, product_id is not required.
     product_id: Optional[int] = None
     is_custom_item: bool = False
+
+    # Rejects any field not declared above (e.g. a stray/renamed key) on
+    # a nested line item, instead of silently ignoring it - a request
+    # schema, never a response model, so this has no effect on what
+    # comes back to the client.
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("category")
     @classmethod
@@ -85,7 +106,7 @@ class EstimateBase(BaseModel):
     estimate_code: Optional[str] = None  # server-generated on create, ignored if supplied
     client_id: int
     order_id: Optional[int] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     # Kept for backward compatibility with estimates created before line
     # items existed. A new estimate should normally be created via
     # line_items instead - when line_items is provided, these two are
@@ -95,11 +116,16 @@ class EstimateBase(BaseModel):
     discount: Decimal = Decimal("0")
     tax_percent: Decimal = Decimal("18")
     valid_until: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class EstimateCreate(EstimateBase):
-    line_items: List[EstimateLineItemCreate] = []
+    line_items: List[EstimateLineItemCreate] = Field(default=[], max_length=_MAX_LINE_ITEMS)
+
+    # Request body, not the shared Base (which EstimateResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("material_cost", "labor_cost", "discount")
     @classmethod
@@ -123,8 +149,10 @@ class EstimateUpdate(BaseModel):
     tax_percent: Optional[Decimal] = None
     status: Optional[str] = None
     valid_until: Optional[datetime] = None
-    remarks: Optional[str] = None
-    line_items: Optional[List[EstimateLineItemCreate]] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    line_items: Optional[List[EstimateLineItemCreate]] = Field(default=None, max_length=_MAX_LINE_ITEMS)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("material_cost", "labor_cost", "discount")
     @classmethod
@@ -162,10 +190,10 @@ class EstimateResponse(EstimateBase):
 
 
 class OrderItemBase(BaseModel):
-    description: str
+    description: str = Field(..., max_length=_LONG_TEXT_MAX)
     category: Optional[str] = None
     quantity: Decimal = Decimal("1")
-    unit: Optional[str] = None
+    unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     rate: Decimal = Decimal("0")
     # Optional link to the Product Master - identifies exactly what was
     # ordered, when it corresponds to a real catalog/custom product.
@@ -179,6 +207,8 @@ class OrderItemCreate(OrderItemBase):
     # is_custom_item (the one-off-request escape hatch).
     product_id: Optional[int] = None
     is_custom_item: bool = False
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("category")
     @classmethod
@@ -237,7 +267,7 @@ class OrderBase(BaseModel):
     # see app/modules/clients/services.py) must be supplied - never both
     # left unset. Exactly one path is validated in OrderCreate below.
     client_id: Optional[int] = None
-    project_type: Optional[str] = None
+    project_type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     order_date: datetime
     delivery_date: Optional[datetime] = None
     order_value: Decimal = Decimal("0")
@@ -249,12 +279,14 @@ class OrderBase(BaseModel):
     discount: Decimal = Decimal("0")
     tax_percent: Decimal = Decimal("18")
     priority: Optional[str] = None
-    supervisor: Optional[str] = None
-    site_address: Optional[str] = None
-    remarks: Optional[str] = None
+    supervisor: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    site_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class OrderCreate(OrderBase):
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("discount")
     @classmethod
     def discount_must_not_be_negative(cls, v):
@@ -276,7 +308,7 @@ class OrderCreate(OrderBase):
             raise ValueError("Order value cannot be negative.")
         return v
 
-    # Defect repair (F138 P5): advance had no lower-bound check at all -
+    # Advance had no lower-bound check at all -
     # only the upper bound (advance cannot exceed order_value) is
     # enforced in sales/api.py's create_order. A negative advance would
     # pass that check untouched (it is never > order_value) and corrupt
@@ -300,7 +332,7 @@ class OrderCreate(OrderBase):
         return v
 
     advance: Decimal = Decimal("0")
-    items: List[OrderItemCreate] = []
+    items: List[OrderItemCreate] = Field(default=[], max_length=_MAX_LINE_ITEMS)
     # When set, the new order's items are copied from that estimate's
     # line items (not re-entered by hand), and the estimate is linked
     # back to the new order. Not a stored column on Order itself - it's
@@ -311,16 +343,41 @@ class OrderCreate(OrderBase):
     # name AND phone must BOTH match an existing client for that client
     # to be reused; otherwise a new client is created. Only used when
     # client_id is not supplied.
-    client_name: Optional[str] = None
-    client_phone: Optional[str] = None
+    client_name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    client_phone: Optional[str] = Field(default=None, max_length=20)
     # Only applied if a *new* client ends up being created via
     # client_name/client_phone - never overwrites an existing client's
     # stored details.
-    client_email: Optional[str] = None
-    client_contact_person: Optional[str] = None
-    client_address: Optional[str] = None
-    client_city: Optional[str] = None
-    client_lead_source: Optional[str] = None
+    client_email: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    client_contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    client_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    client_city: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    client_lead_source: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+
+    # Same format rules the Client entity itself enforces everywhere
+    # else (app/modules/clients/services.py ClientCreate) - only
+    # applied when a value is actually supplied (both fields are
+    # optional; require_client_identification below is what makes
+    # client_phone conditionally mandatory, not this validator), so a
+    # value that reaches find_or_create_client() can never end up
+    # creating a Client row with a phone/email that violates the
+    # exact same rule the standalone Client form enforces.
+    @field_validator("client_phone")
+    @classmethod
+    def client_phone_must_be_valid(cls, v):
+        if v is None or v == "":
+            return v
+        v = v.strip()
+        if not validate_phone(v):
+            raise ValueError("Please enter valid mobile number")
+        return v
+
+    @field_validator("client_email")
+    @classmethod
+    def client_email_must_be_valid(cls, v):
+        if v and not validate_email(v):
+            raise ValueError("Enter a valid email address.")
+        return v
 
     @model_validator(mode="after")
     def require_client_identification(self):
@@ -334,7 +391,7 @@ class OrderCreate(OrderBase):
 
 
 class OrderUpdate(BaseModel):
-    project_type: Optional[str] = None
+    project_type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     delivery_date: Optional[datetime] = None
     order_value: Optional[Decimal] = None
     discount: Optional[Decimal] = None
@@ -345,18 +402,20 @@ class OrderUpdate(BaseModel):
     delivery_status: Optional[str] = None
     progress_percent: Optional[int] = None
     priority: Optional[str] = None
-    supervisor: Optional[str] = None
-    site_address: Optional[str] = None
-    remarks: Optional[str] = None
-    items: Optional[List[OrderItemCreate]] = None
-    # Balance-Before-Dispatch guardrail (Family 137, feature 4): only
+    supervisor: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    site_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    items: Optional[List[OrderItemCreate]] = Field(default=None, max_length=_MAX_LINE_ITEMS)
+    # Balance-Before-Dispatch guardrail: only
     # read when this call is setting delivery_status to "Completed" on
     # an order with a nonzero balance. False/omitted means the guardrail
     # applies normally; True requires override_reason to be a non-empty
     # string, and both are written to the audit trail alongside the
     # override - see sales/api.py update_order.
     override_balance_guardrail: Optional[bool] = False
-    override_reason: Optional[str] = None
+    override_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("discount")
     @classmethod
@@ -414,7 +473,7 @@ class OrderResponse(OrderBase):
     # never drift out of sync with the real link.
     source_estimate_id: Optional[int] = None
     source_estimate_code: Optional[str] = None
-    # Family 130 P0.1 s.11: a lightweight, batched, non-material
+    # A lightweight, batched, non-material
     # attention flag - never computed in React, never a fabricated
     # score. Set by _serialize_orders from OrderService.bulk_attention_flags
     # (blocked/overdue tasks, production blockers, delivery risk only -
@@ -434,7 +493,9 @@ class OrderResponse(OrderBase):
 
 
 class OrderCommentCreate(BaseModel):
-    text: str
+    text: str = Field(..., min_length=1, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class OrderCommentResponse(BaseModel):
@@ -455,12 +516,14 @@ class PaymentBase(BaseModel):
     payment_type: str
     payment_mode: str
     amount: Decimal
-    reference_number: Optional[str] = None
-    received_by: Optional[str] = None
-    remarks: Optional[str] = None
+    reference_number: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    received_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class PaymentCreate(PaymentBase):
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("amount")
     @classmethod
     def amount_must_be_positive(cls, v: Decimal) -> Decimal:
@@ -481,9 +544,11 @@ class PaymentUpdate(BaseModel):
     payment_type: Optional[str] = None
     payment_mode: Optional[str] = None
     amount: Optional[Decimal] = None
-    reference_number: Optional[str] = None
-    received_by: Optional[str] = None
-    remarks: Optional[str] = None
+    reference_number: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    received_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("amount")
     @classmethod
@@ -517,7 +582,7 @@ class PaymentDocumentResponse(BaseModel):
 
 
 # ============================================================
-# Family 137, feature 8 - Approved Specification / Sample Lock
+# Approved Specification / Sample Lock
 # ============================================================
 
 class ApprovedSpecificationCreate(BaseModel):
@@ -527,17 +592,19 @@ class ApprovedSpecificationCreate(BaseModel):
     captured server-side). All spec fields are optional individually
     since a given approval may only concern e.g. a finish, not every
     attribute - but at least one should realistically be set."""
-    material: Optional[str] = None
-    finish: Optional[str] = None
-    veneer: Optional[str] = None
-    laminate: Optional[str] = None
-    colour: Optional[str] = None
-    hardware: Optional[str] = None
-    batch_reference: Optional[str] = None
-    sample_photo_path: Optional[str] = None
-    notes: Optional[str] = None
-    approved_by: Optional[str] = None
+    material: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    finish: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    veneer: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    laminate: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    colour: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    hardware: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    batch_reference: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    sample_photo_path: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    approved_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     approved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def require_at_least_one_spec_field(self):
@@ -575,17 +642,19 @@ class ApprovedSpecificationResponse(BaseModel):
 
 
 # ============================================================
-# Family 137, feature 9 - Cost-Drift Alert
+# Cost-Drift Alert
 # ============================================================
 
 class DeliveryPromiseRecord(BaseModel):
-    """Family 137 feature 12 - the human's final delivery-date decision
+    """The human's final delivery-date decision
     (POST /api/orders/{id}/delivery-promise). promised_date is the one
     the salesperson/owner actually selected, which may or may not match
     any of the system's suggested alternatives - the system recommends,
     it never picks for them."""
     promised_date: datetime
-    reason: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class CostDriftLineItem(BaseModel):
@@ -620,7 +689,7 @@ class CostDriftResponse(BaseModel):
 
 
 # ============================================================
-# Family 137, feature 6 - Smart Estimate / Margin Optimization
+# Smart Estimate / Margin Optimization
 # ============================================================
 
 class MarginOptimizationRequest(BaseModel):
@@ -629,6 +698,8 @@ class MarginOptimizationRequest(BaseModel):
     nothing to optimize toward."""
     target_price: Optional[Decimal] = None
     min_margin_percent: Optional[Decimal] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def require_a_target(self):

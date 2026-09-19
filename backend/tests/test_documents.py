@@ -16,7 +16,10 @@ def test_upload_and_download_order_document(client, test_user):
         "client_id": client_id, "order_date": "2026-08-19T00:00:00", "order_value": "5000", "advance": "0",
     }).json()
 
-    files = {"file": ("site_photo.jpg", io.BytesIO(b"fake jpg bytes"), "image/jpeg")}
+    # Real JPEG magic bytes (\xff\xd8\xff) - validate_file_signature would
+    # otherwise correctly reject this as a signature mismatch, and this
+    # test is meant to exercise the success path, not that rejection.
+    files = {"file": ("site_photo.jpg", io.BytesIO(b"\xff\xd8\xfffake jpg bytes"), "image/jpeg")}
     upload = client.post(f"/api/documents/order/{order['id']}", files=files, data={"description": "Site photo"})
     assert upload.status_code == 201
 
@@ -165,7 +168,8 @@ def test_upload_and_download_payment_document(client, test_user):
     client_id = client.post("/api/clients/", json={"name": "Payment Doc Test Client", "phone": "9000010121"}).json()["id"]
     payment = _make_payment(client, client_id)
 
-    files = {"file": ("upi_screenshot.png", io.BytesIO(b"fake png bytes"), "image/png")}
+    # Real PNG magic bytes - same reasoning as the JPEG fix above.
+    files = {"file": ("upi_screenshot.png", io.BytesIO(b"\x89PNG\r\n\x1a\nfake png bytes"), "image/png")}
     upload = client.post(f"/api/payments/{payment['id']}/documents", files=files, data={"description": "UPI proof"})
     assert upload.status_code == 201
 

@@ -4,6 +4,13 @@
 .env
 .env.*
 !.env.example
+# backend/local.env - app/platform/config.py loads this in preference to
+# .env when both exist (see its own comment there), specifically for
+# Neon/production-like DATABASE_URL overrides during local dev. Not
+# covered by the ".env"/".env.*" patterns above (its name doesn't start
+# with a dot), so it needs its own line - same credential-exposure risk
+# as .env itself.
+backend/local.env
 *.pem
 *.key
 service-account*.json

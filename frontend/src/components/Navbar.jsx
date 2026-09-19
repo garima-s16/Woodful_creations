@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { MenuIcon, LogoutIcon, ChevronIcon, CartIcon, SearchIcon, SunIcon, MoonIcon } from './icons';
 import { toggleTheme } from '../redux/slices';
-import { GlobalSearch } from './Navigation';
-import { NotificationBell } from './Navigation';
+import { GlobalSearch, NotificationBell } from './NotificationPanel';
+import { BrandLogo } from './Navigation';
 import '../styles/layout.css';
 
 /**
@@ -22,7 +22,6 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
   const cartCount = useSelector((state) => state.cart.items.reduce((sum, i) => sum + i.quantity, 0));
   const themeMode = useSelector((state) => state.theme.mode);
   const dispatch = useDispatch();
-  const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const menuRef = useRef(null);
@@ -37,9 +36,15 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Logout has one owner: AppLayout's handleLogout (passed in as
+  // onLogout) already performs the real API call, auth-state cleanup,
+  // AND the redirect to /login. Navbar previously also navigated to
+  // '/' right after calling it - two competing navigations racing each
+  // other on every logout, which could flicker through '/' before
+  // AppLayout's own redirect to '/login' landed. Navbar now only ever
+  // triggers the one, authoritative logout path.
   const handleLogout = () => {
     onLogout();
-    navigate('/');
   };
 
   const roleLabel = ROLE_LABELS[user?.role] || 'Team Member';
@@ -58,12 +63,11 @@ function Navbar({ user, onLogout, toggleSidebar, onOpenCart }) {
                   own dark surface in dark theme, the wood-tone wordmark
                   reads on its light surface in light theme. See
                   layout.css's top comment for why the Navbar itself is
-                  now theme-adaptive (previously fixed dark chrome). */}
-              <img
-                src={themeMode === 'dark' ? '/logo-dark-theme.png' : '/logo-light-theme.png'}
-                alt="Woodful Creations"
-                className="brand-logo-img"
-              />
+                  now theme-adaptive (previously fixed dark chrome).
+                  Uses the same BrandLogo component as the auth pages so
+                  the theme-detection/asset-selection logic exists in
+                  exactly one place. */}
+              <BrandLogo className="brand-logo-img" />
             </span>
           </Link>
         </div>

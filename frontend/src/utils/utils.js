@@ -110,7 +110,7 @@ export function classifyLoadError(err, label) {
 
 // --- apiError.js ---
 /**
- * Defect repair (F138 P14): centralized API/mutation error
+ * Centralized API/mutation error
  * normalization. classifyLoadError above already handles read/load
  * failures; this is the write/mutation-side counterpart most pages
  * previously handled ad hoc with `err.response?.data?.detail ||
@@ -222,6 +222,40 @@ export function toSafeMessage(value) {
     }
   }
   return String(value);
+}
+
+/**
+ * Structural (deep) equality for plain, JSON-shaped data - the values
+ * a form's state/initialValues ever actually holds (strings, numbers,
+ * booleans, null/undefined, and nested plain objects/arrays of those).
+ * Not a general-purpose deep-equal (no Date/Map/Set/function/circular-
+ * reference handling) - deliberately scoped to what form data looks
+ * like, so it stays small rather than pulling in a dependency (e.g.
+ * lodash.isEqual) this project doesn't otherwise have. Short-circuits
+ * on the first real difference instead of serializing the whole
+ * structure first, unlike a JSON.stringify(a) !== JSON.stringify(b)
+ * comparison.
+ */
+export function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+    if (!deepEqual(a[key], b[key])) return false;
+  }
+  return true;
 }
 
 // --- offlineQueue.js ---
@@ -438,8 +472,14 @@ const STATIC_TITLES = {
   '/locations': 'Locations',
   '/purchases': 'Purchases',
   '/purchases/import': 'Purchase Import',
+  '/procurement-requirements': 'Procurement Requirements',
+  // IA consolidation: the single "Purchases & Procurement" workspace
+  // nav destination (see Sidebar.jsx/App.jsx) - /purchases,
+  // /procurement-requirements, and /suppliers above keep their own
+  // titles too, since they're still directly reachable deep links.
+  '/purchases-procurement': 'Purchases & Procurement',
   '/suppliers': 'Suppliers',
-  '/products': 'Products',
+  '/products': 'Products / Catalog',
   '/products/import': 'Product Import',
   '/company-holidays': 'Company Holidays',
   '/company-holidays/import': 'Holiday Import',
@@ -457,14 +497,23 @@ const STATIC_TITLES = {
   '/employees': 'Employees',
   '/attendance': 'Attendance',
   '/leaves': 'Leaves',
+  // IA consolidation: the single "Attendance & Leave" workspace nav
+  // destination - /attendance, /leaves, /company-holidays above and
+  // below keep their own titles too, since they're still directly
+  // reachable deep links.
+  '/attendance-leave': 'Attendance & Leave',
   '/daily-tasks': 'Daily Tasks',
   '/production-jobs': 'Production Jobs',
-  '/settings': 'Settings',
+  '/settings': 'Settings & Administration',
   '/learning-candidates': 'Learning Candidates',
   '/users': 'Users',
   '/audit-logs': 'Audit Logs',
   '/candidates': 'Candidates',
   '/interviews': 'Interviews',
+  // IA consolidation: the single "Recruitment" workspace nav
+  // destination - /candidates and /interviews above keep their own
+  // titles too, since they're still directly reachable deep links.
+  '/recruitment': 'Recruitment',
   '/salary-slips': 'Salary Slips',
   '/mobile-app': 'Mobile App',
   '/login': 'Log In',
@@ -552,4 +601,28 @@ export function resolveInitialTheme(pathname) {
     return systemPrefersLight() ? 'light' : 'dark';
   }
   return 'dark';
+}
+
+/* Keeps the browser/PWA chrome color (the <meta name="theme-color">
+ * tag in public/index.html) matched to whichever theme is actually
+ * active, instead of the old permanently-dark value - the same
+ * "reads the live approved token, never a second hardcoded color"
+ * approach as resolveInitialTheme/useThemeSync above use for
+ * data-theme. Reads --background straight off :root via
+ * getComputedStyle rather than duplicating its hex value here, so
+ * this can never drift from styles/index.css's actual light/dark
+ * definitions. Called once synchronously before first paint (see
+ * index.jsx) and again on every theme toggle (see App.jsx's
+ * useThemeSync) - must run AFTER the data-theme attribute is set, so
+ * the computed value reflects the theme being switched to. */
+export function syncThemeColorMeta() {
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const background = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
+    if (background) meta.setAttribute('content', background);
+  } catch {
+    // Unavailable (very old browser, or a test/SSR environment) - the
+    // static dark default already in index.html applies instead.
+  }
 }

@@ -116,7 +116,7 @@ class Product(BaseModel):
     def bom_cost_variance(self):
         """How far the manually-entered material_cost + hardware_cost
         has drifted from what the entire BOM says it should cost at
-        today's prices - the comparison P0.1 section 2 asks for
+        today's prices - the comparison
         ("changing to B increases estimated material cost by X"),
         applied to a single product's own configuration rather than
         inventing a second product to compare against. Compared
@@ -163,7 +163,13 @@ class Product(BaseModel):
         (base * (1 + margin%)), which understates the selling price for
         any given margin% - Cost 100 at 30% margin must be 142.86, not 130."""
         base = self.suggested_cost_price
-        if base is None or not self.margin_percent:
+        # margin_percent is None means "no margin rule configured at
+        # all" (skip); margin_percent == 0 is a legitimate, deliberate
+        # zero-margin/at-cost price and must still compute a suggested
+        # selling price equal to cost - `not self.margin_percent` was
+        # wrong here because Decimal("0") is falsy in Python, so a
+        # genuine 0% margin silently fell through to "no margin rule".
+        if base is None or self.margin_percent is None:
             return None
         from decimal import Decimal
         from app.modules.catalog.pricing import compute_selling_rate

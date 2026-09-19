@@ -145,6 +145,29 @@
 
 .form-advanced-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4) var(--space-5); }
 
+/* --- Final Form Modal skin: inputs/labels, scoped to .modal-content ---
+   .form-input/.form-group/.form-label/.form-hint are shared with forms
+   that render OUTSIDE a modal (e.g. a form embedded inline in a page
+   Card) - these selectors are deliberately prefixed with .modal-content
+   so only fields that are genuinely inside the modal pick up the new
+   theme-specific treatment; every other use of these same classes is
+   completely unaffected. */
+.modal-content .form-label { color: var(--modal-text-label); }
+.modal-content .form-hint { color: var(--modal-text-muted); }
+.modal-content .form-input {
+  background: var(--modal-surface-input);
+  border-color: var(--modal-border-input);
+  color: var(--modal-text-primary);
+  border-radius: var(--radius-md);
+}
+.modal-content .form-input::placeholder { color: var(--modal-text-faint); }
+.modal-content .form-input:hover:not(:focus):not(:disabled) { background: var(--modal-surface-input-hover); }
+.modal-content .form-input:focus { border-color: var(--modal-accent); }
+.modal-content .form-input-readonly { background: var(--modal-surface-footer); color: var(--modal-text-muted); }
+.modal-content .form-advanced-toggle { color: var(--modal-accent-strong); }
+.modal-content .form-advanced-toggle:hover,
+.modal-content .form-advanced-toggle:focus-visible { color: var(--modal-accent); outline-color: var(--modal-accent); }
+
 /* Multi-step wizard - the wizard <form> carries both .form and
    .form-wizard together, so this must override .form's grid back to a
    simple flex column for the wizard's OWN direct children (steps
@@ -185,6 +208,58 @@
 
 .wizard-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
 
+/* --- Final Form Modal skin: wizard steps + section heading, scoped
+   to .modal-content for the same reason as the inputs above. The step
+   pills/panel/review rows keep their EXISTING step-wizard mechanism
+   (validation-per-step, Back/Continue/Review) completely unchanged -
+   only their color moves to the modal palette. */
+.modal-content .wizard-steps { border-bottom-color: var(--modal-border); }
+.modal-content .wizard-step { color: var(--modal-text-muted); background: var(--modal-surface-input); }
+.modal-content .wizard-step.active { background: var(--modal-cta-gradient); color: var(--color-ink); }
+.modal-content .review-section h4 { color: var(--modal-accent-strong); }
+.modal-content .review-row { border-bottom-color: var(--modal-border); }
+.modal-content .review-label { color: var(--modal-text-muted); }
+.modal-content .review-value { color: var(--modal-text-primary); }
+
+/* A small icon + title + divider header, shown above each wizard step's
+   field panel - the "section" visual language from the supplied
+   reference, applied to the EXISTING per-section step content (see
+   Form.js's wizard-panel) rather than changing how/when sections are
+   navigated or validated. Purely additive: forms that don't declare
+   field sections never render this at all. */
+.modal-section-heading {
+  display: flex; align-items: center; gap: 8px;
+  grid-column: 1 / -1;
+  padding-bottom: var(--space-2);
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--modal-border);
+  color: var(--modal-text-label);
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+}
+.modal-section-heading-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--modal-surface-hover);
+  color: var(--modal-accent);
+  font-size: 0.7rem;
+}
+
+/* Optional helper text under a section heading (Form.js's `hint` on
+   a section - see FieldGroup's own .form-hint for the equivalent
+   per-field affordance). Reuses the same modal-scoped muted-text
+   token and a size that reads as secondary to the heading above it -
+   no new color/typography introduced. Only rendered when a form
+   actually opts in via `sectionHint` on one of that section's fields;
+   every existing sectioned form (no sectionHint declared anywhere)
+   renders identically to before. */
+.modal-section-hint {
+  grid-column: 1 / -1;
+  margin: -6px 0 2px;
+  font-size: 0.78rem;
+  color: var(--modal-text-muted);
+}
+
 @media (max-width: 768px) {
   /* iOS Safari auto-zooms the page on focusing any input/textarea/select
      with a font-size under 16px - genuinely disruptive on every form in
@@ -196,7 +271,12 @@
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: rgba(23, 20, 15, 0.55);
+  /* Theme-appropriate dim (--modal-overlay-tint, defined in index.css) -
+     a warmer, lighter tint in Light Theme than Dark, matching the two
+     supplied references. Page behind stays fully visible/recognizable;
+     only a light 2px blur plus this subtle tint separates it from the
+     modal above it. */
+  background-color: var(--modal-overlay-tint);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,9 +285,18 @@
 }
 
 .modal-content {
-  background-color: var(--surface);
+  /* Reads the modal-scoped --modal-* tokens (defined in index.css,
+     Dark Theme only - Light Theme's override there points every one
+     of them back at these exact same --surface/--shadow-lg/--border-color
+     values) rather than the app-wide --surface/--shadow-lg/--border-color
+     directly, so the Dark Theme "Final Form Modal" skin reaches only
+     the modal, never any other dark-theme surface (cards, tables,
+     dashboard chrome). Geometry below is UNCHANGED from the existing,
+     already-correct modal architecture - only color/shadow moved to
+     the new tokens. */
+  background-color: var(--modal-surface);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--modal-shadow);
   max-width: 560px;
   width: 92%;
   max-height: 90vh;
@@ -220,7 +309,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--modal-border);
+  color: var(--modal-text-primary);
 }
 
 /* For forms with genuinely wide content - the Estimate/Order line-item
@@ -237,13 +327,15 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-5);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--modal-border);
+  background-color: var(--modal-surface-header);
   flex-shrink: 0;
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 1.3rem;
+  color: var(--modal-text-primary);
 }
 
 .modal-close {
@@ -259,14 +351,14 @@
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--modal-text-muted);
   transition: background-color var(--transition), color var(--transition);
 }
 
 .modal-close:hover,
 .modal-close:focus-visible {
-  color: var(--text-primary);
-  background-color: var(--surface-elevated);
+  color: var(--modal-text-primary);
+  background-color: var(--modal-surface-hover);
 }
 
 .modal-body {
@@ -285,23 +377,49 @@
   gap: var(--space-3);
   justify-content: flex-end;
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--border-color);
-  background-color: var(--surface-elevated);
+  border-top: 1px solid var(--modal-border);
+  background-color: var(--modal-surface-footer);
   flex-shrink: 0;
 }
 
 /* Buttons inside the modal reuse the canonical .btn-primary/.btn-secondary
-   from Pages.css - intentionally not redefined here so every button in the
-   app stays visually identical. */
+   from Pages.css so every button in the app stays behaviorally
+   identical (same markup, same disabled/loading handling) - only their
+   COLOR is given the modal's own refined treatment here, scoped to
+   `.modal-content` so the app-wide .btn-primary/.btn-secondary used
+   everywhere else (page toolbars, table row actions, the dashboard)
+   are completely untouched. Covers both a dedicated .modal-footer
+   (specialized modals) and the generic Form component's own inline
+   .btn-submit.btn-primary (rendered inside .modal-body - Form has no
+   .modal-footer of its own), so both paths get the same premium
+   primary-action look. */
+.modal-content .btn-primary {
+  background: var(--modal-cta-gradient);
+  color: var(--color-ink);
+  border-color: transparent;
+}
+.modal-content .btn-primary:hover {
+  background: var(--modal-cta-gradient-hover);
+}
+.modal-content .btn-secondary {
+  background: var(--modal-surface-input);
+  color: var(--modal-text-primary);
+  border-color: var(--modal-border-input);
+}
+.modal-content .btn-secondary:hover {
+  background: var(--modal-surface-hover);
+  border-color: var(--modal-accent);
+}
 .modal-footer .btn-primary:disabled,
-.modal-footer .btn-secondary:disabled {
+.modal-footer .btn-secondary:disabled,
+.modal-content .btn-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .confirm-dialog-message {
   margin: 0 0 var(--space-5);
-  color: var(--text-secondary);
+  color: var(--modal-text-secondary);
 }
 
 .confirm-dialog-actions {
@@ -887,13 +1005,16 @@
 .loading-shell-navbar {
   height: 60px;
   flex-shrink: 0;
-  background: var(--color-ink);
+  /* Matches the real Navbar's own theme-adaptive background
+     (.navbar { background: var(--surface); } in layout.css) so the
+     loading state belongs to the same theme as the page underneath it. */
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-5);
 }
-.loading-shell-logo { width: 140px; height: 24px; }
+.loading-shell-logo { width: 140px; height: 24px; display: block; object-fit: contain; }
 .loading-shell-icon { width: 32px; height: 32px; border-radius: 50%; }
 
 .loading-shell-body {
@@ -909,7 +1030,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  background: var(--color-ink);
+  /* Matches the real Sidebar's own theme-adaptive background
+     (.sidebar { background: var(--background); } in layout.css) so the
+     loading state belongs to the same theme as the page underneath it. */
+  background: var(--background);
 }
 .loading-shell-nav-item { height: 16px; width: 80%; }
 
@@ -1233,6 +1357,16 @@
 .chat-panel-name { font-weight: 600; font-size: 0.9rem; }
 .chat-panel-subtitle { font-size: 0.68rem; color: rgba(247, 243, 236, 0.5); text-transform: uppercase; letter-spacing: 0.04em; }
 .chat-panel-close { background: none; border: none; color: var(--color-ivory); font-size: 20px; cursor: pointer; line-height: 1; flex-shrink: 0; }
+
+/* AI-usage disclosure banner (security/production hardening) - a
+   subtle, single-line note, not a redesign of the widget: same
+   surface/border tokens the rest of the panel already uses, small
+   type, so it reads as part of the existing chrome rather than an
+   added warning box. */
+.chat-panel-disclaimer {
+  font-size: 0.68rem; color: var(--text-secondary); background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color); padding: 6px var(--space-4); text-align: center;
+}
 
 .chat-panel-body {
   flex: 1; overflow-y: auto; padding: var(--space-3);

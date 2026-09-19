@@ -215,7 +215,31 @@ class _RedisBackend:
     trims anything older than the window, then checks the remaining
     count. Matches the in-memory backend's semantics so switching
     backends does not change rate-limit behavior, only whether it's
-    shared across processes."""
+    shared across processes.
+
+    The trim/count/add/expire must happen as one atomic unit - a plain
+    pipeline (as this previously used) sends all four commands in one
+    round trip, but that is NOT the same thing as atomicity: it still
+    unconditionally ran the ZADD even when the count already met or
+    exceeded max_requests, meaning a REJECTED request still got counted
+    into the window. That let a client be permanently rate-limited by
+    its own rejected requests, since every rejection re-padded the
+    window instead of leaving it alone. A Lua script run via EVAL is
+    genuinely atomic on the Redis server (no other command can run
+    between the count-check and the conditional add), so the add only
+    ever happens on requests that are actually allowed."""
+
+    _SCRIPT = """
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+        local current = redis.call('ZCARD', KEYS[1])
+        if current < tonumber(ARGV[4]) then
+            redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3])
+            redis.call('EXPIRE', KEYS[1], ARGV[5])
+            return 1
+        else
+            return 0
+        end
+    """
 
     def __init__(self):
         # Imported here, not at module level - a plain local dev setup
@@ -223,19 +247,19 @@ class _RedisBackend:
         # package installed just to import this file.
         import redis
         self._client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._script = self._client.register_script(self._SCRIPT)
 
     def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> bool:
         import uuid
         now = time.time()
         window_start = now - window_seconds
         redis_key = f"ratelimit:{key}"
-        pipe = self._client.pipeline()
-        pipe.zremrangebyscore(redis_key, 0, window_start)
-        pipe.zcard(redis_key)
-        pipe.zadd(redis_key, {f"{now}:{uuid.uuid4().hex}": now})
-        pipe.expire(redis_key, window_seconds)
-        _, current_count, _, _ = pipe.execute()
-        return current_count < max_requests
+        member = f"{now}:{uuid.uuid4().hex}"
+        allowed = self._script(
+            keys=[redis_key],
+            args=[window_start, now, member, max_requests, window_seconds],
+        )
+        return bool(int(allowed))
 
 
 _backend = None
@@ -283,9 +307,16 @@ def rate_limit(bucket: str, max_requests: int, window_seconds: int = 60):
     def _dependency(request: Request):
         key = _client_key(request, bucket)
         if not _get_backend().is_allowed(key, max_requests, window_seconds):
+            # Retry-After tells a well-behaved client (or the browser/
+            # fetch layer) exactly how long to back off, rather than
+            # leaving it to guess/poll immediately - a plain window-length
+            # value is a safe, conservative upper bound (the client may
+            # actually be allowed again sooner, once older requests in the
+            # sliding window age out, but never later than this).
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests. Please slow down and try again shortly.",
+                headers={"Retry-After": str(window_seconds)},
             )
 
     return _dependency
@@ -306,6 +337,7 @@ def check_account_rate_limit(bucket: str, identifier: str, max_requests: int, wi
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many attempts for this account. Please slow down and try again shortly.",
+            headers={"Retry-After": str(window_seconds)},
         )
 
 
@@ -372,6 +404,24 @@ def _get_attempt_backend():
     return _attempt_backend
 
 
+def reset_login_backoff_state():
+    """Test isolation for the login-backoff attempt tracker - the
+    sibling of reset_rate_limits() above, for the SEPARATE module-level
+    _attempt_backend singleton (check_login_backoff/record_login_failure/
+    clear_login_failures). Without this, consecutive-failure counts
+    recorded by one test (e.g. several deliberately-wrong-password
+    attempts against "test@example.com", the shared fixture identifier)
+    persist across every later test in the same session, since
+    _attempt_backend is never otherwise recreated. A later, unrelated
+    test logging in with that same identifier could then see an
+    unexpected 429 from failures an earlier test caused - not a real
+    bug in the test itself. Intended to be called from the same
+    autouse per-test fixture as reset_rate_limits (see
+    tests/conftest.py's reset_rate_limiter fixture)."""
+    global _attempt_backend
+    _attempt_backend = None
+
+
 def check_login_backoff(identifier: str) -> None:
     """Raise 429 if this account is currently in a backoff window from
     recent consecutive failures. Call BEFORE checking credentials."""
@@ -388,9 +438,11 @@ def check_login_backoff(identifier: str) -> None:
     )
     elapsed = time.time() - last_ts
     if elapsed < wait:
+        remaining = max(1, int(wait - elapsed))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many failed attempts. Please try again in {int(wait - elapsed)} seconds.",
+            detail=f"Too many failed attempts. Please try again in {remaining} seconds.",
+            headers={"Retry-After": str(remaining)},
         )
 
 

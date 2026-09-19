@@ -4,7 +4,7 @@ import axios from 'axios';
 // host (also "localhost", see start_frontend.sh/.bat and CRA's default
 // dev server), not just its origin.
 //
-// Defect repair: this used to default to 127.0.0.1 specifically to
+// This used to default to 127.0.0.1 specifically to
 // route around a real Windows quirk (see the IPv6 note below) - but
 // that traded a latency problem for a much worse correctness bug.
 // Browsers scope a cookie's SameSite behavior to the "site" (registrable
@@ -81,7 +81,7 @@ export function resetSessionInvalidationGuard() {
 // away the SPA's own state for no reason.
 const AUTH_BOOTSTRAP_PATH = '/api/auth/me';
 
-// Defect repair (F138 P3): sensible, deliberate timeouts by request
+// Sensible, deliberate timeouts by request
 // shape instead of one flat number for everything. The 30s default set
 // on the client above already covers ordinary CRUD reasonably; the one
 // documented exception is a large report/export/download
@@ -97,7 +97,7 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-// Defect repair (F138 P3): network-aware GET handling - in-flight
+// Network-aware GET handling - in-flight
 // request de-duplication plus a small, bounded automatic retry with
 // backoff. Deliberately GET-only. Retrying a POST/PUT/PATCH/DELETE
 // automatically is NOT safe to do blindly here: if the original
@@ -230,8 +230,7 @@ export const authAPI = {
   resetPassword: (token, newPassword) => client.post('/api/auth/reset-password', { token, new_password: newPassword }),
 };
 
-// Defect repair (P1-13): clientPortalAPI (Family 137 features 1 and 3 -
-// the public, unauthenticated client-portal endpoints) removed.
+// clientPortalAPI (the public, unauthenticated client-portal endpoints) removed.
 // Woodful is internal-only now and the backend no longer serves
 // /api/client-portal/* at all (see backend app/api/routes.py) - these
 // calls would only ever 404.
@@ -241,10 +240,10 @@ export const dashboardAPI = {
   orders: () => client.get('/api/dashboard/orders'),
   staff: () => client.get('/api/dashboard/staff'),
   atRiskOrders: () => client.get('/api/dashboard/at-risk-orders'),
-  // Family 137, feature 12 - Forward Cash-Flow Forecast (EXPECTED /
+  // Forward Cash-Flow Forecast (EXPECTED /
   // ACTUAL / OVERDUE / FORECAST, weekly buckets).
   cashFlowForecast: (weeks) => client.get('/api/dashboard/cash-flow-forecast', { params: weeks ? { weeks } : {} }),
-  // Family 137, feature 11 - Owner Daily/Weekly Business Briefing.
+  // Owner Daily/Weekly Business Briefing.
   ownerBriefing: (period) => client.get('/api/dashboard/owner-briefing', { params: { period: period || 'daily' } }),
 };
 
@@ -271,6 +270,10 @@ export const analyticsAPI = {
 export const suppliersAPI = {
   list: (params) => client.get('/api/suppliers/', { params }),
   get: (id) => client.get(`/api/suppliers/${id}`),
+  // Suppliers command-center workspace - same purpose-built, bounded-
+  // response pattern as clientsAPI.workspace()/ordersAPI.workspace().
+  // See backend/app/modules/procurement/api.py's suppliers_workspace.
+  workspace: (params) => client.get('/api/suppliers/workspace', { params }),
   create: (data) => client.post('/api/suppliers/', data),
   update: (id, data) => client.put(`/api/suppliers/${id}`, data),
   remove: (id) => client.delete(`/api/suppliers/${id}`),
@@ -285,7 +288,7 @@ export const materialsAPI = {
   // "Intelligent defaults" - existing backend interpreter,
   // just exposed to the material creation form.
   interpretName: (name) => client.get('/api/materials/interpret-name', { params: { name } }),
-  // Family 137, feature 7 - Dead-Stock / Material-to-Design Matching.
+  // Dead-Stock / Material-to-Design Matching.
   deadStockMatches: (idleDays) => client.get('/api/materials/dead-stock-matches', { params: idleDays ? { idle_days: idleDays } : {} }),
 };
 
@@ -552,11 +555,15 @@ export const issuesAPI = {
 export const clientsAPI = {
   list: (params) => client.get('/api/clients/', { params }),
   get: (id) => client.get(`/api/clients/${id}`),
+  // Clients command-center workspace - same purpose-built, bounded-
+  // response pattern as ordersAPI.workspace(). See
+  // backend/app/modules/clients/api.py's clients_workspace.
+  workspace: (params) => client.get('/api/clients/workspace', { params }),
   create: (data) => client.post('/api/clients/', data),
   update: (id, data) => client.put(`/api/clients/${id}`, data),
   remove: (id) => client.delete(`/api/clients/${id}`),
   checkDuplicates: (name) => client.get('/api/clients/check-duplicates', { params: { name } }),
-  // Family 137, feature 5 - Unified Client Relationship Timeline: a
+  // Unified Client Relationship Timeline: a
   // presentation layer over existing estimates/orders/payments/
   // documents/activities/communications for this client, never a
   // second, duplicated timeline table.
@@ -567,11 +574,18 @@ export const clientsAPI = {
 export const ordersAPI = {
   list: (params) => client.get('/api/orders/', { params }),
   get: (id) => client.get(`/api/orders/${id}`),
+  // Orders command-center workspace: one bounded request for the KPI
+  // strip + summary cards + compact order list + (optionally) the
+  // currently-selected order's compact detail panel, instead of the
+  // clientsAPI.list()+per-row-lookup and ordersAPI.get()/health()/
+  // comments() chain the page used to make. See
+  // backend/app/modules/sales/api.py's orders_workspace.
+  workspace: (params) => client.get('/api/orders/workspace', { params }),
   create: (data) => client.post('/api/orders/', data),
   update: (id, data) => client.put(`/api/orders/${id}`, data),
   profitability: (id) => client.get(`/api/orders/${id}/profitability`),
   materialRequirements: (id) => client.get(`/api/orders/${id}/material-requirements`),
-  // Deterministic, explainable Order Health/Risk (Family 130 P0.1) -
+  // Deterministic, explainable Order Health/Risk -
   // same authoritative computation the chatbot's "what is blocking
   // this order" query uses, exposed directly for the Order Detail
   // header - see OrderService.compute_order_health.
@@ -585,18 +599,18 @@ export const ordersAPI = {
   activity: (id, params) => client.get(`/api/orders/${id}/activity`, { params }),
   emailPreview: (id, kind) => client.get(`/api/orders/${id}/email-preview`, { params: { kind } }),
   sendEmail: (id, kind, data) => client.post(`/api/orders/${id}/send-email`, data, { params: { kind } }),
-  // Family 137, feature 4 - Balance-Before-Dispatch Guardrail: read-only
+  // Balance-Before-Dispatch Guardrail: read-only
   // precheck so the UI can explain an outstanding balance BEFORE the
   // person attempts to mark the order delivered/dispatched, not only
   // reject it after the fact.
   dispatchCheck: (id) => client.get(`/api/orders/${id}/dispatch-check`),
-  // Family 137, feature 8 - Approved Specification / Sample Lock.
+  // Approved Specification / Sample Lock.
   listApprovedSpecifications: (id) => client.get(`/api/orders/${id}/approved-specifications`),
   approveSpecification: (id, data) => client.post(`/api/orders/${id}/approved-specifications`, data),
-  // Family 137, feature 2 - Visual Build Timeline (Milestone +
+  // Visual Build Timeline (Milestone +
   // ProductionJob status, reuses compute_order_health for risk).
   buildTimeline: (id) => client.get(`/api/orders/${id}/build-timeline`),
-  // Family 137, feature 12 - Capacity-Aware Delivery Promise.
+  // Capacity-Aware Delivery Promise.
   // evaluateDeliveryPromise is read-only (a PREDICTION +
   // RECOMMENDATION); recordDeliveryPromise is the one place a human's
   // final promised date is actually written.
@@ -647,10 +661,14 @@ export const projectExpensesAPI = {
 export const employeesAPI = {
   list: (params) => client.get('/api/employees/', { params }),
   get: (id) => client.get(`/api/employees/${id}`),
+  // Employees command-center workspace - same purpose-built, bounded-
+  // response pattern as clientsAPI.workspace()/ordersAPI.workspace().
+  // See backend/app/modules/hr/api.py's employees_workspace.
+  workspace: (params) => client.get('/api/employees/workspace', { params }),
   create: (data) => client.post('/api/employees/', data),
   update: (id, data) => client.put(`/api/employees/${id}`, data),
   remove: (id) => client.delete(`/api/employees/${id}`),
-  // Family 137 - Employee 360 / HR Command Center (section 13).
+  // Employee 360 / HR Command Center.
   overview360: (id) => client.get(`/api/employees/${id}/360-overview`),
   workload: (id) => client.get(`/api/employees/${id}/workload`),
   relationships: (id) => client.get(`/api/employees/${id}/relationships`),
@@ -733,13 +751,13 @@ export const cuttingRequirementsAPI = {
   remove: (id) => client.delete(`/api/cutting-requirements/${id}`),
 };
 
-export const workCentresAPI = {
-  list: (params) => client.get('/api/work-centres/', { params }),
-  get: (id) => client.get(`/api/work-centres/${id}`),
-  create: (data) => client.post('/api/work-centres/', data),
-  update: (id, data) => client.put(`/api/work-centres/${id}`, data),
-  capacity: (id, date) => client.get(`/api/work-centres/${id}/capacity`, { params: date ? { date } : {} }),
-};
+// The workCentresAPI frontend wrapper was removed - no page or
+// component ever called it (verified across the whole frontend). The
+// backend Work Centres feature itself (ops_module.work_centres_router,
+// GET/POST/PUT /api/work-centres/, capacity endpoint) is untouched and
+// fully functional - only this unused client-side wrapper is gone. If
+// a future screen needs it, re-add a wrapper matching the pattern
+// above (cuttingRequirementsAPI).
 
 export const settingsAPI = {
   types: () => client.get('/api/settings/'),
@@ -752,16 +770,20 @@ export const settingsAPI = {
 export const estimatesAPI = {
   list: (params) => client.get('/api/estimates/', { params }),
   get: (id) => client.get(`/api/estimates/${id}`),
+  // Estimates command-center workspace - same purpose-built, bounded-
+  // response pattern as ordersAPI.workspace()/clientsAPI.workspace().
+  // See backend/app/modules/sales/api.py's estimates_workspace.
+  workspace: (params) => client.get('/api/estimates/workspace', { params }),
   create: (data) => client.post('/api/estimates/', data),
   update: (id, data) => client.put(`/api/estimates/${id}`, data),
   revise: (id) => client.post(`/api/estimates/${id}/revise`),
   versions: (id) => client.get(`/api/estimates/${id}/versions`),
   emailPreview: (id) => client.get(`/api/estimates/${id}/email-preview`),
   sendEmail: (id, data) => client.post(`/api/estimates/${id}/send-email`, data),
-  // Family 137, feature 9 - Cost-Drift Alert: read-only comparison of
+  // Cost-Drift Alert: read-only comparison of
   // quote-time cost basis vs current cost, never mutates the estimate.
   costDrift: (id) => client.get(`/api/estimates/${id}/cost-drift`),
-  // Family 137, feature 6 - Smart Estimate / Margin Optimization.
+  // Smart Estimate / Margin Optimization.
   marginOptimization: (id, data) => client.post(`/api/estimates/${id}/margin-optimization`, data),
 };
 
@@ -777,6 +799,10 @@ export const clientActivitiesAPI = {
 export const candidatesAPI = {
   list: (params) => client.get('/api/candidates/', { params }),
   get: (id) => client.get(`/api/candidates/${id}`),
+  // Candidates command-center workspace - same purpose-built, bounded-
+  // response pattern as clientsAPI.workspace()/ordersAPI.workspace().
+  // See backend/app/modules/recruitment/module.py's candidates_workspace.
+  workspace: (params) => client.get('/api/candidates/workspace', { params }),
   create: (data) => client.post('/api/candidates/', data),
   update: (id, data) => client.put(`/api/candidates/${id}`, data),
   uploadResume: (id, file) => {
@@ -846,7 +872,7 @@ export const documentsAPI = {
     const formData = new FormData();
     formData.append('file', file);
     if (description) formData.append('description', description);
-    // Family 137 (Employee 360, section 13.8) - optional categorization/
+    // Employee 360 - optional categorization/
     // expiry metadata, shared by every parent type via the same generic
     // document endpoint (not employee-only). Omitted entirely unless a
     // caller passes one, so every pre-existing call site is unaffected.

@@ -67,9 +67,18 @@ def reset_rate_limiter():
     could be unexpectedly rejected with 429 purely from requests
     earlier, unrelated tests already made - not a real bug in the
     test itself. Sibling to reset_db above, same autouse/function-
-    scope pattern."""
-    from app.platform.security import reset_rate_limits
+    scope pattern.
+
+    Also resets the SEPARATE login-backoff attempt tracker
+    (reset_login_backoff_state) - a distinct module-level singleton
+    from the rate limiter above, tracking consecutive login failures
+    per identifier rather than requests per IP/account. Same leak-
+    across-tests risk, same fix, bundled into this one fixture since
+    both need to run before every test regardless of whether that
+    test touches auth at all."""
+    from app.platform.security import reset_rate_limits, reset_login_backoff_state
     reset_rate_limits()
+    reset_login_backoff_state()
     yield
 
 

@@ -1,15 +1,25 @@
 """Inventory domain Pydantic schemas."""
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from app.modules.inventory.models import Location, MaterialCategory, MaterialSubcategory, MaterialAttributeDefinition, MaterialAttributeValue, Material, StockTransfer, StockAdjustment, StockLedgerEntry, PURCHASE_CREATE_RECEIPT_STATUSES, ATTRIBUTE_DATA_TYPES, ADJUSTMENT_TYPES
 from app.shared import validate_phone
 
+# Security-hardening constants (strict input validation pass) - same
+# convention as app/modules/sales/schemas.py and
+# app/modules/clients/services.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_LINE_ITEMS = 500
+
 
 class MaterialCategoryCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    description: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class MaterialCategoryResponse(BaseModel):
@@ -25,12 +35,14 @@ class MaterialCategoryResponse(BaseModel):
 
 
 class MaterialAttributeDefinitionCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     data_type: str = "text"
-    unit_label: Optional[str] = None
-    select_options: Optional[str] = None  # comma-separated, only meaningful when data_type="select"
+    unit_label: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    select_options: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)  # comma-separated, only meaningful when data_type="select"
     is_required: bool = False
     sort_order: int = 0
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("data_type")
     @classmethod
@@ -56,8 +68,10 @@ class MaterialAttributeDefinitionResponse(BaseModel):
 
 class MaterialSubcategoryCreate(BaseModel):
     category_id: int
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    description: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class MaterialSubcategoryResponse(BaseModel):
@@ -84,8 +98,13 @@ class MaterialAttributeValueInput(BaseModel):
     has the subcategory's attribute definitions loaded to render the
     right form fields."""
     attribute_definition_id: int
-    value_text: Optional[str] = None
+    value_text: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
     value_number: Optional[Decimal] = None
+
+    # Nested request value object (parallels EstimateLineItemCreate in
+    # app/modules/sales/schemas.py) - rejects any stray field on a
+    # single attribute value, not just at the top level.
+    model_config = ConfigDict(extra="forbid")
 
 
 class MaterialAttributeValueResponse(BaseModel):
@@ -101,23 +120,23 @@ class MaterialAttributeValueResponse(BaseModel):
 
 
 class MaterialBase(BaseModel):
-    material_code: Optional[str] = None  # server-generated on create, ignored if supplied
-    name: str
+    material_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     # Kept for backward compatibility - existing consumers read this
     # directly. When subcategory_id is set, this is derived server-side
     # from the subcategory's category name, not taken from client input.
-    category: Optional[str] = None
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     subcategory_id: Optional[int] = None
-    brand_grade: Optional[str] = None
-    thickness_size: Optional[str] = None
-    unit: str
+    brand_grade: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    thickness_size: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    unit: str = Field(..., max_length=_SHORT_TEXT_MAX)
     # Decimal, not int - a material measured in kg/litres/metres needs
     # real decimal precision (e.g. a 2.5 kg reorder threshold).
     minimum_stock: Decimal = Decimal("0")
     average_rate: Decimal = Decimal("0")
     is_active: bool = True
     supplier_id: Optional[int] = None
-    location: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     location_id: Optional[int] = None
 
 
@@ -129,7 +148,9 @@ class MaterialCreate(MaterialBase):
     # single material creation, not just ones actually supplying
     # attributes. Empty list default, matching "no attributes yet" as
     # the normal case, same as MaterialResponse's default.
-    attribute_values: List[MaterialAttributeValueInput] = []
+    attribute_values: List[MaterialAttributeValueInput] = Field(default=[], max_length=_MAX_LINE_ITEMS)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("opening_stock")
     @classmethod
@@ -169,32 +190,31 @@ class MaterialNameInterpretResponse(BaseModel):
 
 
 class MaterialUpdate(BaseModel):
-    name: Optional[str] = None
-    category: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     subcategory_id: Optional[int] = None
-    brand_grade: Optional[str] = None
-    thickness_size: Optional[str] = None
-    unit: Optional[str] = None
+    brand_grade: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    thickness_size: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    unit: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     minimum_stock: Optional[Decimal] = None
-    average_rate: Optional[Decimal] = None
+    # average_rate is deliberately NOT accepted here - it is maintained
+    # exclusively by purchase weighted-average calculations (see
+    # inventory/services.py), never by a direct material edit. Letting a
+    # normal update overwrite it would silently corrupt that running
+    # calculation. It remains read-only/output-only via MaterialResponse.
     is_active: Optional[bool] = None
     supplier_id: Optional[int] = None
-    location: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     location_id: Optional[int] = None
-    attribute_values: Optional[List[MaterialAttributeValueInput]] = None
+    attribute_values: Optional[List[MaterialAttributeValueInput]] = Field(default=None, max_length=_MAX_LINE_ITEMS)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("minimum_stock")
     @classmethod
     def minimum_stock_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
         if v is not None and v < 0:
             raise ValueError("Minimum stock cannot be negative")
-        return v
-
-    @field_validator("average_rate")
-    @classmethod
-    def average_rate_not_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
-        if v is not None and v < 0:
-            raise ValueError("Average rate cannot be negative")
         return v
 
 
@@ -227,16 +247,16 @@ class MaterialResponse(MaterialBase):
 
 
 class PurchaseBase(BaseModel):
-    purchase_code: Optional[str] = None  # server-generated on create, ignored if supplied
+    purchase_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
     date: datetime
     expected_delivery_date: Optional[datetime] = None
     supplier_id: int
     material_id: int
     quantity: Decimal
-    unit: str
+    unit: str = Field(..., max_length=_SHORT_TEXT_MAX)
     rate: Decimal
     gst_percent: Decimal = Decimal("0")
-    payment_status: str = "Paid"
+    payment_status: str = Field(default="Paid", max_length=_SHORT_TEXT_MAX)
     receipt_status: str = "Received"  # "Ordered" = not yet received, stock untouched until marked received
     location_id: Optional[int] = None  # which location receives the stock; falls back to the material's primary location if omitted
 
@@ -244,6 +264,8 @@ class PurchaseBase(BaseModel):
 class PurchaseCreate(PurchaseBase):
     """taxable_value, gst_amount, invoice_total are computed server-side
     from quantity * rate and gst_percent - never trust client-sent totals."""
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("receipt_status")
     @classmethod
     def receipt_status_must_be_valid(cls, v: str) -> str:
@@ -275,7 +297,9 @@ class PurchaseCreate(PurchaseBase):
 
 
 class PurchaseUpdate(BaseModel):
-    payment_status: Optional[str] = None
+    payment_status: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PurchaseReceiveRequest(BaseModel):
@@ -283,6 +307,8 @@ class PurchaseReceiveRequest(BaseModel):
     outstanding (the original all-or-nothing behavior)."""
     quantity: Optional[Decimal] = None
     location_id: Optional[int] = None  # which location receives this delivery; falls back to the purchase's own location_id, then the material's primary location
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("quantity")
     @classmethod
@@ -307,9 +333,11 @@ class PurchaseResponse(PurchaseBase):
 
 
 class LocationCreate(BaseModel):
-    name: str
-    location_type: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    location_type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     parent_id: Optional[int] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class LocationResponse(BaseModel):
@@ -358,8 +386,10 @@ class StockTransferCreate(BaseModel):
     quantity: Decimal
     to_location_id: int
     from_location_id: Optional[int] = None
-    transferred_by: Optional[str] = None
-    remarks: Optional[str] = None
+    transferred_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class StockTransferResponse(BaseModel):
@@ -381,10 +411,12 @@ class StockAdjustmentCreate(BaseModel):
     material_id: int
     adjustment_type: str
     quantity_delta: Decimal
-    reason: str
+    reason: str = Field(..., max_length=_LONG_TEXT_MAX)
     related_issue_id: Optional[int] = None
-    adjusted_by: Optional[str] = None
+    adjusted_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     location_id: Optional[int] = None  # which location this adjustment applies to; falls back to the material's primary location if omitted
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("adjustment_type")
     @classmethod
@@ -429,15 +461,15 @@ class MaterialLocationStockResponse(BaseModel):
 
 
 class SupplierBase(BaseModel):
-    supplier_code: Optional[str] = None  # server-generated on create, ignored if supplied
-    name: str
-    category: Optional[str] = None
-    contact_person: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    gstin: Optional[str] = None
-    payment_terms: Optional[str] = None
-    remarks: Optional[str] = None
+    supplier_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    gstin: Optional[str] = None  # exact-length (15) checked below - no separate max_length needed
+    payment_terms: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
     @field_validator("phone")
     @classmethod
@@ -462,18 +494,20 @@ class SupplierBase(BaseModel):
 
 
 class SupplierCreate(SupplierBase):
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
 class SupplierUpdate(BaseModel):
-    name: Optional[str] = None
-    category: Optional[str] = None
-    contact_person: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    gstin: Optional[str] = None
-    payment_terms: Optional[str] = None
-    remarks: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    gstin: Optional[str] = None  # exact-length (15) checked below - no separate max_length needed
+    payment_terms: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("phone")
     @classmethod
@@ -506,12 +540,14 @@ class SupplierResponse(SupplierBase):
 class SupplierMaterialCreate(BaseModel):
     supplier_id: int
     material_id: int
-    supplier_sku: Optional[str] = None
+    supplier_sku: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     supplier_price: Optional[Decimal] = None
     moq: Optional[int] = None
     lead_time_days: Optional[int] = None
     is_preferred: bool = False
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("supplier_price")
     @classmethod
@@ -538,12 +574,14 @@ class SupplierMaterialCreate(BaseModel):
 
 
 class SupplierMaterialUpdate(BaseModel):
-    supplier_sku: Optional[str] = None
+    supplier_sku: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     supplier_price: Optional[Decimal] = None
     moq: Optional[int] = None
     lead_time_days: Optional[int] = None
     is_preferred: Optional[bool] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("supplier_price")
     @classmethod
@@ -597,7 +635,7 @@ class SupplierMaterialWithMaterialName(SupplierMaterialResponse):
 
 
 # ============================================================
-# Family 137, feature 7 - Dead-Stock / Material-to-Design Matching
+# Dead-Stock / Material-to-Design Matching
 # ============================================================
 
 class DeadStockMatch(BaseModel):

@@ -34,14 +34,17 @@ function Sidebar({ isOpen, user, onClose }) {
   const groups = [
     {
       // IA consolidation (Woodful navigation/module-structure task):
-      // Locations, Material Issues, and Suppliers are no longer
-      // separate primary nav items here. Locations and Material Issues
-      // are already full tabs inside this same InventoryPage workspace
-      // ("Locations"/"Issues" tabs, ALL_TABS in InventoryPages.jsx) -
-      // no new page, no new API, no duplicate data. Suppliers is
-      // reached from Purchases (a "Suppliers" quick-link was added to
-      // PurchasesPage). None of the underlying pages/routes/models
-      // were deleted - /locations, /issues, /suppliers still work
+      // Locations and Material Issues are no longer separate primary
+      // nav items here. Locations and Material Issues are already full
+      // tabs inside this same InventoryPage workspace ("Locations"/
+      // "Issues" tabs, ALL_TABS in InventoryPages.jsx) - no new page,
+      // no new API, no duplicate data. Purchases, Procurement
+      // Requirements, and Suppliers are now one "Purchases &
+      // Procurement" workspace (see PurchasesProcurementHub in
+      // modules/procurement/pages/ProcurementPages.jsx) instead of two
+      // separate nav entries. None of the underlying pages/routes/
+      // models were deleted - /locations, /issues, /purchases,
+      // /procurement-requirements, and /suppliers all still work
       // directly.
       name: 'Inventory',
       groupIcon: InventoryIcon,
@@ -49,8 +52,7 @@ function Sidebar({ isOpen, user, onClose }) {
         { path: '/inventory', label: 'Inventory', icon: InventoryIcon },
         { path: '/materials', label: 'Materials', icon: MaterialIcon },
         ...(isTrueMaster ? [
-          { path: '/purchases', label: 'Purchases', icon: PurchaseIcon },
-          { path: '/procurement-requirements', label: 'Procurement', icon: PurchaseIcon },
+          { path: '/purchases-procurement', label: 'Purchases & Procurement', icon: PurchaseIcon },
         ] : []),
       ],
     },
@@ -58,11 +60,16 @@ function Sidebar({ isOpen, user, onClose }) {
       // Rate Master is no longer a separate primary nav item - it
       // supports Products/Estimates pricing (a "Rates" quick-link was
       // added to ProductsPage) and /rate-master still works directly.
+      // "Products" is labeled "Products / Catalog" here since the
+      // underlying workspace (modules/catalog/pages/CatalogPages.jsx)
+      // already covers products, categories, pricing, and import in
+      // one place - no separate "Catalog" page/route exists or is
+      // needed alongside it.
       name: 'Sales',
       groupIcon: PurchaseIcon,
       items: [
         { path: '/clients', label: 'Clients', icon: ClientIcon },
-        { path: '/products', label: 'Products', icon: ProductIcon },
+        { path: '/products', label: 'Products / Catalog', icon: ProductIcon },
         { path: '/estimates', label: 'Estimates', icon: EstimateIcon },
         { path: '/orders', label: 'Orders', icon: OrderIcon },
         ...(isTrueMaster ? [{ path: '/payments', label: 'Payments', icon: PaymentIcon }] : []),
@@ -81,7 +88,7 @@ function Sidebar({ isOpen, user, onClose }) {
       ],
     },
     {
-      name: 'People',
+      name: 'People / HR',
       groupIcon: EmployeeIcon,
       items: [
         { path: '/employees', label: 'Employees', icon: EmployeeIcon },
@@ -106,7 +113,7 @@ function Sidebar({ isOpen, user, onClose }) {
       name: 'Administration',
       groupIcon: SettingsIcon,
       items: [
-        { path: '/settings', label: 'Settings', icon: SettingsIcon },
+        { path: '/settings', label: 'Settings & Administration', icon: SettingsIcon },
         { path: '/learning-candidates', label: 'Chatbot Learning', icon: AuditIcon },
         ...(isTrueMaster ? [
           { path: '/users', label: 'Users', icon: UserIcon },

@@ -85,6 +85,10 @@ def _try_decimal(value):
 def list_materials(response: Response, category: Optional[str] = Query(None), search: Optional[str] = Query(None),
                     low_stock_only: bool = Query(False), active_only: bool = Query(False),
                     subcategory_id: Optional[int] = Query(None),
+                    ids: Optional[str] = Query(
+                        None, description='Comma-separated material IDs to batch-fetch in one request - e.g. '
+                                           '"12,45,90" - instead of one GET /api/materials/{id} call per id. '
+                                           'Composes with limit/offset like any other filter.'),
                     attribute_filters: Optional[str] = Query(
                         None, description='JSON object mapping attribute_definition_id to the desired value, '
                                            'e.g. {"5": "18", "7": "White"} - matched against either the numeric '
@@ -93,6 +97,12 @@ def list_materials(response: Response, category: Optional[str] = Query(None), se
                     offset: int = Query(0, ge=0),
                     db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(Material)
+    if ids:
+        try:
+            id_list = [int(x) for x in ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ids must be a comma-separated list of integers")
+        query = query.filter(Material.id.in_(id_list))
     if category:
         query = query.filter(Material.category == category)
     if subcategory_id:
@@ -168,12 +178,28 @@ def _resolve_location_path(db: Session, location_id):
 def _apply_attribute_values(db: Session, material: Material, attribute_values):
     """Replaces the material's full attribute value set - matching the
     same "submit the current complete list" semantics already used for
-    estimate/order line items, not an incremental patch."""
-    for existing in list(material.attribute_values):
-        db.delete(existing)
+    estimate/order line items, not an incremental patch.
+
+    Mutates the relationship COLLECTION itself (.clear() / .append()),
+    not a direct db.delete() on each child while it's still a member of
+    material.attribute_values. Material.attribute_values already
+    declares cascade="all, delete-orphan" (see models.py) - .clear()
+    lets that existing cascade remove the old rows AND keep the
+    in-memory collection consistent in the same step. The previous
+    version called db.delete(existing) on each child while it remained
+    in the (never-updated) collection; the next time anything touched
+    that collection - a later flush, or the response serializing
+    material.attribute_values - SQLAlchemy raised InvalidRequestError:
+    Instance '<MaterialAttributeValue ...>' has been deleted. Flushed
+    before appending the new rows so the DELETEs actually execute
+    first - required because (material_id, attribute_definition_id) is
+    unique, and updating an attribute's value keeps the same
+    attribute_definition_id, so the old and new rows would otherwise
+    briefly collide."""
+    material.attribute_values.clear()
     db.flush()
     for item in attribute_values:
-        db.add(MaterialAttributeValue(
+        material.attribute_values.append(MaterialAttributeValue(
             material_id=material.id, attribute_definition_id=item.attribute_definition_id,
             value_text=item.value_text, value_number=item.value_number,
         ))
@@ -194,7 +220,7 @@ def get_dead_stock_matches(
     idle_days: int = Query(90, ge=1, description="A material with no stock movement in at least this many days counts as idle."),
     db: Session = Depends(get_db), auth=Depends(require_role("master")),
 ):
-    """Family 137, feature 7 - Dead-Stock / Material-to-Design Matching.
+    """Dead-Stock / Material-to-Design Matching.
 
     Finds materials with real stock on hand that haven't moved
     (no Receipt/Issue/Adjustment/Transfer ledger entry) in at least
@@ -325,6 +351,30 @@ def update_material(material_id: int, data: MaterialUpdate, db: Session = Depend
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
 
+    # Historical quantities (purchases, issues, adjustments, transfers,
+    # and the stock ledger entries derived from them) are all recorded
+    # in whatever unit the material had at the time - changing the unit
+    # after any of that history exists would silently reinterpret every
+    # past quantity in a different unit without converting the numbers,
+    # corrupting reported stock. Same "check the real tables, don't
+    # trust a flag" approach as delete_material's dependency checks
+    # above. Opening stock alone (no real transaction yet) is fine to
+    # still edit freely.
+    if data.unit is not None and data.unit != material.unit:
+        has_history = (
+            db.query(Purchase).filter(Purchase.material_id == material_id).first() is not None
+            or db.query(Issue).filter(Issue.material_id == material_id).first() is not None
+            or db.query(StockAdjustment).filter(StockAdjustment.material_id == material_id).first() is not None
+            or db.query(StockTransfer).filter(StockTransfer.material_id == material_id).first() is not None
+            or db.query(StockLedgerEntry).filter(StockLedgerEntry.material_id == material_id).first() is not None
+        )
+        if has_history:
+            raise HTTPException(
+                status_code=409,
+                detail="This material has transaction history (purchases, issues, adjustments, or transfers) "
+                       "and its unit cannot be changed - historical quantities are recorded in the original unit.",
+            )
+
     update_data = data.dict(exclude_unset=True, exclude={"attribute_values"})
     if "subcategory_id" in update_data:
         update_data["category"] = _resolve_category_name(db, update_data["subcategory_id"])
@@ -368,7 +418,7 @@ def delete_material(material_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="This material has purchase history and cannot be deleted. Mark it inactive instead.")
     if db.query(Issue).filter(Issue.material_id == material_id).first():
         raise HTTPException(status_code=400, detail="This material has issue history and cannot be deleted. Mark it inactive instead.")
-    # Defect repair (F138 P2): StockAdjustment/StockTransfer are real,
+    # StockAdjustment/StockTransfer are real,
     # immutable stock-transaction history exactly like Purchase/Issue
     # above (see StockAdjustment/StockTransfer's own docstrings) - a
     # material could previously be hard-deleted with adjustment or
@@ -380,17 +430,28 @@ def delete_material(material_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="This material has stock adjustment history and cannot be deleted. Mark it inactive instead.")
     if db.query(StockTransfer).filter(StockTransfer.material_id == material_id).first():
         raise HTTPException(status_code=400, detail="This material has stock transfer history and cannot be deleted. Mark it inactive instead.")
-    # Defect repair (F138 P2): a material still used in a Product's BOM
+    # A material still used in a Product's BOM
     # (ProductMaterial) or referenced by a persisted ProcurementRequirement
     # is real, cross-module "in use" data (per the material docstring's
     # own "BOM, procurement" list) - Material carries no cascade/back-
     # reference for either, so neither was ever checked here.
     from app.modules.catalog.models import ProductMaterial
     from app.modules.procurement.models import ProcurementRequirement, PersonalCartItem
+    from app.modules.operations.models import ProductionJob, CuttingRequirement
     if db.query(ProductMaterial).filter(ProductMaterial.material_id == material_id).first():
         raise HTTPException(status_code=400, detail="This material is used in a product's bill of materials and cannot be deleted. Remove it from that BOM first.")
     if db.query(ProcurementRequirement).filter(ProcurementRequirement.material_id == material_id).first():
         raise HTTPException(status_code=400, detail="This material has a recorded procurement requirement and cannot be deleted.")
+    # ProductionJob/CuttingRequirement are real production history that
+    # reference this material exactly like ProductMaterial/
+    # ProcurementRequirement above - previously uncaught, this material
+    # could be hard-deleted while still referenced by a production job
+    # or a cutting requirement, leaving those rows pointing at a
+    # material that no longer exists.
+    if db.query(ProductionJob).filter(ProductionJob.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material is referenced by a production job and cannot be deleted.")
+    if db.query(CuttingRequirement).filter(CuttingRequirement.material_id == material_id).first():
+        raise HTTPException(status_code=400, detail="This material is referenced by a cutting requirement and cannot be deleted.")
     # PersonalCartItem is a personal, disposable draft list (not
     # business history - see its own docstring), so it's cleaned up
     # here rather than blocking deletion over someone's stray cart
@@ -808,7 +869,7 @@ def list_ledger_entries(material_id: int = Query(...), response: Response = None
     order, each traceable back to the actual Purchase/Issue/
     StockAdjustment record that caused it.
 
-    Defect repair (F138 P1): this is a genuinely growing, never-pruned
+    This is a genuinely growing, never-pruned
     ledger (StockLedgerEntry is "never updated or deleted once
     written" - see its own docstring) that was previously fetched with
     no limit at all - a long-lived, frequently-moved material's full

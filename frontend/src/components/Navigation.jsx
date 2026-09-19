@@ -1,16 +1,24 @@
-// Navigation components: mobile bottom nav, global search, notification
-// bell, footer, and the auth-page brand backdrop. Combines the former
-// MobileBottomNav.jsx, GlobalSearch.jsx, NotificationBell.jsx, Footer.jsx,
+// Navigation components: mobile bottom nav, footer, and the auth-page
+// brand backdrop/logo. Combines the former MobileBottomNav.jsx, Footer.jsx,
 // and BrandBackdrop.jsx.
+//
+// GlobalSearch and NotificationBell used to live in this same file, but
+// this file is loaded synchronously by the login page itself (AuthPages.jsx
+// imports BrandLogo/BrandBackdrop/Footer statically, and App.jsx imports
+// MobileBottomNav/Footer statically), while GlobalSearch/NotificationBell
+// are only ever rendered inside the already-lazy-loaded Navbar, post-login.
+// Keeping them in one file forced Navbar-only code - notably the
+// `motion/react` animation library NotificationBell used - into the login
+// critical bundle. They now live in ./NotificationPanel.jsx, imported only
+// by Navbar.jsx. See that file's header comment for the full reasoning
+// (area 23 of the page-load performance hardening pass).
 
-import React, { useEffect, useRef, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { NavLink } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { BellIcon, ChatIcon, HomeIcon, MenuIcon, SearchIcon, TaskIcon } from './icons';
+import { BellIcon, ChatIcon, HomeIcon, MenuIcon, TaskIcon } from './icons';
 import { openWithMessage } from '../redux/slices';
 import { requestOpen } from '../redux/slices';
-import { notificationsAPI, searchAPI } from '../utils/api';
-import { AnimatePresence, motion } from 'motion/react';
 import '../styles/components.css';
 
 // --- MobileBottomNav.jsx ---
@@ -45,235 +53,6 @@ function MobileBottomNav({ onOpenMenu }) {
         <span>More</span>
       </button>
     </nav>
-  );
-}
-
-// --- GlobalSearch.jsx ---
-function GlobalSearch() {
-  const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const containerRef = useRef(null);
-
-  // A live-search-as-you-type field genuinely needs debouncing (unlike
-  // the page-level submit-triggered searches elsewhere in the app) -
-  // without it, every keystroke would fire its own request.
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setLoading(false);
-      return undefined;
-    }
-    setLoading(true);
-    const timer = setTimeout(() => {
-      searchAPI.query(query.trim())
-        .then((res) => setResults(res.data))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleSelect = (result) => {
-    setQuery('');
-    setResults([]);
-    setOpen(false);
-    navigate(result.path);
-  };
-
-  return (
-    <div className="global-search" ref={containerRef}>
-      <SearchIcon className="global-search-icon" width={16} height={16} />
-      <input
-        type="text"
-        className="global-search-input"
-        placeholder="Search clients, orders, materials..."
-        aria-label="Global search"
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-      />
-      {open && query.trim() && (
-        <div className="global-search-results">
-          {loading && <div className="global-search-status">Searching...</div>}
-          {!loading && results.length === 0 && (
-            <div className="global-search-status">No matches for &ldquo;{query}&rdquo;.</div>
-          )}
-          {!loading && results.map((r) => (
-            <button
-              key={`${r.type}-${r.id}`}
-              className="global-search-result"
-              onClick={() => handleSelect(r)}
-            >
-              <span className="global-search-result-type">{r.type}</span>
-              <span className="global-search-result-label">{r.label}</span>
-              {r.sublabel && <span className="global-search-result-sublabel">{r.sublabel}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- NotificationBell.jsx ---
-const SEVERITY_DOT = { CRITICAL: 'notif-dot-critical', WARNING: 'notif-dot-warning', SUCCESS: 'notif-dot-success', INFO: 'notif-dot-info' };
-
-function timeGroup(dateStr) {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday);
-  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  if (date >= startOfToday) return 'Today';
-  if (date >= startOfYesterday) return 'Yesterday';
-  return 'Earlier';
-}
-
-function NotificationBell() {
-  const navigate = useNavigate();
-  const openRequestCount = useSelector((state) => state.notificationUi.openRequestCount);
-  const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const panelRef = useRef(null);
-
-  const loadCount = () => {
-    notificationsAPI.unreadCount().then((res) => setUnreadCount(res.data.count)).catch(() => {});
-  };
-
-  useEffect(() => {
-    loadCount();
-    const interval = setInterval(loadCount, 60000); // periodic refresh, not just on open
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleClickOutside = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
-  const fetchNotifications = () => {
-    notificationsAPI.list().then((res) => setNotifications(res.data)).catch(() => setNotifications([]));
-  };
-
-  useEffect(() => {
-    if (openRequestCount > 0) {
-      setOpen(true);
-      fetchNotifications();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openRequestCount]);
-
-  const handleToggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next) fetchNotifications();
-  };
-
-  const handleItemClick = async (notif) => {
-    if (!notif.is_read) {
-      try {
-        await notificationsAPI.markRead(notif.id);
-        setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n)));
-        loadCount();
-      } catch {
-        // Non-fatal - still navigate even if marking read failed.
-      }
-    }
-    if (notif.action_path) {
-      navigate(notif.action_path);
-      setOpen(false);
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    await notificationsAPI.markAllRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    setUnreadCount(0);
-  };
-
-  const grouped = notifications.reduce((acc, n) => {
-    const g = timeGroup(n.created_at);
-    (acc[g] = acc[g] || []).push(n);
-    return acc;
-  }, {});
-  const groupOrder = ['Today', 'Yesterday', 'Earlier'].filter((g) => grouped[g]?.length);
-
-  return (
-    <div
-      className="notification-bell" ref={panelRef}
-      onMouseEnter={() => { setOpen(true); fetchNotifications(); }}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button className="notification-bell-toggle" onClick={handleToggle} aria-label="Notifications">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.73 21a2 2 0 01-3.46 0" />
-        </svg>
-        {unreadCount > 0 && <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="notification-panel"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div className="notification-panel-header">
-              <span>Notifications</span>
-              {unreadCount > 0 && <button className="btn-link" onClick={handleMarkAllRead}>Mark all as read</button>}
-            </div>
-            <div className="notification-panel-body">
-              {notifications.length === 0 ? (
-                <div className="notification-empty">Nothing needs your attention right now.</div>
-              ) : (
-                groupOrder.map((group) => (
-                  <div key={group}>
-                    <div className="notification-group-label">{group}</div>
-                    {grouped[group].map((n, ni) => (
-                      <motion.button
-                        key={n.id}
-                        className={`notification-item ${n.is_read ? 'notification-item-read' : ''}`}
-                        onClick={() => handleItemClick(n)}
-                        initial={{ opacity: 0, x: -4 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.14, delay: Math.min(ni, 6) * 0.03 }}
-                      >
-                        <span className={`notification-dot ${SEVERITY_DOT[n.severity] || 'notif-dot-info'}`} />
-                        <span className="notification-item-text">
-                          <strong>{n.title}</strong>
-                          <span>{n.message}</span>
-                        </span>
-                      </motion.button>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }
 
@@ -389,4 +168,4 @@ function BrandLogo({ className }) {
   );
 }
 
-export { MobileBottomNav, GlobalSearch, NotificationBell, Footer, BrandBackdrop, BrandLogo };
+export { MobileBottomNav, Footer, BrandBackdrop, BrandLogo };

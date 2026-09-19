@@ -76,7 +76,7 @@ def log_action(
 ) -> None:
     """Writes one audit trail row.
 
-    Defect repair (F138 P12): every call site across this codebase
+    Every call site across this codebase
     invokes log_action() AFTER its own business mutation has already
     committed (e.g. catalog/api.py's create_product: db.commit(),
     db.refresh(product), THEN log_action(...) - the same order repeats

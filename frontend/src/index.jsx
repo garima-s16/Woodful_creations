@@ -6,7 +6,7 @@ import store from './redux/store';
 import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 import './styles/index.css';
 import './styles/modules.css';
-import { resolveInitialTheme } from './utils/utils';
+import { resolveInitialTheme, syncThemeColorMeta } from './utils/utils';
 
 // Applied synchronously, before the first paint, so there's never a
 // flash of the wrong theme while React mounts and its own effects run.
@@ -18,6 +18,9 @@ try {
   if (theme === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
   }
+  // The browser/PWA chrome color must match too - run after data-theme
+  // is set above so it reads the right theme's --background value.
+  syncThemeColorMeta();
 } catch {
   // Theme resolution unavailable for some reason - app stays on the
   // dark default rather than breaking the page load over this.

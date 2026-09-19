@@ -140,7 +140,7 @@ class NotificationService:
         not corrupt the related record merely because email failed) -
         caught and logged, not raised.
 
-        Defect repair (F138 P9.1): the dedup_key lookup below is a
+        The dedup_key lookup below is a
         fast-path check only, not the actual guarantee - two concurrent
         callers (two requests, or the on-demand check racing the
         background scheduler) can both pass it before either has

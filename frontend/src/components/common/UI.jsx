@@ -3,12 +3,12 @@
 // and SimpleBarChart. Combines all former components/common/*.js(x) files.
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { formatCurrency, statusClass, toSafeMessage } from '../../utils/utils';
+import { deepEqual, formatCurrency, statusClass, toSafeMessage } from '../../utils/utils';
 import { CartIcon, PlusIcon } from '../icons';
 import '../../styles/components.css';
 
 // --- Alert.js ---
-// Defect repair (F138 P15): three related hardening fixes.
+// Three related hardening fixes.
 // (1) `onClose` is optional per this component's own contract (many
 //     callers pass an Alert with no dismiss behavior) but was invoked
 //     unconditionally on both the auto-dismiss timer and the close
@@ -172,13 +172,30 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
     },
   }), []);
 
+  // Resets the form whenever the CONTENT of initialValues actually
+  // changes (a different record loaded into the same modal/form), not
+  // merely when the parent re-renders with a new-but-identical object
+  // literal - many callers pass `initialValues={{...}}` inline, which
+  // is a fresh reference every render. Previously this was detected by
+  // JSON.stringify-ing initialValues into the effect's own dependency
+  // array, which re-serializes the entire form on every single render
+  // just to build that one dependency value - appliedInitialValuesRef
+  // does the same "did the content actually change" check with a deep
+  // comparison instead, without the serialization cost, and without
+  // resetting the form on every parent re-render the way comparing
+  // object references directly would.
+  const appliedInitialValuesRef = React.useRef(initialValues);
   React.useEffect(() => {
+    if (deepEqual(appliedInitialValuesRef.current, initialValues)) return;
+    appliedInitialValuesRef.current = initialValues;
     setFormData(initialValues);
     setStep(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initialValues)]);
+  }, [initialValues]);
 
-  const isDirty = JSON.stringify(formData) !== JSON.stringify(initialValues);
+  // Same reasoning as above: a structural (deep) comparison of the
+  // current values against the form's own baseline, instead of
+  // stringifying both on every render just to compare them.
+  const isDirty = !deepEqual(formData, initialValues);
   React.useEffect(() => {
     if (!isDirty) return undefined;
     const handleBeforeUnload = (e) => {
@@ -196,10 +213,16 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
     const map = {};
     fields.forEach((f) => {
       const s = f.section || 'Details';
-      if (!map[s]) { map[s] = []; order.push(s); }
-      map[s].push(f);
+      if (!map[s]) { map[s] = { fields: [], hint: undefined }; order.push(s); }
+      map[s].fields.push(f);
+      // Optional section-level helper text - opt-in only (a field
+      // declares `sectionHint` on itself; the first one found for a
+      // given section wins). Existing forms that never set this keep
+      // rendering exactly as before - `hint` stays undefined and the
+      // heading below renders with no helper text, same as today.
+      if (f.sectionHint && !map[s].hint) map[s].hint = f.sectionHint;
     });
-    return order.map((name) => ({ name, fields: map[name] }));
+    return order.map((name) => ({ name, fields: map[name].fields, hint: map[name].hint }));
   }, [fields]);
 
   const handleChange = (e) => {
@@ -328,6 +351,20 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
 
       {!isReview && (
         <div className="wizard-panel">
+          {/* Decorative section heading (icon + title + divider) - the
+              "section" visual language from the Dark/Light Final Form
+              Modal reference, layered onto the EXISTING per-step field
+              panel rather than changing the wizard's own step/validate/
+              review mechanics below. Only rendered for forms that
+              already declare field sections (see Form's `sections`
+              memo above) - a form with no sections never shows this. */}
+          <div className="modal-section-heading">
+            <span className="modal-section-heading-icon" aria-hidden="true">&#9679;</span>
+            {currentSection.name}
+          </div>
+          {currentSection.hint && (
+            <p className="modal-section-hint">{currentSection.hint}</p>
+          )}
           {currentSection.fields.filter((field) => !field.visibleIf || field.visibleIf(formData)).map((field) => (
             <FieldGroup key={field.name} field={field} formData={formData} errors={errors} handleChange={handleChange} handleBlur={handleBlur} />
           ))}
@@ -368,7 +405,15 @@ const Form = React.forwardRef(({ fields, onSubmit, onFieldChange, loading = fals
 });
 
 // --- Modal.js ---
-const Modal = ({ isOpen, title, children, onClose, size }) => {
+// `footer` is optional (see components.css's .modal-footer, already
+// built as a fixed, non-scrolling bar) - a caller with its own
+// dedicated action row (ConfirmDialog, SendEmailModal) passes its
+// buttons there instead of rendering them inside the scrolling body.
+// Omitting it changes nothing: no footer element is rendered at all,
+// so every existing caller (including the generic Form component's
+// own inline submit button, still rendered as part of its children
+// inside modal-body) continues to work exactly as before.
+const Modal = ({ isOpen, title, children, onClose, size, footer }) => {
   const contentRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const titleId = useId();
@@ -450,6 +495,7 @@ const Modal = ({ isOpen, title, children, onClose, size }) => {
               <button className="modal-close" onClick={onClose} aria-label="Close dialog">&times;</button>
             </div>
             <div className="modal-body">{children}</div>
+            {footer && <div className="modal-footer">{footer}</div>}
           </motion.div>
         </motion.div>
       )}
@@ -645,16 +691,53 @@ const ConfirmDialog = ({
   isOpen, title = 'Confirm', message = 'Are you sure you want to delete this?',
   confirmLabel = 'Delete', onConfirm, onCancel, loading = false,
 }) => (
-  <Modal isOpen={isOpen} title={title} onClose={onCancel}>
+  <Modal
+    isOpen={isOpen} title={title} onClose={onCancel}
+    // Its own dedicated action row - moved into the fixed modal-footer
+    // (previously rendered inline at the bottom of the scrolling body)
+    // so Cancel/Delete stay visible without scrolling regardless of
+    // how long `message` is.
+    footer={(
+      <>
+        <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>Cancel</button>
+        <button type="button" className="btn-danger" onClick={onConfirm} disabled={loading}>
+          {loading ? 'Please wait...' : confirmLabel}
+        </button>
+      </>
+    )}
+  >
     <p className="confirm-dialog-message">{message}</p>
-    <div className="confirm-dialog-actions">
-      <button type="button" className="btn-secondary" onClick={onCancel} disabled={loading}>Cancel</button>
-      <button type="button" className="btn-danger" onClick={onConfirm} disabled={loading}>
-        {loading ? 'Please wait...' : confirmLabel}
-      </button>
-    </div>
   </Modal>
 );
+
+// --- KpiStrip.jsx ---
+// Shared KPI-chip strip for the Orders/Clients/Estimates/Suppliers/
+// Employees/Candidates command-center workspace headers - renders the
+// exact same .kpi-strip/.kpi-pill-* classes each of those pages
+// already used (previously duplicated as OrdersKpiStrip, defined in
+// and imported cross-module from modules/sales/pages/SalesListPages.jsx
+// by four unrelated domains). Moved here, into the project's existing
+// shared-component file, so Suppliers/Employees/Candidates (and every
+// future workspace) depend on this common primitive instead of the
+// Sales page module. Purely presentational - every value in `items`
+// comes from that page's own workspace.summary (server-computed);
+// nothing here is invented/derived. Distinct from the Home dashboard's
+// own module-private KpiStrip in DashboardPage.jsx (same visual
+// pattern, kept local there since it was never shared) - left
+// untouched, out of scope for this extraction.
+function KpiStrip({ items }) {
+  return (
+    <div className="kpi-strip">
+      {items.map((item) => (
+        <div className={`kpi-pill kpi-pill-${item.tone || 'default'}`} key={item.label}>
+          <item.icon className="kpi-pill-icon" />
+          <span className="kpi-pill-label">{item.label}</span>
+          <span className="kpi-pill-value">{item.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // --- KpiCard.jsx ---
 function KpiCard({ label, value, tone = 'default', onClick }) {
@@ -884,7 +967,23 @@ function SendEmailModal({ isOpen, title, previewFn, sendFn, onClose, onSent }) {
   };
 
   return (
-    <Modal isOpen={isOpen} title={title} onClose={onClose}>
+    <Modal
+      isOpen={isOpen} title={title} onClose={onClose}
+      // Send/Cancel moved into the fixed modal-footer (previously
+      // rendered inline at the bottom of the scrolling body, below a
+      // potentially long preview/message) so they stay reachable
+      // without scrolling. Only shown once there's actually a loaded
+      // preview to send/cancel from - nothing while the preview itself
+      // is still loading, same as the body content beside it.
+      footer={!loading && preview ? (
+        <>
+          <button className="btn-secondary" onClick={onClose} disabled={sending}>Cancel</button>
+          <button className="btn-primary" onClick={handleSend} disabled={sending}>
+            {sending ? 'Sending...' : 'Send'}
+          </button>
+        </>
+      ) : null}
+    >
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       {loading && <p>Loading preview...</p>}
       {!loading && preview && (
@@ -913,15 +1012,9 @@ function SendEmailModal({ isOpen, title, previewFn, sendFn, onClose, onSent }) {
               onChange={(e) => setBody(e.target.value)}
             />
           </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
             Attachment: {preview.attachment_filename}
           </p>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button className="btn-primary" onClick={handleSend} disabled={sending}>
-              {sending ? 'Sending...' : 'Send'}
-            </button>
-            <button className="btn-secondary" onClick={onClose} disabled={sending}>Cancel</button>
-          </div>
         </div>
       )}
     </Modal>
@@ -959,4 +1052,4 @@ function SimpleBarChart({ data, labelKey, valueKey, formatValue = (v) => v, colo
   );
 }
 
-export { Alert, Card, Form, Modal, Pagination, Table, ConfirmDialog, KpiCard, MaterialCard, OrderLifecycle, SendEmailModal, SimpleBarChart };
+export { Alert, Card, Form, Modal, Pagination, Table, ConfirmDialog, KpiStrip, KpiCard, MaterialCard, OrderLifecycle, SendEmailModal, SimpleBarChart };

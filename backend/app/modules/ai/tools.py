@@ -170,8 +170,8 @@ def _tool_get_upcoming_holidays(db: Session, args: dict, user_role: str) -> Tupl
 def _tool_get_business_attention(db: Session, args: dict, user_role: str) -> Tuple[str, List[dict]]:
     """"What needs my attention today?" / "Which orders are at risk?" -
     reuses business_risk_service.get_business_risks directly, the same
-    contract the Business Decision Centre API returns (Family P0.49/
-    P0.51) - never a second risk calculation here. user_role gates
+    contract the Business Decision Centre API returns - never a second
+    risk calculation here. user_role gates
     payroll/salary-advance items exactly as the REST endpoint does."""
     from app.modules.reporting.services import get_business_risks
     result = get_business_risks(db, is_privileged=(user_role == "master"))
@@ -246,7 +246,7 @@ def _tool_get_low_stock_materials(db: Session, args: dict, user_role: str) -> Tu
     Purchase History" action links they'd see from the deterministic
     path, not a degraded response.
 
-    Defect repair (F138 P19): previously called `ChatService._low_stock`,
+    Previously called `ChatService._low_stock`,
     but _low_stock is a plain function orchestration.py imports at
     module level (`from app.modules.inventory.services import
     ..., _low_stock, ...`) and references as a bare name inside

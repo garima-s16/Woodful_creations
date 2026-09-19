@@ -22,7 +22,7 @@ start_all.bat     # Windows
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
 
-To run either side alone: `start_backend.sh` / `start_frontend.sh` (and `.bat` equivalents). Migrations run automatically on backend startup.
+To run either side alone (e.g. for backend-only debugging): activate the venv and run `cd backend && uvicorn app.main:app --host :: --port 8000 --reload` for the backend, or `cd frontend && npm start` for the frontend - the same commands `start_all` runs for you. `--host ::` (not `0.0.0.0`) is a dual-stack bind so `localhost` resolves correctly whether the OS resolves it to `::1` or `127.0.0.1` - notably needed on Windows, where `localhost` often resolves to the IPv6 address first. Migrations run automatically on backend startup.
 
 ### First admin user
 

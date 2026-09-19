@@ -33,6 +33,26 @@ def test_material_can_be_created_with_decimal_opening_stock(client, test_user):
     assert float(resp.json()["minimum_stock"]) == 1.5
 
 
+def test_material_create_rejects_unexpected_field(client, test_user):
+    """Security hardening: strict input validation - MaterialCreate
+    now rejects (422) an unrecognized key instead of silently
+    ignoring it."""
+    _login(client, test_user)
+    resp = client.post("/api/materials/", json={
+        "name": "Strict Validation Test Material", "unit": "Kg", "opening_stock": "1", "minimum_stock": "1",
+        "not_a_real_material_field": "value",
+    })
+    assert resp.status_code == 422
+
+
+def test_material_create_rejects_oversized_name(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/materials/", json={
+        "name": "x" * 5000, "unit": "Kg", "opening_stock": "1", "minimum_stock": "1",
+    })
+    assert resp.status_code == 422
+
+
 def test_purchase_of_decimal_quantity_does_not_truncate_stock(client, test_user):
     """The exact scenario the brief names: 2.5 kg of adhesive must
     remain 2.5, never silently become 2."""
@@ -431,6 +451,59 @@ def test_updating_attribute_values_replaces_full_set(client, test_user):
     assert values[0]["value_text"] == "Walnut"
 
 
+def test_updating_attribute_values_does_not_crash_or_duplicate(client, test_user):
+    """Regression test for a confirmed defect: _apply_attribute_values
+    used to db.delete() each existing MaterialAttributeValue directly
+    while it remained a member of material.attribute_values, then
+    flush - the next time anything touched that (never-updated)
+    collection, SQLAlchemy raised
+    InvalidRequestError: Instance '<MaterialAttributeValue ...>' has
+    been deleted. Runs the update twice in a row (reusing the same
+    attribute_definition_id each time, which has a unique constraint
+    with material_id) to also exercise the transient-collision case,
+    and confirms via a fresh GET (not just the PUT response) that
+    exactly one row per attribute survives with no duplicates and the
+    old value is really gone."""
+    _login(client, test_user)
+    category = client.post("/api/material-categories/", json={"name": "No Crash Attr Test Category"}).json()
+    subcategory = client.post("/api/material-categories/subcategories", json={
+        "category_id": category["id"], "name": "No Crash Attr Test Subcategory",
+    }).json()
+    colour_attr = client.post(f"/api/material-categories/subcategories/{subcategory['id']}/attributes", json={
+        "name": "Colour", "data_type": "text",
+    }).json()
+    finish_attr = client.post(f"/api/material-categories/subcategories/{subcategory['id']}/attributes", json={
+        "name": "Finish", "data_type": "text",
+    }).json()
+    material = client.post("/api/materials/", json={
+        "name": "No Crash Attr Test Material", "unit": "Sheets", "opening_stock": 1, "minimum_stock": 1,
+        "subcategory_id": subcategory["id"],
+        "attribute_values": [
+            {"attribute_definition_id": colour_attr["id"], "value_text": "White"},
+            {"attribute_definition_id": finish_attr["id"], "value_text": "Matte"},
+        ],
+    }).json()
+
+    first_update = client.put(f"/api/materials/{material['id']}", json={
+        "attribute_values": [{"attribute_definition_id": colour_attr["id"], "value_text": "Walnut"}],
+    })
+    assert first_update.status_code == 200
+
+    second_update = client.put(f"/api/materials/{material['id']}", json={
+        "attribute_values": [{"attribute_definition_id": colour_attr["id"], "value_text": "Oak"}],
+    })
+    assert second_update.status_code == 200
+    values = second_update.json()["attribute_values"]
+    assert len(values) == 1  # Finish was dropped (full-set replace); Colour's old rows didn't pile up
+    assert values[0]["attribute_definition_id"] == colour_attr["id"]
+    assert values[0]["value_text"] == "Oak"
+
+    # Confirm the persisted state (not just the response body) agrees.
+    fetched = client.get(f"/api/materials/{material['id']}").json()
+    assert len(fetched["attribute_values"]) == 1
+    assert fetched["attribute_values"][0]["value_text"] == "Oak"
+
+
 def test_attribute_value_returns_real_name_not_just_id(client, test_user):
     """Regression test - the API used to only return
     attribute_definition_id, forcing the frontend to show a raw
@@ -701,6 +774,112 @@ def test_issue_cannot_exceed_specific_location_balance(client, test_user):
         "unit": "Sheets", "location_id": rack_a["id"],
     })
     assert resp.status_code == 400
+
+
+def test_issue_without_location_checks_resolved_primary_location(client, test_user):
+    """Item 5 (F): omitting location_id must validate against the
+    RESOLVED location (the material's own primary location_id) exactly
+    as strictly as an explicitly-supplied one - not merely against
+    material-wide total stock."""
+    _login(client, test_user)
+    rack_a, rack_b = _make_locations(client)
+    material = client.post("/api/materials/", json={
+        "name": "Issue No-Location Overdraw Material", "unit": "Sheets", "opening_stock": 0, "minimum_stock": 1,
+    }).json()
+    supplier_id = client.post("/api/suppliers/", json={"name": "No-Location Overdraw Supplier"}).json()["id"]
+    # First receipt (rack_a) becomes the material's primary location_id;
+    # a second receipt at rack_b adds material-wide stock elsewhere.
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_a["id"],
+    })
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_b["id"],
+    })
+    assert client.get(f"/api/materials/{material['id']}").json()["location_id"] == rack_a["id"]
+
+    # Material-wide stock is 20 (well over 15), but rack_a - the
+    # resolved (primary) location - only has 10. Omitting location_id
+    # entirely must still be rejected.
+    resp = client.post("/api/issues/", json={
+        "date": "2026-08-19T00:00:00", "material_id": material["id"], "quantity_issued": "15",
+        "unit": "Sheets",
+    })
+    assert resp.status_code == 400
+
+
+def test_issue_without_location_persists_resolved_location(client, test_user):
+    """Item 6 (G): the Issue record itself must store the RESOLVED
+    location, not a null data.location_id, when the location was
+    defaulted from the material's own primary location."""
+    _login(client, test_user)
+    rack_a, _ = _make_locations(client)
+    material = client.post("/api/materials/", json={
+        "name": "Issue No-Location Persist Material", "unit": "Sheets", "opening_stock": 0, "minimum_stock": 1,
+    }).json()
+    supplier_id = client.post("/api/suppliers/", json={"name": "No-Location Persist Supplier"}).json()["id"]
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_a["id"],
+    })
+
+    resp = client.post("/api/issues/", json={
+        "date": "2026-08-19T00:00:00", "material_id": material["id"], "quantity_issued": "4",
+        "unit": "Sheets",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["location_id"] == rack_a["id"]
+
+
+def test_adjustment_without_location_checks_resolved_primary_location(client, test_user):
+    """Item 7 (H): same resolved-location validation gap as issues,
+    for stock adjustments."""
+    _login(client, test_user)
+    rack_a, rack_b = _make_locations(client)
+    material = client.post("/api/materials/", json={
+        "name": "Adjustment No-Location Overdraw Material", "unit": "Sheets", "opening_stock": 0, "minimum_stock": 1,
+    }).json()
+    supplier_id = client.post("/api/suppliers/", json={"name": "Adj No-Location Overdraw Supplier"}).json()["id"]
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_a["id"],
+    })
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_b["id"],
+    })
+
+    # Material-wide stock is 20, but rack_a (the resolved primary
+    # location) only has 10 - a -15 adjustment with no location_id must
+    # still be rejected rather than only checked against the 20 total.
+    resp = client.post("/api/stock/adjustments", json={
+        "material_id": material["id"], "adjustment_type": "Damage", "quantity_delta": "-15",
+        "reason": "Resolved-location guard test",
+    })
+    assert resp.status_code == 400
+
+
+def test_adjustment_without_location_persists_resolved_location(client, test_user):
+    """Item 8 (I): the StockAdjustment record must store the RESOLVED
+    location, not a null data.location_id."""
+    _login(client, test_user)
+    rack_a, _ = _make_locations(client)
+    material = client.post("/api/materials/", json={
+        "name": "Adjustment No-Location Persist Material", "unit": "Sheets", "opening_stock": 0, "minimum_stock": 1,
+    }).json()
+    supplier_id = client.post("/api/suppliers/", json={"name": "Adj No-Location Persist Supplier"}).json()["id"]
+    client.post("/api/purchases/", json={
+        "date": "2026-08-19T00:00:00", "supplier_id": supplier_id, "material_id": material["id"],
+        "quantity": "10", "unit": "Sheets", "rate": "100", "gst_percent": "0", "location_id": rack_a["id"],
+    })
+
+    resp = client.post("/api/stock/adjustments", json={
+        "material_id": material["id"], "adjustment_type": "Damage", "quantity_delta": "-2",
+        "reason": "Resolved-location persistence test",
+    })
+    assert resp.status_code == 201
+    assert resp.json()["location_id"] == rack_a["id"]
 
 
 def test_transfer_moves_quantity_between_locations(client, test_user):
@@ -1151,6 +1330,93 @@ def test_cannot_delete_material_with_issue_history(client, test_user):
     resp = client.delete(f"/api/materials/{material['id']}")
     assert resp.status_code == 400
     assert "issue history" in resp.json()["detail"].lower()
+
+
+def test_cannot_delete_material_referenced_by_production_job(client, test_user):
+    """Item 2 (B): ProductionJob.material_id was previously an
+    uncaught FK reference - deleting a material still referenced by a
+    production job must be blocked the same way purchase/issue history
+    already is."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Delete Guard Production Job Material", "unit": "Sheets", "opening_stock": "10", "minimum_stock": "1",
+    }).json()
+    client.post("/api/production-jobs/", json={
+        "date": "2026-08-19T00:00:00", "operation": "Cutting", "material_id": material["id"],
+    })
+
+    resp = client.delete(f"/api/materials/{material['id']}")
+    assert resp.status_code == 400
+    assert "production job" in resp.json()["detail"].lower()
+
+
+def test_cannot_delete_material_referenced_by_cutting_requirement(client, test_user):
+    """Item 2 (C): CuttingRequirement.material_id was previously an
+    uncaught FK reference."""
+    _login(client, test_user)
+    job = client.post("/api/production-jobs/", json={"date": "2026-08-19T00:00:00", "operation": "Cutting"}).json()
+    material = client.post("/api/materials/", json={
+        "name": "Delete Guard Cutting Req Material", "unit": "Sheets", "opening_stock": "10", "minimum_stock": "1",
+    }).json()
+    client.post("/api/cutting-requirements/", json={
+        "production_job_id": job["id"], "material_id": material["id"], "part_name": "Side Panel",
+        "quantity": 2, "length_mm": "500", "width_mm": "300",
+    })
+
+    resp = client.delete(f"/api/materials/{material['id']}")
+    assert resp.status_code == 400
+    assert "cutting requirement" in resp.json()["detail"].lower()
+
+
+def test_material_unit_locked_after_transaction_history(client, test_user):
+    """Item 3: once real transaction history exists (a purchase here),
+    the unit can no longer be changed - historical quantities are
+    recorded in the original unit."""
+    _login(client, test_user)
+    supplier = client.post("/api/suppliers/", json={"name": "Unit Lock Supplier"}).json()
+    material = client.post("/api/materials/", json={
+        "name": "Unit Lock Material", "unit": "Sheets", "opening_stock": "0", "minimum_stock": "1",
+    }).json()
+    client.post("/api/purchases/", json={
+        "date": "2026-08-17T00:00:00", "supplier_id": supplier["id"], "material_id": material["id"],
+        "quantity": "5", "unit": "Sheets", "rate": "500.00", "gst_percent": "18", "payment_status": "Paid",
+    })
+
+    resp = client.put(f"/api/materials/{material['id']}", json={"unit": "Kg"})
+    assert resp.status_code == 409
+    assert "unit" in resp.json()["detail"].lower()
+    assert client.get(f"/api/materials/{material['id']}").json()["unit"] == "Sheets"
+
+
+def test_material_unit_still_editable_with_no_history(client, test_user):
+    """The other half of item 3 - a material with no transaction
+    history yet must remain freely editable."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Unit Still Editable Material", "unit": "Sheets", "opening_stock": "0", "minimum_stock": "1",
+    }).json()
+
+    resp = client.put(f"/api/materials/{material['id']}", json={"unit": "Kg"})
+    assert resp.status_code == 200
+    assert resp.json()["unit"] == "Kg"
+
+
+def test_material_average_rate_not_directly_editable(client, test_user):
+    """Item 4: average_rate is maintained exclusively by purchase
+    weighted-average calculations - a normal material update must never
+    be able to overwrite it directly."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "Average Rate Guard Material", "unit": "Sheets", "opening_stock": "0",
+        "minimum_stock": "1", "average_rate": "50",
+    }).json()
+    assert float(material["average_rate"]) == 50.0
+
+    resp = client.put(f"/api/materials/{material['id']}", json={"average_rate": "999"})
+    assert resp.status_code == 200
+    # The field is silently ignored (not a validation error) on update -
+    # same as any other field MaterialUpdate simply doesn't declare.
+    assert float(resp.json()["average_rate"]) == 50.0
 
 
 def test_master_can_delete_unreferenced_supplier(client, test_user):
@@ -2620,13 +2886,46 @@ def test_at_risk_orders_excludes_order_with_sufficient_stock(client, test_user):
     assert order["id"] not in order_ids
 
 
+def test_at_risk_orders_ranked_by_severity_not_creation_order(client, test_user):
+    """calculate_at_risk_orders must return the most materially at-risk
+    order (highest total shortage) first, regardless of which order
+    was created first - proving the result ordering, not just its
+    per-order figures, is still correct."""
+    _login(client, test_user)
+    material = client.post("/api/materials/", json={
+        "name": "At Risk Severity Ranked Sheet", "unit": "Sheets", "opening_stock": "5", "minimum_stock": "1",
+    }).json()
+    product = client.post("/api/products/", json={
+        "name": "At Risk Severity Ranked Product", "unit": "Piece",
+        "materials_used": [{"material_id": material["id"], "quantity_required": "3"}],
+    }).json()
+    client_small = _make_client(client, "9d")
+    client_big = _make_client(client, "9e")
+    # Created first, but only a small shortage (needs 3, 5 available
+    # before either order - contested down to a small remainder).
+    small_shortage_order = client.post("/api/orders/", json={
+        "client_id": client_small, "order_date": "2026-08-19T00:00:00",
+        "items": [{"description": "Item", "quantity": "1", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+    # Created second, but asks for far more than remains - the larger shortage.
+    big_shortage_order = client.post("/api/orders/", json={
+        "client_id": client_big, "order_date": "2026-08-20T00:00:00",
+        "items": [{"description": "Item", "quantity": "5", "unit": "Piece", "rate": "5000", "product_id": product["id"]}],
+    }).json()
+
+    resp = client.get("/api/dashboard/at-risk-orders")
+    assert resp.status_code == 200
+    order_ids = [row["order_id"] for row in resp.json()["orders"]]
+    assert order_ids.index(big_shortage_order["id"]) < order_ids.index(small_shortage_order["id"])
+
+
 def test_at_risk_orders_requires_auth(client):
     resp = client.get("/api/dashboard/at-risk-orders")
     assert resp.status_code == 401
 
 
 def test_material_requirement_recalculates_when_order_quantity_changes(client, test_user):
-    """P0.1 section 8 (Configuration Change Impact) - changing an
+    """Configuration Change Impact - changing an
     order's item quantity must immediately change its material
     requirement, with no manual recalculation step and no stale
     value, since this is computed fresh from current order_items/BOM/
@@ -2659,7 +2958,7 @@ def test_material_requirement_recalculates_when_order_quantity_changes(client, t
     assert float(after["shortage"]) == 5.0
 
 
-# --- Family 137, Step 2: Dead-Stock / Material-to-Design Matching (feature 7) ---
+# --- Dead-Stock / Material-to-Design Matching (feature 7) ---
 
 def _create_dead_stock_material(client, category="Dead Stock Test Category", stock="20"):
     resp = client.post("/api/materials/", json={

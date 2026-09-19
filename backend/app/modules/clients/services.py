@@ -18,7 +18,14 @@ from sqlalchemy import text as sa_text
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# Security-hardening constants (strict input validation pass) - see the
+# identical convention/rationale in app/modules/sales/schemas.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_IMPORT_ROWS = 5000  # generous over any realistic single Excel import batch
 from app.shared_imports import enforce_workbook_row_limit
 from app.shared import write_sheet, write_instructions_sheet, add_dropdown_validation
 from app.shared import validate_phone, validate_email
@@ -26,7 +33,14 @@ from app.shared import (
     format_inr, get_styles, build_header, section_table, line_items_table, build_footer_text,
     pdf_text, fmt_date, mask_phone,
 )
-from app.modules.clients.models import Client, CLIENT_TYPES, CLIENT_STATUSES, ACTIVITY_TYPES
+from app.modules.clients.models import (
+    Client,
+    ClientActivity,
+    ClientDocument,
+    CLIENT_TYPES,
+    CLIENT_STATUSES,
+    ACTIVITY_TYPES,
+)
 from app.platform.ids import generate_unique_code, generate_business_id
 
 
@@ -35,7 +49,7 @@ from app.platform.ids import generate_unique_code, generate_business_id
 
 class ClientBase(BaseModel):
     client_code: Optional[str] = None  # server-generated on create, ignored if supplied
-    name: str
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     # Mandatory in the Client form and Excel importer, which both
     # always supply it and never let a user skip past it. A default is
     # still kept here (rather than making this field itself required
@@ -43,28 +57,30 @@ class ClientBase(BaseModel):
     # this field existed keep working instead of failing with a hard
     # 422. Any value that IS supplied is still validated.
     client_type: str = "Individual"
-    contact_person: Optional[str] = None
-    alternate_phone: Optional[str] = None
+    contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    alternate_phone: Optional[str] = Field(default=None, max_length=20)
     # Mandatory - a client record with no way to reach them isn't
     # usable. Must be EXACTLY 10 digits - no country code, no
     # separators. Every rejection reason (missing, wrong length,
     # non-numeric, formatted) uses the exact same message, by explicit
     # requirement: "Please enter valid mobile number".
-    phone: str
-    email: Optional[str] = None
-    address: Optional[str] = None
-    site_address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-    gstin: Optional[str] = None
+    phone: str = Field(..., max_length=20)
+    email: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    site_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    city: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    state: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    pincode: Optional[str] = Field(default=None, max_length=20)
+    gstin: Optional[str] = Field(default=None, max_length=20)
     status: str = "Active"
-    lead_source: Optional[str] = None
+    lead_source: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     first_contact_date: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class ClientCreate(ClientBase):
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("client_type")
     @classmethod
     def client_type_must_be_valid(cls, v: str) -> str:
@@ -105,21 +121,23 @@ class ClientCreate(ClientBase):
 
 
 class ClientUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=_SHORT_TEXT_MAX)
     client_type: Optional[str] = None
-    contact_person: Optional[str] = None
-    phone: Optional[str] = None
-    alternate_phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    site_address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-    gstin: Optional[str] = None
+    contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
+    alternate_phone: Optional[str] = Field(default=None, max_length=20)
+    email: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    site_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    city: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    state: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    pincode: Optional[str] = Field(default=None, max_length=20)
+    gstin: Optional[str] = Field(default=None, max_length=20)
     status: Optional[str] = None
-    lead_source: Optional[str] = None
-    remarks: Optional[str] = None
+    lead_source: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("client_type")
     @classmethod
@@ -189,12 +207,14 @@ class ClientActivityBase(BaseModel):
     client_id: int
     activity_type: str
     date: datetime
-    summary: str
-    logged_by: Optional[str] = None
+    summary: str = Field(..., max_length=_LONG_TEXT_MAX)
+    logged_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     follow_up_date: Optional[datetime] = None
 
 
 class ClientActivityCreate(ClientActivityBase):
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("activity_type")
     @classmethod
     def activity_type_must_be_valid(cls, v: str) -> str:
@@ -207,9 +227,11 @@ class ClientActivityCreate(ClientActivityBase):
 class ClientActivityUpdate(BaseModel):
     activity_type: Optional[str] = None
     date: Optional[datetime] = None
-    summary: Optional[str] = None
-    logged_by: Optional[str] = None
+    summary: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    logged_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     follow_up_date: Optional[datetime] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("activity_type")
     @classmethod
@@ -259,9 +281,18 @@ class ClientEmailPreview(BaseModel):
 
 
 class ClientEmailSendRequest(BaseModel):
-    recipient_email: str
-    subject: str
-    body: str
+    recipient_email: str = Field(..., max_length=_SHORT_TEXT_MAX)
+    subject: str = Field(..., max_length=_MEDIUM_TEXT_MAX)
+    body: str = Field(..., max_length=20000)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("recipient_email")
+    @classmethod
+    def recipient_email_must_be_valid(cls, v: str) -> str:
+        if not validate_email(v):
+            raise ValueError("Enter a valid email address.")
+        return v
 
 
 class ClientEmailSendResult(BaseModel):
@@ -274,10 +305,12 @@ class ClientProductRateBase(BaseModel):
     product_id: Optional[int] = None  # None = client-wide default margin, applies to every product for this client
     margin_percent: Optional[Decimal] = None
     fixed_selling_price: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class ClientProductRateCreate(ClientProductRateBase):
+    model_config = ConfigDict(extra="forbid")
+
     @model_validator(mode="after")
     def exactly_one_override_type(self):
         # A customer override is either a margin adjustment or a
@@ -296,7 +329,9 @@ class ClientProductRateCreate(ClientProductRateBase):
 class ClientProductRateUpdate(BaseModel):
     margin_percent: Optional[Decimal] = None
     fixed_selling_price: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("margin_percent")
     @classmethod
@@ -331,6 +366,8 @@ class PricingResolveRequest(BaseModel):
     client_id: Optional[int] = None
     estimate_id: Optional[int] = None
     explicit_override: Optional[Decimal] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("explicit_override")
     @classmethod
@@ -389,20 +426,20 @@ class ClientImportCommitRow(BaseModel):
     it's counted as "existing client matched" and no new Client ID is
     generated, per the Client Recognition rule. A row without a match
     is only created if the caller explicitly leaves skip=False for it."""
-    name: str
+    name: str = Field(..., max_length=_SHORT_TEXT_MAX)
     client_type: Optional[str] = None
-    contact_person: Optional[str] = None
-    phone: Optional[str] = None
-    alternate_phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    site_address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-    gstin: Optional[str] = None
-    lead_source: Optional[str] = None
-    remarks: Optional[str] = None
+    contact_person: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    phone: Optional[str] = Field(default=None, max_length=20)
+    alternate_phone: Optional[str] = Field(default=None, max_length=20)
+    email: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    site_address: Optional[str] = Field(default=None, max_length=_MEDIUM_TEXT_MAX)
+    city: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    state: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    pincode: Optional[str] = Field(default=None, max_length=20)
+    gstin: Optional[str] = Field(default=None, max_length=20)
+    lead_source: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     matched_client_id: Optional[int] = None
     skip: bool = False  # user chose not to import this row (e.g. unresolved duplicate)
 
@@ -431,7 +468,15 @@ class ClientImportCommitRow(BaseModel):
 
 
 class ClientImportCommitRequest(BaseModel):
-    rows: List[ClientImportCommitRow]
+    # Previously unbounded - a single commit request could carry an
+    # arbitrarily large `rows` array, forcing unbounded per-row DB
+    # work (a lookup plus a potential insert each) in one request.
+    # Bounded generously above any realistic single Excel import batch
+    # (enforce_workbook_row_limit already caps the PREVIEW step's
+    # workbook size - see app/shared_imports.py - this bound keeps the
+    # separate COMMIT step, which takes raw JSON rather than a
+    # re-uploaded file, from being used to bypass that cap).
+    rows: List[ClientImportCommitRow] = Field(..., max_length=_MAX_IMPORT_ROWS)
 
 
 class ClientImportCommitResult(BaseModel):
@@ -641,7 +686,7 @@ def parse_uploaded_workbook(file_bytes: bytes) -> List[dict]:
             col_index = resolved
             break
     if header_row_idx is None:
-        # Defect repair (F138 P21 API-contract audit): this message
+        # This message
         # named only "Client Name and Phone" even though
         # REQUIRED_COLUMNS (and _resolve_header_row's own check above)
         # also requires "Client Type *" - a file missing only that
@@ -967,7 +1012,7 @@ def generate_client_pdf(client: Client, is_privileged: bool) -> BytesIO:
 
 
 def client_relationship_timeline(db: Session, client_id: int, limit: int = 200, is_privileged: bool = True) -> dict:
-    """Family 137 feature 5 - Unified Client Relationship Timeline. A
+    """Unified Client Relationship Timeline. A
     presentation/aggregation layer only, exactly as the spec requires
     ("do NOT create a redundant timeline table... do not duplicate
     source records") - every entry below is read from an existing

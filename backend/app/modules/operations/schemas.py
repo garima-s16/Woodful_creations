@@ -1,29 +1,37 @@
 """Operations domain Pydantic schemas."""
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from datetime import time
 from app.modules.operations.models import DailyTask, TaskComment, WorkCentre, ProductionJob, ProductionOperation, Issue, Milestone, ProjectExpense, CuttingRequirement, DAILY_TASK_STATUSES, DAILY_TASK_PRIORITIES, PRODUCTION_JOB_STATUSES, PRODUCTION_OPERATION_STATUSES
 
+# Security-hardening constants (strict input validation pass) - same
+# convention as app/modules/sales/schemas.py and
+# app/modules/clients/services.py.
+_SHORT_TEXT_MAX = 200
+_MEDIUM_TEXT_MAX = 500
+_LONG_TEXT_MAX = 5000
+_MAX_LINE_ITEMS = 500
+
 
 class DailyTaskBase(BaseModel):
-    task_code: Optional[str] = None  # server-generated on create, ignored if supplied
+    task_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
     date: datetime
     employee_id: int
     order_id: Optional[int] = None
     order_item_id: Optional[int] = None
-    task_description: str
-    task_category: Optional[str] = None
+    task_description: str = Field(..., min_length=1, max_length=_LONG_TEXT_MAX)
+    task_category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     priority: Optional[str] = None
     planned_start: Optional[time] = None
     planned_end: Optional[time] = None
     status: str = "TO DO"
     completion_percent: int = 0
-    checked_by: Optional[str] = None
-    delay_reason: Optional[str] = None
-    remarks: Optional[str] = None
-    created_by: Optional[str] = None
+    checked_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    delay_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    created_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     parent_task_id: Optional[int] = None
     # Optional on create - when omitted and order_id is set, the API
     # inherits the Order's delivery_date automatically.
@@ -34,6 +42,11 @@ class DailyTaskBase(BaseModel):
 
 
 class DailyTaskCreate(DailyTaskBase):
+    # Request body, not the shared Base (which DailyTaskResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("status")
     @classmethod
     def status_must_be_valid(cls, v: str) -> str:
@@ -69,17 +82,19 @@ class DailyTaskUpdate(BaseModel):
     order_id: Optional[int] = None
     order_item_id: Optional[int] = None
     date: Optional[datetime] = None
-    task_description: Optional[str] = None
-    task_category: Optional[str] = None
+    task_description: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    task_category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     priority: Optional[str] = None
     planned_start: Optional[time] = None
     planned_end: Optional[time] = None
     due_date: Optional[datetime] = None
     status: Optional[str] = None
     completion_percent: Optional[int] = None
-    checked_by: Optional[str] = None
-    delay_reason: Optional[str] = None
-    remarks: Optional[str] = None
+    checked_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    delay_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("status")
     @classmethod
@@ -143,12 +158,14 @@ class CompleteAndAssignNext(BaseModel):
     inherited from the task being completed unless explicitly overridden
     here."""
     next_employee_id: int
-    next_task_description: str
+    next_task_description: str = Field(..., min_length=1, max_length=_LONG_TEXT_MAX)
     next_due_date: Optional[datetime] = None
     next_order_id: Optional[int] = None
     next_order_item_id: Optional[int] = None
     next_priority: Optional[str] = None
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("next_priority")
     @classmethod
@@ -162,7 +179,9 @@ class CompleteAndAssignNext(BaseModel):
 
 
 class TaskCommentCreate(BaseModel):
-    text: str
+    text: str = Field(..., min_length=1, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class TaskCommentResponse(BaseModel):
@@ -177,24 +196,29 @@ class TaskCommentResponse(BaseModel):
 
 
 class ProductionJobBase(BaseModel):
-    job_code: Optional[str] = None  # server-generated on create, ignored if supplied
+    job_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
     date: datetime
-    machine: Optional[str] = None
+    machine: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     employee_id: Optional[int] = None
     order_id: Optional[int] = None
-    operation: Optional[str] = None
-    stage: Optional[str] = None
+    operation: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    stage: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     material_id: Optional[int] = None
     planned_qty: int = 0
     completed_qty: int = 0
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     status: str = "Not Started"
-    remarks: Optional[str] = None
-    blocker_reason: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    blocker_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class ProductionJobCreate(ProductionJobBase):
+    # Request body, not the shared Base (which ProductionJobResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("planned_qty")
     @classmethod
     def planned_qty_not_negative(cls, v: int) -> int:
@@ -229,9 +253,11 @@ class ProductionJobCreate(ProductionJobBase):
 class ProductionJobUpdate(BaseModel):
     completed_qty: Optional[int] = None
     status: Optional[str] = None
-    stage: Optional[str] = None
-    remarks: Optional[str] = None
-    blocker_reason: Optional[str] = None
+    stage: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    blocker_reason: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("completed_qty")
     @classmethod
@@ -265,9 +291,9 @@ class ProductionJobResponse(ProductionJobBase):
 class ProductionOperationBase(BaseModel):
     production_job_id: int
     sequence: int = 1
-    operation_name: str
-    description: Optional[str] = None
-    resource: Optional[str] = None
+    operation_name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    description: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    resource: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     work_centre_id: Optional[int] = None
     estimated_duration_minutes: Optional[int] = None
     actual_duration_minutes: Optional[int] = None
@@ -279,6 +305,11 @@ class ProductionOperationBase(BaseModel):
 
 
 class ProductionOperationCreate(ProductionOperationBase):
+    # Request body, not the shared Base (which ProductionOperationResponse
+    # also extends) - rejecting unexpected keys here has no effect on what
+    # a response can contain.
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("sequence")
     @classmethod
     def sequence_must_be_positive(cls, v: int) -> int:
@@ -305,10 +336,12 @@ class ProductionOperationCreate(ProductionOperationBase):
 class ProductionOperationUpdate(BaseModel):
     status: Optional[str] = None
     actual_duration_minutes: Optional[int] = None
-    resource: Optional[str] = None
+    resource: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     employee_id: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("actual_duration_minutes")
     @classmethod
@@ -340,11 +373,13 @@ class ProductionOperationResponse(ProductionOperationBase):
 
 
 class WorkCentreCreate(BaseModel):
-    name: str
-    type: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     is_active: bool = True
     capacity_hours_per_day: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("capacity_hours_per_day")
     @classmethod
@@ -355,11 +390,13 @@ class WorkCentreCreate(BaseModel):
 
 
 class WorkCentreUpdate(BaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    type: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     is_active: Optional[bool] = None
     capacity_hours_per_day: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("capacity_hours_per_day")
     @classmethod
@@ -385,22 +422,25 @@ class WorkCentreResponse(BaseModel):
 
 
 class IssueBase(BaseModel):
-    issue_code: Optional[str] = None  # server-generated on create, ignored if supplied
+    issue_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
     date: datetime
     order_id: Optional[int] = None
     material_id: int
     quantity_issued: Decimal
-    unit: str
-    issued_to: Optional[str] = None
-    department: Optional[str] = None
-    purpose: Optional[str] = None
-    approved_by: Optional[str] = None
-    remarks: Optional[str] = None
+    unit: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    issued_to: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    department: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    purpose: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    approved_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
     location_id: Optional[int] = None  # which location to issue from; falls back to the material's primary location if omitted
 
 
 class IssueCreate(IssueBase):
-    pass
+    # Request body, not the shared Base (which IssueResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
 
 
 class IssueResponse(IssueBase):
@@ -415,20 +455,25 @@ class IssueResponse(IssueBase):
 
 class MilestoneBase(BaseModel):
     order_id: int
-    name: str
+    name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     target_date: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class MilestoneCreate(MilestoneBase):
-    pass
+    # Request body, not the shared Base (which MilestoneResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
 
 
 class MilestoneUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     target_date: Optional[datetime] = None
     completed_date: Optional[datetime] = None
-    remarks: Optional[str] = None
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class MilestoneResponse(MilestoneBase):
@@ -443,18 +488,23 @@ class MilestoneResponse(MilestoneBase):
 
 
 class ProjectExpenseBase(BaseModel):
-    expense_code: Optional[str] = None  # server-generated on create, ignored if supplied
+    expense_code: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)  # server-generated on create, ignored if supplied
     date: datetime
     order_id: int
-    category: str
-    description: Optional[str] = None
-    paid_to: Optional[str] = None
+    category: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
+    description: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    paid_to: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     amount: Decimal
-    approved_by: Optional[str] = None
-    remarks: Optional[str] = None
+    approved_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class ProjectExpenseCreate(ProjectExpenseBase):
+    # Request body, not the shared Base (which ProjectExpenseResponse also
+    # extends) - rejecting unexpected keys here has no effect on what a
+    # response can contain.
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("amount")
     @classmethod
     def amount_must_be_positive(cls, v: Decimal) -> Decimal:
@@ -464,12 +514,14 @@ class ProjectExpenseCreate(ProjectExpenseBase):
 
 
 class ProjectExpenseUpdate(BaseModel):
-    category: Optional[str] = None
-    description: Optional[str] = None
-    paid_to: Optional[str] = None
+    category: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    description: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+    paid_to: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     amount: Optional[Decimal] = None
-    approved_by: Optional[str] = None
-    remarks: Optional[str] = None
+    approved_by: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
+    remarks: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("amount")
     @classmethod
@@ -493,18 +545,23 @@ class CuttingRequirementBase(BaseModel):
     production_job_id: int
     product_id: Optional[int] = None
     material_id: int
-    part_name: str
+    part_name: str = Field(..., min_length=1, max_length=_SHORT_TEXT_MAX)
     quantity: int = 1
     length_mm: Decimal
     width_mm: Decimal
     thickness_mm: Optional[Decimal] = None
-    grain_direction: Optional[str] = None
+    grain_direction: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     rotation_allowed: bool = True
     kerf_mm: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
 
 
 class CuttingRequirementCreate(CuttingRequirementBase):
+    # Request body, not the shared Base (which CuttingRequirementResponse
+    # also extends) - rejecting unexpected keys here has no effect on what
+    # a response can contain.
+    model_config = ConfigDict(extra="forbid")
+
     @field_validator("quantity")
     @classmethod
     def quantity_must_be_positive(cls, v: int) -> int:
@@ -528,15 +585,17 @@ class CuttingRequirementCreate(CuttingRequirementBase):
 
 
 class CuttingRequirementUpdate(BaseModel):
-    part_name: Optional[str] = None
+    part_name: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     quantity: Optional[int] = None
     length_mm: Optional[Decimal] = None
     width_mm: Optional[Decimal] = None
     thickness_mm: Optional[Decimal] = None
-    grain_direction: Optional[str] = None
+    grain_direction: Optional[str] = Field(default=None, max_length=_SHORT_TEXT_MAX)
     rotation_allowed: Optional[bool] = None
     kerf_mm: Optional[Decimal] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=_LONG_TEXT_MAX)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("quantity")
     @classmethod

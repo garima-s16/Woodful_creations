@@ -44,6 +44,11 @@ echo Creating Python virtual environment for backend...
 if not exist "backend\venv" (
     cd backend
     python -m venv venv
+    if errorlevel 1 (
+        echo ERROR: Failed to create the Python virtual environment.
+        cd ..
+        exit /b 1
+    )
     cd ..
     echo Virtual environment created
 ) else (
@@ -51,11 +56,29 @@ if not exist "backend\venv" (
 )
 echo.
 
-REM Activate virtual environment and install dependencies
+REM Activate virtual environment and install dependencies. Previously
+REM none of these three steps checked errorlevel at all - batch does not
+REM abort on a failing command the way bash's `set -e` does, so a failed
+REM pip install (or venv activation) here silently fell through all the
+REM way to "Setup Complete!" below with a half-installed environment.
 echo Installing backend dependencies...
 call backend\venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo ERROR: Failed to activate the Python virtual environment.
+    exit /b 1
+)
 pip install --upgrade pip setuptools wheel
+if errorlevel 1 (
+    echo ERROR: Failed to upgrade pip/setuptools/wheel.
+    call backend\venv\Scripts\deactivate.bat
+    exit /b 1
+)
 pip install -r backend\requirements.txt
+if errorlevel 1 (
+    echo ERROR: Failed to install backend dependencies from backend\requirements.txt.
+    call backend\venv\Scripts\deactivate.bat
+    exit /b 1
+)
 call backend\venv\Scripts\deactivate.bat
 echo Backend dependencies installed
 echo.
@@ -78,7 +101,23 @@ if not exist "backend\.env" (
     if exist "backend\.env.example" (
         copy backend\.env.example backend\.env
         echo Created backend\.env from template
-        echo IMPORTANT: Please edit backend\.env with your configuration
+        REM SECRET_KEY ships empty in .env.example (never a real secret in
+        REM a committed file) - but app\platform\config.py requires a real
+        REM 32+ char value just to import the app at all, which the
+        REM migration step immediately below does. Left empty, "alembic
+        REM upgrade head" below fails on every fresh setup before a user
+        REM ever gets a chance to edit the file. Auto-generate a real
+        REM local-dev-only secret now (Python is already required above),
+        REM the same way .env.example's own comment tells a person to by
+        REM hand - only runs inside this "doesn't exist yet" branch, so it
+        REM can never overwrite a value someone already set.
+        python -c "import re, secrets, pathlib; p = pathlib.Path('backend/.env'); t = p.read_text(); t = re.sub(r'(?m)^SECRET_KEY=.*$', 'SECRET_KEY=' + secrets.token_urlsafe(48), t); p.write_text(t)"
+        if errorlevel 1 (
+            echo ERROR: Failed to generate a SECRET_KEY into backend\.env.
+            exit /b 1
+        )
+        echo Generated a local-development SECRET_KEY in backend\.env
+        echo IMPORTANT: Please review backend\.env - the SECRET_KEY above is fine for local dev only; every other value (database, email, AI keys) still needs your own configuration
     )
 ) else (
     echo backend\.env already exists
@@ -96,8 +135,15 @@ echo Running database migrations...
 call backend\venv\Scripts\activate.bat
 cd backend
 alembic upgrade head
+REM Previously this only printed a WARNING on failure and fell straight
+REM through to "Setup Complete!" below with no tables in the database.
+REM A failed migration must stop setup here, with a non-zero exit code.
 if errorlevel 1 (
-    echo WARNING: Migrations failed - check backend\.env's DATABASE_URL and SECRET_KEY, then run "cd backend ^&^& alembic upgrade head" manually.
+    echo.
+    echo ERROR: Database migration failed. Check backend\.env's DATABASE_URL and SECRET_KEY, then run "cd backend ^&^& alembic upgrade head" manually to see the full error.
+    cd ..
+    call backend\venv\Scripts\deactivate.bat
+    exit /b 1
 ) else (
     echo Migrations applied
 )
@@ -118,6 +164,11 @@ if not exist "frontend\node_modules" (
         ) else (
             cd frontend
             call npm install
+            if errorlevel 1 (
+                echo ERROR: Failed to install frontend dependencies ^(npm install^).
+                cd ..
+                exit /b 1
+            )
             cd ..
             echo Frontend dependencies installed
         )
@@ -137,13 +188,10 @@ echo 1. Configure database (optional - can use SQLite for testing):
 echo    - Edit backend\.env with your PostgreSQL credentials
 echo    - Or leave as-is to use SQLite
 echo.
-echo 2. Start the backend server:
-echo    - Run: start_backend.bat
+echo 2. Start both servers:
+echo    - Run: start_all.bat
 echo.
-echo 3. In another terminal, start the frontend:
-echo    - Run: start_frontend.bat
-echo.
-echo 4. Access the application:
+echo 3. Access the application:
 echo    Backend API: http://localhost:8000
 echo    API Docs: http://localhost:8000/docs
 echo    Frontend: http://localhost:3000

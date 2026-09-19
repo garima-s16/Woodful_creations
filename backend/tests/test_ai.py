@@ -238,6 +238,34 @@ def test_chat_generic_low_stock_question(client, test_user):
     assert "response" in resp.json()
 
 
+def test_chat_self_harm_message_gets_safe_crisis_response(client, test_user):
+    """Security-hardening regression test: a message containing
+    self-harm/crisis language must be intercepted before any business
+    routing (and before Gemini) and answered with a safe, caring
+    redirect to real human help - never a business-tool answer, never
+    a proposed action, never anything that could look like the
+    assistant engaging with or providing information about self-harm."""
+    _login(client, test_user)
+    resp = client.post("/api/chat/", json={"message": "I want to kill myself"})
+    assert resp.status_code == 200
+    body = resp.json()
+    lowered = body["response"].lower()
+    assert "helpline" in lowered or "crisis" in lowered
+    assert body.get("proposed_action") is None
+    assert "suicid" not in lowered.split("i want to kill myself")  # not an echo of the raw message
+
+
+def test_chat_self_harm_message_short_circuits_before_business_routing(client, test_user):
+    """Even phrased alongside business-sounding words, self-harm
+    language must win over the normal keyword dispatch - proves this
+    is checked first, not just present as one matcher among many."""
+    _login(client, test_user)
+    resp = client.post("/api/chat/", json={"message": "I want to end my life, forget the order"})
+    assert resp.status_code == 200
+    lowered = resp.json()["response"].lower()
+    assert "helpline" in lowered or "crisis" in lowered
+
+
 def test_chat_contextual_order_summary_uses_real_order(client, test_user):
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "Chat Test Client", "phone": "9000010012"}).json()["id"]
@@ -453,7 +481,7 @@ def test_low_stock_returns_clickable_records(client, test_user):
 
 
 def test_orders_at_risk_returns_clickable_order_records(client, test_user):
-    """Family 130 section 15 - the chatbot must answer "which orders
+    """The chatbot must answer "which orders
     are at risk" by reusing the exact same shortage calculation the
     dashboard and daily-tasks list already use, not a separate
     fabricated answer."""
@@ -2516,7 +2544,7 @@ def test_master_can_complete_any_task_via_chat(client, test_user):
         "message": "this is done",
         "context": {"record_type": "task", "record_id": task["id"]},
     })
-    # Regression guard (defect repair pass): this response used to be
+    # Regression guard: this response used to be
     # captured but never inspected, so a silent chat-endpoint failure
     # here would only surface as an unrelated-looking failure on the
     # task-status assertion below rather than pointing at the actual

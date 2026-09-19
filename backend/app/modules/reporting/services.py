@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import func, case, and_
 from sqlalchemy.orm import Session, selectinload
-from app.modules.sales.models import Order, Payment
+from app.modules.sales.models import Order, Payment, active_order_filter, is_active_order_status
 from app.modules.inventory.models import Material
 from app.modules.procurement.models import Purchase
 from app.modules.operations.models import ProjectExpense
@@ -380,7 +380,7 @@ def projects_analytics(db: Session, is_privileged: bool) -> dict:
     now = datetime.utcnow()
     stalled = [
         o for o in orders
-        if o.project_status not in ("Completed",) and o.progress_percent == 0
+        if is_active_order_status(o.project_status) and o.progress_percent == 0
         and o.order_date and (now - o.order_date).days > 14
     ]
 
@@ -585,6 +585,22 @@ def workforce_analytics(db: Session, is_privileged: bool, own_employee_id: Optio
     ORM rows/relationships) and computes hours in Python exactly as
     before - still a real reduction (no relationship loading, no unused
     columns over the wire), just not a full SQL-side aggregation.
+
+    This report intentionally has no date range - total_working_hours/
+    total_overtime_hours are lifetime totals across every attendance
+    record ever recorded, not a "last N days" figure, and there is no
+    date parameter this function even accepts. Pre-filtering by date
+    (the first safe-optimization option) would silently change the
+    output to a smaller, different number, not just speed up computing
+    the same one - so that approach is not used here. Instead, the
+    query below is iterated directly with yield_per() rather than
+    materialized via .all() into one big Python list first: rows are
+    still visited exactly once each, in the same order, accumulated
+    into the same four-key running totals below - same formula, same
+    values - but never all held in memory simultaneously. On dialects
+    that support it (e.g. PostgreSQL via psycopg2) yield_per also
+    requests a true server-side/streaming cursor instead of the
+    driver's default client-side buffering of the full result set.
     """
     employees = db.query(Employee).filter(Employee.status == "Active").all()
     now = datetime.utcnow()
@@ -595,7 +611,7 @@ def workforce_analytics(db: Session, is_privileged: bool, own_employee_id: Optio
 
     attendance_rows = db.query(
         Attendance.employee_id, Attendance.in_time, Attendance.out_time, Attendance.standard_hours,
-    ).all()
+    ).yield_per(1000)
 
     total_overtime = Decimal("0")
     total_working_hours = Decimal("0")
@@ -670,7 +686,7 @@ def operations_analytics(db: Session, is_privileged: bool) -> dict:
     database-side COUNT/SUM instead of `.all()` + Python len()/sum(),
     which previously reloaded all four full tables on every dashboard
     render just to produce eight numbers."""
-    active_orders = db.query(func.count(Order.id)).filter(Order.project_status != "Completed").scalar() or 0
+    active_orders = db.query(func.count(Order.id)).filter(active_order_filter()).scalar() or 0
     open_jobs = db.query(func.count(ProductionJob.id)).filter(ProductionJob.status != "Completed").scalar() or 0
     open_tasks = db.query(func.count(DailyTask.id)).filter(DailyTask.status != "DONE").scalar() or 0
     suppliers = db.query(func.count(Supplier.id)).scalar() or 0
@@ -729,8 +745,7 @@ def month_over_month_summary(db: Session, is_privileged: bool) -> dict:
 
 
 # --- business_risk_service.py ---
-"""Cross-Module Business Risk + Business Decision Centre
-(Family P0.49/P0.51).
+"""Cross-Module Business Risk + Business Decision Centre.
 
 Orchestrates already-authoritative domain signals into one unified,
 prioritized "what needs my attention" view. Never recalculates a
@@ -742,17 +757,14 @@ file is the one place that combines them; it is not a second
 calculation engine for any of them.
 
 Deliberately narrow scope for this family: Delivery (via Order
-Health, which already folds in material/production/task signals -
-P0.50) and Payroll (via SalarySlip.status). Standalone Inventory/
+Health, which already folds in material/production/task signals)
+and Payroll (via SalarySlip.status). Standalone Inventory/
 Procurement risk not already tied to an order, and full labour-cost
 attribution, are not built here - there is no existing authoritative
 service to consume for either yet, and inventing one would be exactly
 the "second calculation engine" this family must not create (see
 sections 9, 23, 26, 27).
 """
-
-_ORDER_TERMINAL_STATUSES = ("Completed", "Cancelled")
-
 
 _ORDER_RISK_TO_SEVERITY = {"CRITICAL": "CRITICAL", "AT_RISK": "HIGH", "WATCH": "MEDIUM"}
 
@@ -762,7 +774,7 @@ _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
 def _order_to_risk_item(order: Order, health: dict) -> dict:
     """Transforms one order's compute_order_health result into the
-    P0.49 risk-item contract - the one place this shape is built, so
+    risk-item contract - the one place this shape is built, so
     _order_risk_items and get_risk_for_entity can never drift apart."""
     return {
         "risk_type": "DELIVERY",
@@ -810,7 +822,7 @@ def _order_risk_items(db: Session) -> list:
     "unbounded and fine" claim."""
     open_orders = (
         db.query(Order)
-        .filter(Order.project_status.notin_(_ORDER_TERMINAL_STATUSES))
+        .filter(active_order_filter())
         .order_by(Order.delivery_date.is_(None), Order.delivery_date.asc())
         .limit(_MAX_ORDERS_PER_RISK_SCAN)
         .all()
@@ -851,11 +863,8 @@ def _payroll_risk_items(db: Session) -> list:
 
 
 def _salary_advance_risk_items(db: Session) -> list:
-    """A Pending salary advance request is a real, existing fact
-    (Family P0.44 - built after this file's original P0.49 pass, added
-    here once real data existed to consume - matching P0.44's own
-    section 31: "prepare structured outputs... for P0.49/P0.51 to
-    consume"). Deliberately does NOT flag every Approved-with-
+    """A Pending salary advance request is a real, existing fact,
+    added here once real data existed to consume. Deliberately does NOT flag every Approved-with-
     outstanding-balance advance as a risk - recovery can legitimately
     span several payroll months by design (see SalaryAdvance's own
     model comment), so an outstanding balance alone is expected
@@ -884,9 +893,9 @@ def _salary_advance_risk_items(db: Session) -> list:
 
 
 def get_business_risks(db: Session, is_privileged: bool) -> dict:
-    """P0.49 + P0.51 contract: one prioritized list of cross-module
+    """One prioritized list of cross-module
     business risks plus a summary count - the same shape the REST API,
-    frontend, and any future AI/chatbot consumer all read (section 19).
+    frontend, and any future AI/chatbot consumer all read.
     is_privileged (MASTER) gates payroll/financial risk items; a
     non-privileged caller sees only operational (order-delivery) risk,
     matching sections 17/18/21's financial/HR confidentiality rule.
@@ -939,7 +948,7 @@ def get_risk_for_entity(db: Session, entity_type: str, entity_id: int, is_privil
 
 
 def cash_flow_forecast(db: Session, weeks: int = 6) -> dict:
-    """Family 137 feature 12 - Forward Cash-Flow Forecast. Built
+    """Forward Cash-Flow Forecast. Built
     entirely from real, existing data - order balances (Order.balance,
     already maintained transactionally by OrderService.record_payment/
     Order.recompute_totals, never recalculated here) and each order's
@@ -1039,9 +1048,8 @@ def cash_flow_forecast(db: Session, weeks: int = 6) -> dict:
 
 
 def owner_briefing(db: Session, period: str = "daily") -> dict:
-    """Family 137 feature 11 - Owner Daily/Weekly Business Briefing. A
-    genuine cross-module synthesis, never a generic KPI dump (spec
-    section 10): every section reuses the one authoritative
+    """Owner Daily/Weekly Business Briefing. A
+    genuine cross-module synthesis, never a generic KPI dump: every section reuses the one authoritative
     calculation this codebase already has for that signal (business
     risks, cash-flow forecast, low stock, production bottlenecks,
     overdue purchases, delayed projects, payroll/leave state) rather

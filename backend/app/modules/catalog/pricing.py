@@ -72,6 +72,13 @@ PRICING_RULES = (
     "ESTIMATE_MARGIN_OVERRIDE",
     "PRODUCT_MARGIN",
     "GLOBAL_DEFAULT_MARGIN",
+    # Not returned by resolve_selling_rate itself - used by
+    # clients/api.py's resolve_pricing when no cost basis exists at all
+    # (cost is missing/unknown, not legitimately zero) and no fixed-
+    # price override applies either. Falls back to the product's own
+    # stored selling_price rather than inventing a cost of 0 and
+    # running margin math against it.
+    "PRODUCT_STORED_SELLING_PRICE",
 )
 
 
@@ -110,3 +117,75 @@ def resolve_selling_rate(
                               "PRODUCT_MARGIN", product_margin_percent)
     return ResolvedPrice(compute_selling_rate(cost, DEFAULT_MARGIN_PERCENT),
                           "GLOBAL_DEFAULT_MARGIN", DEFAULT_MARGIN_PERCENT)
+
+
+class PricingSnapshot(NamedTuple):
+    pricing_rule_applied: Optional[str]  # None only when no rule could be determined at all (no cost, no stored price)
+    applied_margin_percent: Optional[Decimal]
+    cost_at_creation: Optional[Decimal]  # None = cost unknown, never a fabricated 0 (see resolve_selling_rate's caller in clients/api.py)
+
+
+def resolve_product_pricing_snapshot(db, product, client_id: Optional[int] = None,
+                                      estimate_margin_percent: Optional[Decimal] = None) -> PricingSnapshot:
+    """Single shared entry point for 'which pricing rule/margin/cost
+    basis is currently in effect for this product+client(+estimate)' -
+    used by estimate line-item creation and import (sales/api.py) to
+    populate EstimateLineItem's historical pricing snapshot fields, so
+    that logic is never re-implemented separately from the equivalent
+    resolution clients/api.py's resolve_pricing preview endpoint does.
+
+    This does NOT decide the line item's actual rate/amount charged -
+    those remain whatever was supplied (typed or imported) - it only
+    determines what to record as the pricing DECISION context behind
+    that rate, exactly as EstimateLineItem.pricing_rule_applied's own
+    docstring describes.
+
+    cost is resolved the same "is not None" way as sales/api.py's
+    existing cost_at_creation logic - a legitimately-zero cost_price is
+    never confused with a missing one. When no cost basis exists at
+    all AND no customer-specific fixed price applies, this falls back
+    to the product's own stored selling_price (PRODUCT_STORED_SELLING_PRICE)
+    rather than inventing a cost of 0, same fix as clients/api.py's
+    resolve_pricing (item 14's fix) - not duplicated logic, the same
+    reasoning applied at the one other place a cost basis is resolved
+    for pricing."""
+    from app.modules.clients.models import ClientProductRate
+
+    cost_basis = product.cost_price if product.cost_price is not None else product.suggested_cost_price
+    cost_known = cost_basis is not None
+    cost = Decimal(str(cost_basis)) if cost_known else Decimal("0")
+
+    customer_fixed = None
+    customer_margin = None
+    if client_id:
+        override = db.query(ClientProductRate).filter(
+            ClientProductRate.client_id == client_id, ClientProductRate.product_id == product.id,
+        ).first()
+        if not override:
+            override = db.query(ClientProductRate).filter(
+                ClientProductRate.client_id == client_id, ClientProductRate.product_id.is_(None),
+            ).first()
+        if override:
+            customer_fixed = override.fixed_selling_price
+            customer_margin = override.margin_percent
+
+    would_use_margin_math = customer_fixed is None
+    if not cost_known and would_use_margin_math:
+        if product.selling_price is not None:
+            return PricingSnapshot(
+                pricing_rule_applied="PRODUCT_STORED_SELLING_PRICE", applied_margin_percent=None, cost_at_creation=None,
+            )
+        # No cost basis and no stored selling price either - genuinely
+        # nothing to record. Left None/unknown rather than guessed,
+        # same convention as cost_at_creation itself for pre-existing
+        # rows (see EstimateLineItem.cost_at_creation's docstring).
+        return PricingSnapshot(pricing_rule_applied=None, applied_margin_percent=None, cost_at_creation=None)
+
+    result = resolve_selling_rate(
+        cost=cost, customer_product_fixed_price=customer_fixed, customer_margin_percent=customer_margin,
+        estimate_margin_percent=estimate_margin_percent, product_margin_percent=product.margin_percent,
+    )
+    return PricingSnapshot(
+        pricing_rule_applied=result.pricing_rule_applied, applied_margin_percent=result.margin_percent_used,
+        cost_at_creation=cost if cost_known else None,
+    )

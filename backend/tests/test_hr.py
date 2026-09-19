@@ -130,7 +130,7 @@ def test_master_full_attendance_access_unaffected(client, test_user):
 
 
 def test_salary_days_matches_working_days_when_no_leave(client, test_user):
-    """Family P0.43: Salary Days = actual configured working days in
+    """Salary Days = actual configured working days in
     the month minus approved leave - with no leave, they're equal.
     February 2026 has 24 Monday-Saturday working days (28 calendar
     days, 4 Sundays) - deliberately not August's 26, to prove this is
@@ -368,7 +368,7 @@ def test_payroll_summary_requires_master(client, test_user, db_session):
 
 
 def test_attendance_summary_computes_paid_days_and_overtime(client, test_user):
-    """Family P0.43: overtime is a fact the Master explicitly records,
+    """Overtime is a fact the Master explicitly records,
     not derived from in_time/out_time - the first record below has a
     10-hour clock span but overtime_hours is only counted because it
     is explicitly set to 2, not because it was computed from the
@@ -399,7 +399,7 @@ def test_attendance_summary_computes_paid_days_and_overtime(client, test_user):
 
 
 def test_overtime_is_zero_by_default_even_with_long_clock_span(client, test_user):
-    """The core P0.43 correction: a long in/out span alone must never
+    """The core correction: a long in/out span alone must never
     imply overtime - only an explicit value does."""
     _login(client, test_user)
     employee = client.post("/api/employees/", json={"name": "No Auto Overtime Employee", "monthly_salary": "20800"}).json()
@@ -990,7 +990,7 @@ def test_unlinked_non_master_user_sees_no_leaves(client, test_user, db_session):
 
 
 # --- test_payroll.py ---
-"""Tests for the Salary Advance workflow (Family P0.44): employee/
+"""Tests for the Salary Advance workflow: employee/
 Master request, Master approve (at requested or a different amount)/
 reject, recovery against a real SalarySlip (never a bare number), and
 the safety validations (no over-recovery, no recovery from an
@@ -1200,7 +1200,7 @@ def test_cannot_reject_already_rejected_advance(client, test_user):
 
 
 def test_recovery_updates_advance_and_salary_slip(client, test_user):
-    """The core P0.44/P0.43 connection: recovery actually changes a
+    """The core connection: recovery actually changes a
     real SalarySlip's advance_deduction and net_salary - not just a
     number on the advance itself."""
     _login(client, test_user)
@@ -1913,7 +1913,7 @@ def test_unlinked_user_gets_no_leaves_export(client, test_user, db_session):
     assert resp.status_code == 403
 
 
-# --- Family 137 (updated) - Employee 360 / HR Command Center (section 13) ---
+# --- Employee 360 / HR Command Center ---
 
 def test_employee_360_overview_not_found(client, test_user):
     _login(client, test_user)
@@ -2523,3 +2523,72 @@ def test_overtime_request_hours_must_be_positive_and_at_most_24(client, test_use
         "employee_id": employee["id"], "date": "2026-08-17T00:00:00", "requested_hours": "0",
     })
     assert zero.status_code == 422
+
+
+# --- item 17: LeaveUpdate.status must be one of the canonical
+# LEAVE_STATUSES values - an arbitrary string must never be persisted ---
+
+def test_leave_update_rejects_invalid_status(client, test_user):
+    _login(client, test_user)
+    employee_id = _create_employee_leave(client)
+    leave = client.post("/api/leaves/", json={
+        "employee_id": employee_id, "leave_type": "CL",
+        "start_date": "2026-09-01T00:00:00", "end_date": "2026-09-01T00:00:00",
+    }).json()
+
+    resp = client.put(f"/api/leaves/{leave['id']}", json={"status": "Cancelled-ish"})
+    assert resp.status_code == 422
+
+    # The leave itself must still be in its original Pending state - a
+    # rejected update must never partially apply.
+    still_pending = [l for l in client.get("/api/leaves/", params={"employee_id": employee_id}).json() if l["id"] == leave["id"]][0]
+    assert still_pending["status"] == "Pending"
+
+
+def test_leave_update_accepts_each_canonical_status(client, test_user):
+    _login(client, test_user)
+    employee_id = _create_employee_leave(client)
+
+    for status in ["Pending", "Approved", "Rejected"]:
+        leave = client.post("/api/leaves/", json={
+            "employee_id": employee_id, "leave_type": "CL",
+            "start_date": "2026-09-01T00:00:00", "end_date": "2026-09-01T00:00:00",
+        }).json()
+        resp = client.put(f"/api/leaves/{leave['id']}", json={"status": status})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == status
+
+
+# --- item 18: approved_amount can never exceed requested_amount ---
+
+def test_salary_advance_approved_amount_cannot_exceed_requested(client, test_user):
+    _login(client, test_user)
+    employee = _make_employee(client, "30")
+    advance = client.post("/api/salary-advances/", json={
+        "employee_id": employee["id"], "requested_amount": "4000", "request_date": "2026-09-01T00:00:00",
+    }).json()
+
+    resp = client.put(f"/api/salary-advances/{advance['id']}/approve", json={
+        "approved_amount": "5000", "recovery_month": "September", "recovery_year": "2026",
+    })
+    assert resp.status_code == 400
+
+    unchanged = client.get(f"/api/salary-advances/{advance['id']}").json()
+    assert unchanged["status"] == "Pending"
+
+
+# --- Security hardening: strict input validation ---
+
+def test_employee_create_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/employees/", json={
+        "name": "Strict Validation Test Employee", "monthly_salary": "20000",
+        "not_a_real_employee_field": "value",
+    })
+    assert resp.status_code == 422
+
+
+def test_employee_create_rejects_oversized_name(client, test_user):
+    _login(client, test_user)
+    resp = client.post("/api/employees/", json={"name": "x" * 5000, "monthly_salary": "20000"})
+    assert resp.status_code == 422

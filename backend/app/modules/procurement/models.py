@@ -2,7 +2,7 @@
 ProcurementRequirement, SupplierDecision, PersonalCartItem.
 
 Supplier/SupplierMaterial/Purchase moved here from
-app.modules.inventory.models (Family 130 P0.2 ownership correction) -
+app.modules.inventory.models (an ownership correction) -
 procurement owns suppliers and the purchase business record; inventory
 (Material, stock ledger, physical mutation) remains the authority for
 actual stock quantities. Relationships below to Material/Order use
@@ -120,7 +120,7 @@ class Purchase(BaseModel):
 
 
 class ProcurementRequirement(BaseModel):
-    """A persisted procurement decision object (P0.2.1) - created when
+    """A persisted procurement decision object - created when
     a Master acts on a shortage the authoritative material requirement
     calculation (StockService.calculate_order_material_requirements)
     already identified. This is NOT a second shortage engine: it
@@ -157,7 +157,7 @@ class ProcurementRequirement(BaseModel):
 
 
 class SupplierDecision(BaseModel):
-    """The genuine gap identified in this family's own P0.2 review: the
+    """The genuine gap this identified: the
     system already computes supplier recommendations (price/lead-time/
     preferred, see ProcurementService._supplier_options_for_materials), but
     never persisted which supplier was actually recommended versus

@@ -72,7 +72,7 @@ def test_overall_gross_margin_ratio_is_zero_when_no_orders(client, test_user):
 
 
 def test_delivery_risk_summary_counts_critical_order(client, test_user):
-    """P0.50 section 23 - the dashboard summary must reuse the exact
+    """The dashboard summary must reuse the exact
     same bulk_attention_flags calculation as the Orders List, never a
     separately-derived count."""
     from datetime import datetime, timedelta
@@ -207,7 +207,7 @@ def test_search_by_business_id_across_entity_types(client, test_user):
     assert any(r["type"] == "Material" and r["id"] == material["id"] for r in results)
 
 # --- test_business_decisions.py ---
-"""Tests for /api/business-decisions/* (Family P0.49/P0.51). Reuses
+"""Tests for /api/business-decisions/*. Reuses
 compute_order_health (never a second risk calculation) and real
 SalarySlip/SalaryAdvance data - master-only for payroll signals,
 employees see only operational (order) risk."""
@@ -408,7 +408,7 @@ def test_business_decisions_require_auth(client):
     assert resp.status_code == 401
 
 
-# --- Family 137, Step 5: Forward Cash-Flow Forecast (feature 12) ---
+# --- Forward Cash-Flow Forecast (feature 12) ---
 
 def test_cash_flow_forecast_requires_master(client, test_user, db_session):
     _login(client, test_user)
@@ -477,7 +477,7 @@ def test_cash_flow_forecast_cancelled_order_excluded(client, test_user):
     assert order["id"] not in all_ids
 
 
-# --- Family 137, Step 5: Owner Daily/Weekly Business Briefing (feature 11) ---
+# --- Owner Daily/Weekly Business Briefing (feature 11) ---
 
 def test_owner_briefing_requires_master(client, test_user, db_session):
     _login(client, test_user)

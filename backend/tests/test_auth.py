@@ -229,7 +229,7 @@ def test_successful_reset_invalidates_other_outstanding_tokens(client, test_user
     assert stale.status_code == 400
 
 
-# --- Session stability (WOODFUL AUTH + STARTUP LATENCY DEFECT REPAIR) ---
+# --- Session stability ---
 """Regression coverage for the "login 200, then every request 401"
 defect: the root cause (see frontend/src/utils/api.js and
 frontend/.env.example) was a browser-only SameSite/cross-site cookie
@@ -241,7 +241,7 @@ still genuinely set on login, still genuinely valid across repeated
 requests, still genuinely rejected once it should be (expired,
 malformed, deactivated account, or a password reset since issued), and
 CORS is still configured correctly for local dev - i.e. every part of
-the auth contract this defect repair touched or relied on."""
+the auth contract this fix touched or relied on."""
 from datetime import timedelta
 from app.platform.config import settings
 from app.platform.security import create_access_token
@@ -407,3 +407,61 @@ def test_attempt_count_increments_on_repeated_probing_of_same_token(client, test
     db_session.expire_all()
     refreshed = db_session.query(PasswordResetToken).filter(PasswordResetToken.id == token_id).first()
     assert refreshed.attempt_count == 3
+
+
+# --- item 20: email identifier matching is case-normalized at login ---
+
+def test_login_with_uppercase_email_succeeds(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "TEST@EXAMPLE.COM", "password": "TestPass123!"})
+    assert resp.status_code == 200
+
+
+def test_login_with_mixed_case_email_succeeds(client, test_user):
+    resp = client.post("/api/auth/login", json={"identifier": "Test@Example.Com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+
+
+def test_newly_created_user_can_login_with_uppercase_email(client, test_user, db_session):
+    """Covers the create-time normalization half of item 20, not just
+    login-time matching: a user whose email was submitted in mixed
+    case at creation must still be reachable via case-insensitive
+    login afterward."""
+    _login(client, test_user)
+    employee = client.post("/api/employees/", json={"name": "Mixed Case Email Employee"}).json()
+    resp = client.post("/api/users/", json={
+        "username": "mixedcaseuser", "email": "MixedCase@Example.com", "full_name": "Mixed Case User",
+        "password": "SomePass123!", "role": "user", "employee_id": employee["id"],
+    })
+    assert resp.status_code == 201
+
+    login = client.post("/api/auth/login", json={"identifier": "mixedcase@example.com", "password": "SomePass123!"})
+    assert login.status_code == 200
+
+
+# --- item 21: last_login updates only on a successful login, never on
+# a failed authentication attempt ---
+
+def test_successful_login_updates_last_login(client, test_user, db_session):
+    db_session.expire_all()
+    before = db_session.query(User).filter(User.id == test_user.id).first().last_login
+
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "TestPass123!"})
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    after = db_session.query(User).filter(User.id == test_user.id).first().last_login
+    assert after is not None
+    assert before is None or after > before
+
+
+def test_failed_login_does_not_update_last_login(client, test_user, db_session):
+    db_session.expire_all()
+    before = db_session.query(User).filter(User.id == test_user.id).first().last_login
+    assert before is None
+
+    resp = client.post("/api/auth/login", json={"identifier": "test@example.com", "password": "WrongPassword!"})
+    assert resp.status_code == 401
+
+    db_session.expire_all()
+    after = db_session.query(User).filter(User.id == test_user.id).first().last_login
+    assert after is None

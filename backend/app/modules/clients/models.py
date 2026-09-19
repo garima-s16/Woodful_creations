@@ -164,8 +164,8 @@ CLIENT_ACCESS_TOKEN_PURPOSES = ("estimate_approval", "my_order")
 
 
 class ClientAccessToken(BaseModel):
-    """The shared secure-link infrastructure behind Family 137's
-    Client Approval Hub (feature 1) and My Order link (feature 3) -
+    """The shared secure-link infrastructure behind the
+    Client Approval Hub and My Order link -
     built once, used by both, rather than two separate token systems.
 
     Mirrors app.modules.auth.auth.PasswordResetToken's already-proven

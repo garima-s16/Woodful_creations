@@ -60,7 +60,7 @@ _scheduler_stop_event = threading.Event()
 _scheduler_thread = None
 
 
-# Defect repair (F138 P9.2): arbitrary, fixed lock key for this
+# Arbitrary, fixed lock key for this
 # scheduler's per-cycle advisory lock - deliberately distinct from
 # app.platform.database._MIGRATION_LOCK_KEY (8825170392) so the two
 # locks can never collide/serialize against each other despite both
@@ -69,7 +69,7 @@ _SCHEDULER_LOCK_KEY = 8825170393
 
 
 def _automation_scheduler_loop():
-    """Family 131 section 23 - "auto-generated" notifications: calls the
+    """Auto-generated notifications: calls the
     exact same AutomationService.run_all/NotificationService.run_all_checks
     the notification endpoints already call on-demand, just on a timer
     instead of only when someone opens the notification panel. Not a
@@ -87,14 +87,14 @@ def _automation_scheduler_loop():
     (see the "shutdown" event below) doesn't have to wait out a full
     interval.
 
-    Defect repair (F138 P9.2): a horizontally-scaled deployment runs
+    A horizontally-scaled deployment runs
     this same daemon thread inside every instance, each on its own
     independent timer. Before this fix, every instance's cycle ran
     unconditionally, so N instances meant N concurrent
     AutomationService.run_all/NotificationService.run_all_checks calls
     hitting the database on every cycle - not a correctness bug on its
     own (NotificationService.notify's dedup_key check, and now its
-    backing partial unique index - see F138 P9.1 - already make a
+    backing partial unique index already make a
     duplicate notification from two concurrent callers impossible), but
     wasted, redundant work that multiplies with the fleet size for no
     benefit, and a needless source of extra DB load/lock contention

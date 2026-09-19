@@ -138,6 +138,63 @@ def test_estimate_line_item_totals_computed_server_side(client, test_user):
     assert float(body["line_items"][0]["amount"]) == 1500.0
 
 
+# --- item 25: a normal estimate creation snapshots pricing_rule_applied/
+# applied_margin_percent/cost_at_creation via the shared pricing
+# resolver - never left null, never recomputed later just by viewing ---
+
+def test_estimate_creation_snapshots_pricing_rule_and_cost(client, test_user, db_session):
+    from decimal import Decimal
+    from app.modules.sales.models import EstimateLineItem
+
+    _login(client, test_user)
+    c = _create_client_estimate(client, phone="9812300010")
+    product = client.post("/api/products/", json={
+        "name": "Snapshot Product", "unit": "Nos", "cost_price": "8000", "margin_percent": "25",
+    }).json()
+
+    resp = client.post("/api/estimates/", json={
+        "client_id": c["id"],
+        "line_items": [{"description": "Snapshot item", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "10000", "product_id": product["id"]}],
+    })
+    assert resp.status_code == 201
+    line_item_id = resp.json()["line_items"][0]["id"]
+
+    row = db_session.query(EstimateLineItem).filter(EstimateLineItem.id == line_item_id).first()
+    assert row.pricing_rule_applied == "PRODUCT_MARGIN"
+    assert row.applied_margin_percent == Decimal("25")
+    assert row.cost_at_creation == Decimal("8000.00")
+
+
+def test_viewing_an_old_estimate_does_not_recompute_its_pricing_snapshot(client, test_user, db_session):
+    """Changing the product's cost/margin AFTER the estimate was
+    created must never retroactively change what was recorded as the
+    pricing decision behind that historical line - merely viewing the
+    estimate again must not trigger any recalculation."""
+    from decimal import Decimal
+    from app.modules.sales.models import EstimateLineItem
+
+    _login(client, test_user)
+    c = _create_client_estimate(client, phone="9812300011")
+    product = client.post("/api/products/", json={
+        "name": "Drift Product", "unit": "Nos", "cost_price": "5000", "margin_percent": "20",
+    }).json()
+    created = client.post("/api/estimates/", json={
+        "client_id": c["id"],
+        "line_items": [{"description": "Drift item", "category": "Material", "quantity": "1", "unit": "Nos", "rate": "6000", "product_id": product["id"]}],
+    }).json()
+    line_item_id = created["line_items"][0]["id"]
+
+    client.put(f"/api/products/{product['id']}", json={"cost_price": "9000", "margin_percent": "40"})
+
+    for _ in range(2):
+        view = client.get(f"/api/estimates/{created['id']}")
+        assert view.status_code == 200
+
+    row = db_session.query(EstimateLineItem).filter(EstimateLineItem.id == line_item_id).first()
+    assert row.cost_at_creation == Decimal("5000.00")
+    assert row.applied_margin_percent == Decimal("20")
+
+
 def test_estimate_line_item_negative_quantity_rejected(client, test_user):
     _login(client, test_user)
     c = _create_client_estimate(client, phone="9812300024")
@@ -541,7 +598,7 @@ def test_order_health_endpoint_not_found(client, test_user):
 def test_order_health_overdue_task_is_a_finding(client, test_user):
     """Regression: an open task past its due_date is a real signal
     (DailyTask.due_date is genuine data) and must not be invisible just
-    because nobody marked it BLOCKED (Family 130 P0.1 s.3)."""
+    because nobody marked it BLOCKED."""
     _login(client, test_user)
     c = _create_client(client, phone="9812300028")
     order = client.post("/api/orders/", json={
@@ -658,7 +715,7 @@ def test_order_list_needs_attention_flag_from_blocked_task(client, test_user):
 
 
 def test_order_list_shows_critical_risk_level_for_overdue_blocked_order(client, test_user):
-    """P0.50 section 19/22 - the Orders List must distinguish CRITICAL
+    """The Orders List must distinguish CRITICAL
     severity, not just a flat needs_attention flag, using the same
     bounded, batched calculation as before (no new per-order query)."""
     from datetime import datetime, timedelta
@@ -681,7 +738,7 @@ def test_order_list_shows_critical_risk_level_for_overdue_blocked_order(client, 
 
 
 def test_order_list_sort_by_risk_surfaces_critical_order_first(client, test_user):
-    """P0.50 section 19 - a CRITICAL order must surface first when
+    """A CRITICAL order must surface first when
     sort=risk is requested, even though it was created before (and so
     would sort last under the default order_date-desc ordering) an
     on-track order created after it."""
@@ -715,6 +772,48 @@ def test_order_list_sort_by_risk_surfaces_critical_order_first(client, test_user
     assert risk_ids.index(critical_order["id"]) < risk_ids.index(quiet_order["id"])
     top = next(o for o in risk_resp.json() if o["id"] == critical_order["id"])
     assert top["attention_risk_level"] == "CRITICAL"
+
+
+def test_order_list_sort_by_risk_paginates_the_globally_ranked_set(client, test_user):
+    """sort=risk must rank the FULL matching set by risk before
+    slicing the requested page - not rank/paginate the page first and
+    then risk-sort just that page's rows. limit=1&offset=0 must return
+    only the single most-at-risk order (the CRITICAL one), even though
+    it is the oldest of the three and would be last under any
+    date-based pagination; limit=1&offset=1 must return the next one
+    down, and X-Total-Count must reflect the full matching set, not
+    the returned page size."""
+    from datetime import datetime, timedelta
+    _login(client, test_user)
+    c = _create_client(client, phone="9812300036")
+    critical_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-05-01T00:00:00", "order_value": "10000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=5)).isoformat(),
+    }).json()
+    employee = client.post("/api/employees/", json={"name": "Paginate Risk Employee"}).json()
+    client.post("/api/daily-tasks/", json={
+        "date": "2026-05-01T00:00:00", "employee_id": employee["id"], "order_id": critical_order["id"],
+        "task_description": "Overdue critical paginate work", "status": "BLOCKED", "delay_reason": "Waiting for parts",
+    })
+    middle_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-05-15T00:00:00", "order_value": "8000", "advance": "0",
+        "delivery_date": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+    }).json()
+    quiet_order = client.post("/api/orders/", json={
+        "client_id": c["id"], "order_date": "2026-08-01T00:00:00", "order_value": "5000", "advance": "0",
+    }).json()
+
+    page1 = client.get("/api/orders/", params={"sort": "risk", "limit": 1, "offset": 0})
+    assert page1.status_code == 200
+    assert page1.headers["X-Total-Count"] == "3"
+    assert [o["id"] for o in page1.json()] == [critical_order["id"]]
+
+    page2 = client.get("/api/orders/", params={"sort": "risk", "limit": 1, "offset": 1})
+    assert page2.status_code == 200
+    assert [o["id"] for o in page2.json()] == [middle_order["id"]]
+
+    page3 = client.get("/api/orders/", params={"sort": "risk", "limit": 1, "offset": 2})
+    assert [o["id"] for o in page3.json()] == [quiet_order["id"]]
 
 
 def test_order_invalid_priority_rejected(client, test_user):
@@ -1219,6 +1318,38 @@ def test_order_without_items_still_works_with_flat_order_value(client, test_user
     assert body["order_value"] == "50000.00"
 
 
+def test_bare_order_value_is_not_taxed_again(client, test_user):
+    """Regression test for a confirmed defect: a bare/lump-sum order
+    (no line items) has no explicit tax_percent in the request body,
+    so OrderBase's schema default (18%) applied - and the caller's
+    order_value was then run through compute_totals() as if it were a
+    pre-tax subtotal, silently adding GST on top of an amount that was
+    already the final, client-quoted total (order_value=10000 was
+    stored as 11800). order_value must be taken exactly as supplied,
+    and advance/payment/balance math must use that same final figure,
+    not the double-taxed one."""
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={"name": "Bare Order No Double Tax Client", "phone": "9000010199"}).json()["id"]
+
+    resp = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-13T00:00:00",
+        "order_value": "10000.00", "advance": "4000.00",
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["order_value"] == "10000.00"  # not "11800.00"
+    assert body["balance"] == "6000.00"  # 10000 - 4000 advance, not 7800.00
+
+    # Explicitly updating order_value on a bare order must not
+    # re-introduce the double-tax either (update_order's own,
+    # separate bare-order branch).
+    update_resp = client.put(f"/api/orders/{body['id']}", json={"order_value": "20000.00"})
+    assert update_resp.status_code == 200
+    updated = update_resp.json()
+    assert updated["order_value"] == "20000.00"  # not "23600.00"
+    assert updated["balance"] == "16000.00"  # 20000 - 4000 advance
+
+
 def test_updating_order_items_replaces_full_set_and_recomputes_value(client, test_user):
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "Update Order Items Client", "phone": "9000010141"}).json()["id"]
@@ -1510,7 +1641,7 @@ def test_profitability_combines_material_cost_and_project_expenses(client, test_
     expense_resp = client.post("/api/project-expenses/", json={
         "order_id": order["id"], "date": "2026-08-15T00:00:00", "category": "Transport", "amount": "15000.00",
     })
-    # Regression guard (defect repair pass): this call previously used
+    # Regression guard: this call previously used
     # a stale field name ("expense_type" instead of "category"),
     # silently 422ing and leaving project_expenses at 0 without any
     # test noticing, since nothing asserted this response's status.
@@ -1525,7 +1656,7 @@ def test_profitability_combines_material_cost_and_project_expenses(client, test_
 
 
 def test_labour_cost_attributed_from_completed_task_days(client, test_user):
-    """Family P0.45: Employee.monthly_salary / 26 per distinct
+    """Employee.monthly_salary / 26 per distinct
     (employee, date) among this order's DONE tasks - not per task."""
     _login(client, test_user)
     client_id = client.post("/api/clients/", json={"name": "Labour Cost Client A", "phone": "9000010160"}).json()["id"]
@@ -1543,7 +1674,7 @@ def test_labour_cost_attributed_from_completed_task_days(client, test_user):
     assert body["labour_is_attributed"] is True
     assert body["labour_days"] == 1
     assert body["labour_cost"] == 1000.0  # 26000 / 26
-    # The existing, pre-P0.45 keys must remain completely unaffected.
+    # The existing keys must remain completely unaffected.
     assert body["actual_direct_costs"] == 0.0
     assert body["estimated_gross_profit"] == 100000.0
     # The new, labour-inclusive keys reflect it.
@@ -2057,7 +2188,7 @@ def test_order_with_no_blockers_is_on_track(client, test_user):
 
 
 def test_order_blocking_query_includes_real_material_shortage(client, test_user):
-    """Family 130 - "what's blocking this order" must include a real
+    """ "What's blocking this order" must include a real
     material shortage against this order's own BOM, reusing
     StockService.calculate_order_material_requirements - previously
     this workspace never computed a material figure at all, even
@@ -2117,7 +2248,7 @@ def test_deictic_followup_triggers_order_risk_check(client, test_user):
         "message": "kya problem hai usme",
         "context": {"last_entity": last_entity},
     })
-    # Regression guard (defect repair pass): this response used to be
+    # Regression guard: this response used to be
     # captured but never inspected, so a silent chat-endpoint failure
     # here would only surface as an unrelated-looking failure on the
     # ai-reports assertion below rather than pointing at the actual
@@ -2160,7 +2291,7 @@ def test_employee_viewing_master_created_report_does_not_see_payment(client, tes
 
 
 def test_replacing_order_items_leaves_a_traceable_audit_record(client, test_user, db_session):
-    """P0.1 section 8 - item changes must not silently leave downstream
+    """Item changes must not silently leave downstream
     information untraceable. Previously, replacing an order's items
     hard-deleted the old rows with no snapshot ever taken; the audit
     log recorded only a bare items_changed=True flag, permanently
@@ -2206,7 +2337,7 @@ def _make_order_with_delivery(client, days_from_now, suffix, project_status=None
 
 
 def test_delivery_risk_watch_level_for_approaching_delivery_with_open_work(client, test_user):
-    """P0.50 section 6 - a delivery 5 days out with open work is a
+    """A delivery 5 days out with open work is a
     genuine early warning (WATCH), distinct from the more urgent
     AT_RISK 3-day window - not the same 2-level bucket as before."""
     _login(client, test_user)
@@ -2226,7 +2357,7 @@ def test_delivery_risk_watch_level_for_approaching_delivery_with_open_work(clien
 
 
 def test_delivery_risk_critical_when_overdue_and_still_open(client, test_user):
-    """P0.50 - a delivery commitment already missed, with the order
+    """A delivery commitment already missed, with the order
     still not completed, is more severe than the generic AT_RISK the
     old 2-level model would have used for every non-trivial finding."""
     _login(client, test_user)
@@ -2276,7 +2407,7 @@ def test_delivery_timing_reports_missing_date_honestly(client, test_user):
 
 
 def test_health_evidence_carries_raw_shortage_numbers(client, test_user):
-    """P0.50 section 9 - evidence must carry the actual numbers behind
+    """Evidence must carry the actual numbers behind
     a reason, not just its sentence."""
     _login(client, test_user)
     material = client.post("/api/materials/", json={
@@ -2303,7 +2434,7 @@ def test_health_evidence_carries_raw_shortage_numbers(client, test_user):
 
 
 def test_orders_export_includes_delivery_risk_columns(client, test_user):
-    """P0.50 section 37 - the export must show the same risk
+    """The export must show the same risk
     classification as the API/UI (bulk_attention_flags), never a
     separately-calculated Excel-only value."""
     from datetime import datetime, timedelta
@@ -2337,7 +2468,7 @@ def test_orders_export_includes_delivery_risk_columns(client, test_user):
 
 
 def test_production_summary_reflects_completed_and_pending_jobs(client, test_user):
-    """P0.50 section 14 - the exact structured breakdown the spec's own
+    """The exact structured breakdown the spec's own
     example asks for (N jobs, completed: X, pending: Y)."""
     _login(client, test_user)
     c = client.post("/api/clients/", json={"name": "Production Summary Client", "phone": "9000011500"}).json()
@@ -2373,7 +2504,7 @@ def test_production_summary_reports_no_jobs_honestly(client, test_user):
 
 
 def test_procurement_chain_distinguishes_no_purchase_from_purchase_placed(client, test_user):
-    """P0.50 section 13 - the full narrative chain: shortage -> purchase
+    """The full narrative chain: shortage -> purchase
     required -> purchase not received. Evidence must distinguish "no
     purchase placed yet" from "a purchase exists but is insufficient"."""
     _login(client, test_user)
@@ -2436,7 +2567,7 @@ def test_procurement_chain_flags_when_shortage_blocks_production(client, test_us
 
 
 def test_what_if_shows_risk_impact_of_hypothetical_delivery_date(client, test_user):
-    """P0.50 section 11 - moving an order's delivery date closer with
+    """Moving an order's delivery date closer with
     open work must show the risk-level impact, using the exact same
     calculation as the real health endpoint, without touching the
     order's actual committed date."""
@@ -2735,6 +2866,49 @@ def test_estimate_import_commit_creates_real_persisted_estimate(client, test_use
     assert float(persisted["line_items"][0]["quantity"]) == 3.0
 
 
+# --- item 26: an imported estimate line item records the same
+# pricing snapshot metadata as a normally-created one, while still
+# preserving the imported rate/quantity exactly as supplied ---
+
+def test_estimate_import_commit_snapshots_pricing_metadata(client, test_user, db_session):
+    from decimal import Decimal
+    from app.modules.sales.models import EstimateLineItem
+
+    _login(client, test_user)
+    client_id = client.post("/api/clients/", json={
+        "name": "Estimate Import Snapshot Client", "phone": "9000040002",
+    }).json()["id"]
+    product_id = client.post("/api/products/", json={
+        "name": "Estimate Import Snapshot Product", "unit": "Nos",
+        "cost_price": "7000", "margin_percent": "35",
+    }).json()["id"]
+
+    resp = client.post("/api/estimate-imports/commit", json={"estimates": [{
+        "client_id": client_id, "estimate_date": "2026-08-19T00:00:00", "tax_percent": "18",
+        "items": [{
+            "product_id": product_id, "description": "Imported snapshot line item",
+            "quantity": "2", "unit": "Nos", "rate": "1234.56",
+        }],
+    }]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["created_count"] == 1
+    estimate_id = body["results"][0]["estimate_id"]
+
+    persisted = client.get(f"/api/estimates/{estimate_id}").json()
+    line = persisted["line_items"][0]
+    # The imported rate/quantity are preserved exactly - the pricing
+    # snapshot is recorded metadata about the pricing DECISION, not a
+    # recomputation of what was actually charged.
+    assert float(line["rate"]) == 1234.56
+    assert float(line["quantity"]) == 2.0
+
+    row = db_session.query(EstimateLineItem).filter(EstimateLineItem.id == line["id"]).first()
+    assert row.pricing_rule_applied == "PRODUCT_MARGIN"
+    assert row.applied_margin_percent == Decimal("35")
+    assert row.cost_at_creation == Decimal("7000.00")
+
+
 def test_estimate_import_commit_rejects_invalid_product_id(client, test_user):
     _login(client, test_user)
     client_id, _ = _create_estimate_test_client_and_product(client)
@@ -2880,7 +3054,7 @@ def test_order_import_template_unauthenticated_rejected(client):
     assert resp.status_code in (401, 403)
 
 
-# --- Family 137, Step 1: Balance-Before-Dispatch Guardrail (feature 4) ---
+# --- Balance-Before-Dispatch Guardrail (feature 4) ---
 
 def test_dispatch_check_blocks_when_balance_outstanding(client, test_user):
     _login(client, test_user)
@@ -3011,7 +3185,7 @@ def test_update_order_non_completion_status_change_not_blocked(client, test_user
     assert resp.json()["delivery_status"] == "In Progress"
 
 
-# --- Family 137, Step 1: Approved Specification / Sample Lock (feature 8) ---
+# --- Approved Specification / Sample Lock (feature 8) ---
 
 def test_create_approved_specification_is_version_one(client, test_user):
     _login(client, test_user)
@@ -3099,7 +3273,7 @@ def test_approved_specification_order_not_found(client, test_user):
     assert resp.status_code == 404
 
 
-# --- Family 137, Step 1: Cost-Drift Alert (feature 9) ---
+# --- Cost-Drift Alert (feature 9) ---
 
 def test_cost_drift_reports_no_drift_when_cost_unchanged(client, test_user):
     _login(client, test_user)
@@ -3197,7 +3371,7 @@ def test_cost_drift_estimate_not_found(client, test_user):
     assert resp.status_code == 404
 
 
-# --- Family 137, Step 2: Smart Estimate / Margin Optimization (feature 6) ---
+# --- Smart Estimate / Margin Optimization (feature 6) ---
 
 def test_margin_optimization_finds_cheaper_substitute(client, test_user):
     _login(client, test_user)
@@ -3311,7 +3485,7 @@ def test_margin_optimization_never_modifies_estimate(client, test_user):
     assert refetched["line_items"][0]["product_id"] == current_product["id"]
 
 
-# --- Family 137, Step 4: Visual Build Timeline (feature 2) ---
+# --- Visual Build Timeline (feature 2) ---
 
 def test_build_timeline_order_not_found(client, test_user):
     _login(client, test_user)
@@ -3361,7 +3535,7 @@ def test_build_timeline_requires_auth(client):
     assert resp.status_code == 401
 
 
-# --- Family 137, Step 5: Capacity-Aware Delivery Promise (feature 12) ---
+# --- Capacity-Aware Delivery Promise (feature 12) ---
 
 def test_delivery_promise_evaluation_past_date_is_not_feasible(client, test_user):
     _login(client, test_user)
@@ -3428,5 +3602,109 @@ def test_delivery_promise_record_writes_order_and_audit_trail(client, test_user)
     matching = [a for a in audit.json() if a["record_id"] == order["id"]]
     assert len(matching) == 1
     assert matching[0]["new_value"]["reason"] == "Confirmed with client after capacity review."
+
+
+# --- Security hardening: strict input validation (Orders/Payments/Estimates) ---
+
+def test_order_create_rejects_unexpected_field(client, test_user):
+    """extra="forbid" on OrderCreate: an unrecognized key must be
+    rejected (422), not silently ignored - strict backend schema
+    validation is authoritative, not a frontend-only concern."""
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    resp = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-13T00:00:00",
+        "order_value": "10000.00", "advance": "0",
+        "this_field_does_not_exist": "malicious-or-mistaken-value",
+    })
+    assert resp.status_code == 422
+
+
+def test_order_create_rejects_oversized_remarks(client, test_user):
+    """Free-text fields must have a real upper bound, not accept an
+    unbounded string into the database."""
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    resp = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-13T00:00:00",
+        "order_value": "10000.00", "advance": "0",
+        "remarks": "x" * 10000,
+    })
+    assert resp.status_code == 422
+
+
+def test_order_create_rejects_oversized_items_array(client, test_user):
+    """A single order's line-item array must have a bound - an
+    unbounded array is an unbounded amount of DB work per request."""
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    product_id = _product(client, "Bulk Array Test Item")
+    too_many_items = [
+        {"description": "Item", "quantity": "1", "rate": "1", "product_id": product_id}
+        for _ in range(501)
+    ]
+    resp = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "0",
+        "items": too_many_items,
+    })
+    assert resp.status_code == 422
+
+
+def test_order_create_rejects_malformed_client_phone(client, test_user):
+    """The client-intake path's phone must be validated to the exact
+    same rule the standalone Client entity already enforces everywhere
+    else, not left as an unvalidated plain string."""
+    _login(client, test_user)
+    resp = client.post("/api/orders/", json={
+        "order_date": "2026-08-13T00:00:00", "order_value": "5000", "advance": "0",
+        "client_name": "New Intake Client", "client_phone": "not-a-phone-number",
+    })
+    assert resp.status_code == 422
+
+
+def test_order_item_create_rejects_unexpected_nested_field(client, test_user):
+    """extra="forbid" also applies to nested line-item objects, not
+    just the top-level order body."""
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    product_id = _product(client, "Nested Extra Field Test Item")
+    resp = client.post("/api/orders/", json={
+        "client_id": client_id, "order_date": "2026-08-13T00:00:00", "advance": "0",
+        "items": [{
+            "description": "Item", "quantity": "1", "rate": "100", "product_id": product_id,
+            "unexpected_nested_key": "should be rejected",
+        }],
+    })
+    assert resp.status_code == 422
+
+
+def test_payment_create_rejects_unexpected_field(client, test_user):
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    order = _create_order_basics(client, client_id)
+    resp = client.post("/api/payments/", json={
+        "order_id": order["id"], "date": "2026-08-13T00:00:00",
+        "payment_type": "Progress Payment", "payment_mode": "Cash", "amount": "1000",
+        "not_a_real_field": "x",
+    })
+    assert resp.status_code == 422
+
+
+def test_estimate_create_rejects_oversized_description(client, test_user):
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    resp = client.post("/api/estimates/", json={
+        "client_id": client_id, "material_cost": "1000",
+        "description": "y" * 10000,
+    })
+    assert resp.status_code == 422
+
+
+def test_order_comment_rejects_empty_text(client, test_user):
+    _login(client, test_user)
+    client_id = _create_client_id(client)
+    order = _create_order_basics(client, client_id)
+    resp = client.post(f"/api/orders/{order['id']}/comments", json={"text": ""})
+    assert resp.status_code == 422
 
 

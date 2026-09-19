@@ -1,23 +1,42 @@
 // Client pages: list/CRUD and Excel import. Combines the former
 // ClientsPage.jsx and ClientImportPage.jsx. ClientDetailPage.jsx
-// remains separate.
-import React, { useEffect, useRef, useState } from 'react';
+// remains separate - the deep-detail destination this compact
+// workspace's "Full Detail" link opens, exactly like Orders' own
+// /orders/:id relationship to /orders.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { clientImportAPI, clientsAPI, reportsAPI, settingsAPI } from '../../../utils/api';
-import { Alert, Card, ConfirmDialog, Form, KpiCard, Modal, Pagination, Table } from '../../../components/common/UI';
+import { clientDocumentsAPI, clientImportAPI, clientsAPI, ordersAPI, reportsAPI, settingsAPI } from '../../../utils/api';
+import { Alert, Card, ConfirmDialog, Form, KpiStrip, Modal, Pagination } from '../../../components/common/UI';
+import { formatCurrency, statusClass, today } from '../../../utils/utils';
+import { ClientIcon, CheckCircleIcon, AnalyticsIcon, PaymentIcon, ChatIcon, PrinterIcon } from '../../../components/icons';
 
 // --- ClientsPage.jsx ---
+// Rebuilt on the finalized Orders command-center workspace as the
+// visual master (KPI strip / toolbar / 4 summary cards / 68-32
+// list+detail grid / 3-zone detail panel) - see OrdersPage in
+// ../../sales/pages/SalesListPages.jsx for the reference
+// implementation this mirrors. Reuses the exact same CSS classes
+// (kpi-strip/orders-workspace-*/order-detail-*) so this page is
+// pixel-identical in spacing/typography/cards/table density to
+// Orders; those classes are shared workspace-layout primitives, not
+// Orders-specific styling, and nothing in Orders' own JSX or CSS is
+// touched by reusing them here.
 const PAGE_SIZE = 25;
 
 function ClientsPage() {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const isStrictlyMaster = user?.role === 'master';
-  const [clients, setClients] = useState([]);
+  // workspace holds the one bounded GET /api/clients/workspace
+  // response: { summary, clients: {items,total_count,limit,offset},
+  // selected_client }.
+  const [workspace, setWorkspace] = useState(null);
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [leadSources, setLeadSources] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState(''); // '' | 'Active' | 'Inactive'
   const [search, setSearch] = useState('');
   const location = useLocation();
   const [showAdd, setShowAdd] = useState(!!location.state?.openCreate);
@@ -28,41 +47,86 @@ function ClientsPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   // Possible-duplicate check on create: the backend already exposes
-  // GET /api/clients/check-duplicates (fuzzy name match), but nothing
-  // in the UI ever called it, so two "Sanket"s could be entered by
-  // accident with no warning at all. Non-blocking by design, matching
-  // the backend's own intent - it flags, the user decides.
+  // GET /api/clients/check-duplicates (fuzzy name match) - unchanged.
   const [duplicateMatches, setDuplicateMatches] = useState(null);
   const [pendingCreateData, setPendingCreateData] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  // Detail-panel footer's "+ New Order" action - the exact same real
+  // Create Order workflow ClientDetailPage's own handleCreateOrder
+  // already uses (ordersAPI.create with this client preselected),
+  // never a second/simplified order-creation path.
+  const [showNewOrder, setShowNewOrder] = useState(false);
+  const [newOrderLoading, setNewOrderLoading] = useState(false);
+  const [newOrderError, setNewOrderError] = useState('');
 
-  const load = (searchTerm, pageNum = 1) => {
-    const offset = (pageNum - 1) * PAGE_SIZE;
-    const params = { limit: PAGE_SIZE, offset };
-    if (searchTerm) params.search = searchTerm;
-    setPageLoading(true);
-    setLoadError(false);
-    clientsAPI.list(params).then((res) => {
-      setClients(res.data);
-      setTotalCount(Number(res.headers['x-total-count'] || res.data.length));
-    }).catch(() => {
-      setLoadError(true);
-    }).finally(() => setPageLoading(false));
+  const activeFilters = () => {
+    const params = {};
+    if (statusFilter) params.status = statusFilter;
+    if (search) params.search = search;
+    return params;
   };
 
-  useEffect(() => {
-    load();
-    settingsAPI.list('lead-sources').then((res) => setLeadSources(res.data)).catch(() => setLeadSources([]));
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
+  const selectedClientIdRef = useRef(selectedClientId);
+  selectedClientIdRef.current = selectedClientId;
+
+  const load = useCallback((filterParams, pageNum = 1) => {
+    const offset = (pageNum - 1) * PAGE_SIZE;
+    setPageLoading(true);
+    setLoadError(false);
+    clientsAPI.workspace({
+      ...filterParams, limit: PAGE_SIZE, offset,
+      selected_client_id: selectedClientIdRef.current || undefined,
+    }).then((res) => {
+      setWorkspace(res.data);
+      if (res.data.selected_client) setSelectedClientId(res.data.selected_client.id);
+    }).catch(() => setLoadError(true)).finally(() => setPageLoading(false));
   }, []);
+
+  useEffect(() => {
+    load(activeFiltersRef.current());
+    settingsAPI.list('lead-sources').then((res) => setLeadSources(res.data)).catch(() => setLeadSources([]));
+  }, [load]);
+
+  useEffect(() => {
+    if (!pageLoading && workspace && !selectedClientId && workspace.clients?.items?.length) {
+      handleSelectClient(workspace.clients.items[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLoading, workspace]);
+
+  const handleSelectClient = (clientId) => {
+    if (clientId === selectedClientId && workspace?.selected_client) return;
+    setSelectedClientId(clientId);
+    setDetailLoading(true);
+    clientsAPI.workspace({ selected_client_id: clientId, detail_only: true }).then((res) => {
+      setWorkspace((prev) => (prev ? { ...prev, selected_client: res.data.selected_client } : prev));
+    }).catch(() => {}).finally(() => setDetailLoading(false));
+  };
+
+  const applyFilters = (nextStatus, nextSearch) => {
+    const params = {};
+    if (nextStatus) params.status = nextStatus;
+    if (nextSearch) params.search = nextSearch;
+    setPage(1);
+    load(params, 1);
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    setPage(1);
-    load(search, 1);
+    applyFilters(statusFilter, search);
+  };
+
+  const handleStatusTab = (nextStatus) => {
+    setStatusFilter(nextStatus);
+    applyFilters(nextStatus, search);
   };
 
   const goToPage = (pageNum) => {
     setPage(pageNum);
-    load(search, pageNum);
+    load(activeFilters(), pageNum);
   };
 
   const createClient = async (formData) => {
@@ -74,7 +138,7 @@ function ClientsPage() {
       setDuplicateMatches(null);
       setPendingCreateData(null);
       setSuccess('Client created.');
-      load(search, page);
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to add client');
     } finally {
@@ -105,7 +169,7 @@ function ClientsPage() {
       await clientsAPI.update(editingClient.id, formData);
       setEditingClient(null);
       setSuccess('Client updated.');
-      load(search, page);
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update client');
     } finally {
@@ -113,8 +177,6 @@ function ClientsPage() {
     }
   };
 
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
   const handleDelete = (clientRow) => setPendingDelete(clientRow);
   const confirmDelete = async () => {
     setError('');
@@ -122,7 +184,8 @@ function ClientsPage() {
     try {
       await clientsAPI.remove(pendingDelete.id);
       setPendingDelete(null);
-      load(search, page);
+      if (pendingDelete.id === selectedClientId) setSelectedClientId(null);
+      load(activeFilters(), page);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete client');
       setPendingDelete(null);
@@ -131,31 +194,28 @@ function ClientsPage() {
     }
   };
 
-  const columns = [
-    {
-      key: 'business_id', label: 'Client ID', render: (v, row) => (
-        <div className="client-id-cell">
-          <span className="business-id-badge">{row.business_id || '—'}</span>
-          <span className="client-id-ref">{row.client_code}</span>
-        </div>
-      ),
-    },
-    { key: 'name', label: 'Name' },
-    { key: 'client_type', label: 'Type' },
-    { key: 'phone', label: 'Phone' }, { key: 'email', label: 'Email' }, { key: 'city', label: 'City' },
-    { key: 'status', label: 'Status' },
-    { key: 'lead_source', label: 'Lead Source' }, { key: 'address', label: 'Address' },
-    {
-      key: 'edit_action', label: '', render: (v, row) => (
-        <button className="btn-link" onClick={(e) => { e.stopPropagation(); setEditingClient(row); }}>Edit</button>
-      ),
-    },
-    {
-      key: 'delete_action', label: '', render: (v, row) => (
-        isStrictlyMaster ? <button className="btn-link" onClick={(e) => { e.stopPropagation(); handleDelete(row); }}>Delete</button> : null
-      ),
-    },
-  ];
+  // "+ New Order" footer action - identical payload shape to
+  // ClientDetailPage's handleCreateOrder, this client preselected.
+  const handleCreateOrderForClient = async (formData) => {
+    const sel = workspace?.selected_client;
+    if (!sel) return;
+    setNewOrderLoading(true);
+    setNewOrderError('');
+    try {
+      await ordersAPI.create({
+        ...formData, client_id: sel.id,
+        order_date: new Date(formData.order_date).toISOString(),
+        order_value: formData.order_value || '0', advance: formData.advance || '0',
+      });
+      setShowNewOrder(false);
+      setSuccess('Order created.');
+      load(activeFilters(), page);
+    } catch (err) {
+      setNewOrderError(err.response?.data?.detail || 'Failed to create order');
+    } finally {
+      setNewOrderLoading(false);
+    }
+  };
 
   const fields = [
     { name: 'name', label: 'Client Name', required: true },
@@ -191,53 +251,394 @@ function ClientsPage() {
 
   const editFields = fields.filter((f) => f.name !== 'client_code');
 
+  const newOrderFields = [
+    { name: 'project_type', label: 'Project Type' },
+    { name: 'order_value', label: 'Order Value', type: 'number', required: true },
+    { name: 'advance', label: 'Advance', type: 'number' },
+    { name: 'order_date', label: 'Order Date', type: 'date', required: true },
+  ];
+
   const exportUrl = () => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
+    if (statusFilter) params.set('status', statusFilter);
     const qs = params.toString();
     return reportsAPI.downloadUrl(`clients.xlsx${qs ? `?${qs}` : ''}`);
   };
+
+  const summary = workspace?.summary || null;
+  const clientRows = workspace?.clients?.items || [];
+  const totalCount = workspace?.clients?.total_count || 0;
+  const offsetStart = workspace?.clients?.offset ?? (page - 1) * PAGE_SIZE;
+  const selected = workspace?.selected_client || null;
+
+  // 5 KPI chips, all sourced from workspace.summary - nothing invented
+  // client-side. Payment Due is a financial aggregate, so (matching
+  // Orders' own workspace) it's simply absent for a non-master viewer.
+  const kpiItems = summary ? [
+    { label: 'Total Clients', value: summary.total_clients, icon: ClientIcon },
+    { label: 'Active Accounts', value: summary.active_clients, icon: CheckCircleIcon },
+    // "VIP / Premium" has no dedicated flag in the Client Master - this
+    // reuses client_type="Business" (see backend clients_workspace),
+    // the closest existing classification, rather than inventing one.
+    { label: 'Business / Premium Clients', value: summary.business_clients, icon: AnalyticsIcon },
+    ...(summary.payment_due_amount != null ? [{
+      label: 'Payment Due', value: formatCurrency(summary.payment_due_amount), icon: PaymentIcon,
+      tone: summary.payment_due_amount > 0 ? 'warning' : 'default',
+    }] : []),
+    { label: 'Active Relationships', value: summary.active_relationships, icon: ChatIcon },
+  ] : [];
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Clients</h1>
+          <h1>
+            Clients
+            {summary && <span className="home-card-chip" style={{ marginLeft: 10, verticalAlign: 'middle' }}>{summary.active_clients} Active Clients</span>}
+          </h1>
           <p className="page-summary">Manage client profiles, projects, and business history in one place.</p>
-        </div>
-        <div className="page-actions">
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>Add Client</button>
-          {isStrictlyMaster && (
-            <>
-              <a className="btn-secondary" href={clientImportAPI.templateUrl}>Download Template</a>
-              <button className="btn-secondary" onClick={() => navigate('/clients/import')}>Import Excel</button>
-            </>
-          )}
-          <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">
-            {search ? 'Export Filtered' : 'Export All'}
-          </a>
         </div>
       </div>
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
-      <div className="kpi-row">
-        <KpiCard label="Total Clients" value={totalCount} />
+
+      {summary && <KpiStrip items={kpiItems} />}
+
+      <div className="orders-workspace-toolbar">
+        <button className="btn-primary" onClick={() => setShowAdd(true)}>+ New Client</button>
+        <a className="btn-secondary" href={exportUrl()} target="_blank" rel="noreferrer">Export Clients</a>
+        {isStrictlyMaster && <button className="btn-secondary" onClick={() => navigate('/clients/import')}>Import Clients</button>}
       </div>
-      <form className="page-search" onSubmit={handleSearch}>
-        <input
-          type="text" placeholder="Search by name, code, or phone..." value={search}
-          onChange={(e) => setSearch(e.target.value)} className="form-input"
-        />
-        <button type="submit" className="btn-secondary">Search</button>
-      </form>
-      <Table columns={columns} data={clients} loading={pageLoading} error={loadError} onRetry={() => load(search, page)} onRowClick={(row) => navigate(`/clients/${row.id}`)} emptyMessage="No clients yet. Add your first client to get started." emptyAction={{ label: 'Add Client', onClick: () => setShowAdd(true) }} />
-      {totalCount > PAGE_SIZE && (
-        <Pagination
-          currentPage={page}
-          totalPages={Math.ceil(totalCount / PAGE_SIZE)}
-          onPageChange={goToPage}
-        />
-      )}
+
+      <div className="orders-summary-cards">
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Client Portfolio</span>
+            {summary && <span className="home-card-chip">{summary.portfolio.total_clients} Total</span>}
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="orders-card-hero">
+                <span className="orders-card-hero-number">{summary.portfolio.active_clients}</span>
+                <span className="orders-card-hero-caption">Active Clients</span>
+                <span className="orders-card-hero-side">{summary.portfolio.inactive_clients} Inactive</span>
+              </div>
+              <div className="orders-card-footer-row">
+                <span>Total Clients</span>
+                <strong>{summary.portfolio.total_clients}</strong>
+              </div>
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Account Standing</span>
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="orders-card-hero">
+                <span className="orders-card-hero-number">{summary.account_standing.in_good_standing}</span>
+                <span className="orders-card-hero-caption">Good Standing</span>
+              </div>
+              <div className="order-health-chips">
+                <div className="order-health-chip order-health-success">
+                  <span className="order-health-count">{summary.account_standing.in_good_standing}</span>
+                  <span className="order-health-label">Good Standing</span>
+                </div>
+                <div className="order-health-chip order-health-warning">
+                  <span className="order-health-count">{summary.account_standing.overdue_balance}</span>
+                  <span className="order-health-label">Overdue 30+ Days</span>
+                </div>
+              </div>
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Receivables Overview</span>
+          </div>
+          {isStrictlyMaster ? (
+            summary?.receivables_overview ? (
+              <div className="orders-card-body">
+                <div className="orders-card-hero">
+                  <span className="orders-card-hero-number">{formatCurrency(summary.receivables_overview.total_received)}</span>
+                  <span className="orders-card-hero-caption">Received</span>
+                </div>
+                <div className="order-detail-split-bar">
+                  <div
+                    className="order-detail-split-bar-received"
+                    style={{ width: `${summary.receivables_overview.total_order_value > 0 ? Math.min(100, 100 * summary.receivables_overview.total_received / summary.receivables_overview.total_order_value) : 0}%` }}
+                  />
+                  <div
+                    className="order-detail-split-bar-pending"
+                    style={{ width: `${summary.receivables_overview.total_order_value > 0 ? Math.max(0, 100 - (100 * summary.receivables_overview.total_received / summary.receivables_overview.total_order_value)) : 0}%` }}
+                  />
+                </div>
+                <div className="orders-card-footer-row">
+                  <span>Outstanding</span>
+                  <strong>{formatCurrency(summary.receivables_overview.outstanding_balance)}</strong>
+                </div>
+              </div>
+            ) : <div className="simple-chart-empty">Loading...</div>
+          ) : (
+            <div className="simple-chart-empty">Restricted to Master accounts.</div>
+          )}
+        </Card>
+
+        <Card className="home-card home-card-flush">
+          <div className="home-card-header">
+            <span className="home-card-title">Active Orders</span>
+            {summary && <span className="home-card-chip">{summary.active_orders_card.active_order_count} Active</span>}
+          </div>
+          {summary ? (
+            <div className="orders-card-body">
+              <div className="orders-card-hero">
+                <span className="orders-card-hero-number">{summary.active_orders_card.active_order_count}</span>
+                <span className="orders-card-hero-caption">Active Orders</span>
+                {isStrictlyMaster && summary.active_orders_card.active_order_value != null && (
+                  <span className="orders-card-hero-side">{formatCurrency(summary.active_orders_card.active_order_value)}</span>
+                )}
+              </div>
+              {summary.active_orders_card.stage_breakdown
+                .filter((s) => s.count > 0).sort((a, b) => b.count - a.count).slice(0, 2)
+                .map((s) => (
+                  <div className="orders-card-stat-row" key={s.status}><span>{s.status}</span><strong>{s.count}</strong></div>
+                ))}
+            </div>
+          ) : <div className="simple-chart-empty">Loading...</div>}
+        </Card>
+      </div>
+
+      <div className="orders-workspace-grid">
+        {/* All Clients - 68%, compact 6-column table, sticky header,
+            internal scroll, row click selects (never navigates). The
+            existing search box (unchanged - same state/handler) now
+            lives inside this panel, under its title/tabs row, instead
+            of as a separate full-width section above the workspace grid. */}
+        <div className="card orders-workspace-panel">
+          <div className="orders-panel-header">
+            <div className="orders-panel-title">
+              <h3>All Clients</h3>
+              <div className="orders-panel-tabs">
+                {[{ value: '', label: 'All' }, { value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }].map((t) => (
+                  <button
+                    key={t.label} type="button"
+                    className={`orders-panel-tab ${statusFilter === t.value ? 'active' : ''}`}
+                    onClick={() => handleStatusTab(t.value)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className="home-card-caption">{totalCount} total</span>
+          </div>
+          <form
+            className="page-search"
+            onSubmit={handleSearch}
+            style={{ maxWidth: 'none', flexWrap: 'wrap', padding: 'var(--space-3) var(--space-4)', margin: 0, borderBottom: '1px solid var(--border-subtle)' }}
+          >
+            <input
+              type="text" placeholder="Search by name, code, phone, or email..." value={search}
+              onChange={(e) => setSearch(e.target.value)} className="form-input"
+            />
+            <button type="submit" className="btn-secondary">Search</button>
+          </form>
+          <div className="orders-table-scroll">
+            {loadError ? (
+              <div className="simple-chart-empty">
+                Failed to load clients. <button className="btn-link" onClick={() => load(activeFilters(), page)}>Retry</button>
+              </div>
+            ) : pageLoading ? (
+              <div className="simple-chart-empty">Loading clients...</div>
+            ) : clientRows.length === 0 ? (
+              <div className="simple-chart-empty">
+                No clients yet.
+                <br /><button className="btn-link" onClick={() => setShowAdd(true)}>Add your first client</button>
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Client ID</th><th>Client Name</th><th>Contact</th>
+                    <th>Active Orders</th><th>Client Value</th><th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={`clickable ${row.id === selectedClientId ? 'orders-row-selected' : ''}`}
+                      tabIndex={0}
+                      role="button"
+                      onClick={() => handleSelectClient(row.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectClient(row.id); } }}
+                    >
+                      <td>
+                        <span className="business-id-badge">{row.business_id || '-'}</span>
+                        <span className="client-id-ref">{row.client_code}</span>
+                      </td>
+                      <td>{row.name}</td>
+                      <td>{row.phone || row.email || '-'}</td>
+                      <td>{row.active_orders}</td>
+                      <td>{row.client_value != null ? formatCurrency(row.client_value) : 'Restricted'}</td>
+                      <td><span className={`status-badge ${statusClass(row.status)}`}>{row.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="orders-panel-footer">
+            <span>{clientRows.length ? `Showing ${offsetStart + 1}-${offsetStart + clientRows.length} of ${totalCount}` : `${totalCount} clients`}</span>
+            {totalCount > PAGE_SIZE && (
+              <Pagination currentPage={page} totalPages={Math.ceil(totalCount / PAGE_SIZE)} onPageChange={goToPage} />
+            )}
+          </div>
+        </div>
+
+        {/* Client Details - 32%, three fixed/scroll/fixed zones. */}
+        <div className="card orders-workspace-panel">
+          <div className="orders-panel-header">
+            <div className="orders-panel-title"><h3>Client Details</h3></div>
+            {selected && <button className="btn-link" onClick={() => navigate(`/clients/${selected.id}`)}>Full Detail</button>}
+          </div>
+          {!selected ? (
+            <div className="order-detail-empty">
+              {detailLoading ? 'Loading...' : 'Select a client from the list to see its details.'}
+            </div>
+          ) : (
+            <>
+              <div className="order-detail-top">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <h3 style={{ margin: 0 }}>{selected.name}</h3>
+                  <button type="button" className="order-detail-icon-btn" title="Print" onClick={() => window.print()}>
+                    <PrinterIcon />
+                  </button>
+                </div>
+                <div className="order-detail-top-meta" style={{ marginTop: 6 }}>
+                  <span className="business-id-badge">{selected.business_id || selected.client_code}</span>
+                  <span className={`status-badge status-badge-dot ${statusClass(selected.status)}`}>{selected.status}</span>
+                  {selected.client_type === 'Business' && <span className="status-badge status-info">Business / Premium</span>}
+                  <button className="btn-link" onClick={() => setEditingClient(selected)}>Edit</button>
+                  {isStrictlyMaster && (
+                    <button className="btn-link" onClick={() => handleDelete(selected)}>Delete</button>
+                  )}
+                </div>
+                <div className="order-detail-client">
+                  {selected.contact.contact_person || selected.name}
+                  {selected.contact.phone ? ` - ${selected.contact.phone}` : ''}
+                </div>
+              </div>
+
+              <div className="order-detail-scroll">
+                <div>
+                  <div className="order-detail-section-label">Contact Information</div>
+                  <div className="order-detail-row"><span>Phone</span><strong>{selected.contact.phone || '-'}</strong></div>
+                  {selected.contact.alternate_phone && (
+                    <div className="order-detail-row"><span>Alternate Phone</span><strong>{selected.contact.alternate_phone}</strong></div>
+                  )}
+                  <div className="order-detail-row"><span>Email</span><strong>{selected.contact.email || '-'}</strong></div>
+                  <div className="order-detail-row"><span>Billing Address</span><strong>{selected.address.billing_address || '-'}</strong></div>
+                  {selected.address.site_address && (
+                    <div className="order-detail-row"><span>Site Address</span><strong>{selected.address.site_address}</strong></div>
+                  )}
+                  {selected.address.gstin && (
+                    <div className="order-detail-row"><span>GSTIN</span><strong>{selected.address.gstin}</strong></div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="order-detail-section-label">Account Overview</div>
+                  <div className="order-detail-row"><span>Total Orders</span><strong>{selected.account_overview.total_orders}</strong></div>
+                  {isStrictlyMaster && (
+                    <>
+                      <div className="order-detail-row"><span>Total Order Value</span><strong>{formatCurrency(selected.account_overview.total_order_value)}</strong></div>
+                      {selected.account_overview.total_order_value > 0 && (
+                        <div className="order-detail-split-bar">
+                          <div className="order-detail-split-bar-received" style={{ width: `${Math.min(100, 100 * (selected.account_overview.total_received || 0) / selected.account_overview.total_order_value)}%` }} />
+                          <div className="order-detail-split-bar-pending" style={{ width: `${Math.max(0, 100 - (100 * (selected.account_overview.total_received || 0) / selected.account_overview.total_order_value))}%` }} />
+                        </div>
+                      )}
+                      <div className="order-detail-row"><span>Received</span><strong>{formatCurrency(selected.account_overview.total_received)}</strong></div>
+                      <div className="order-detail-row"><span>Outstanding</span><strong>{formatCurrency(selected.account_overview.outstanding_balance)}</strong></div>
+                    </>
+                  )}
+                </div>
+
+                <div>
+                  <div className="order-detail-section-label">Orders ({selected.orders.length})</div>
+                  {selected.orders.length === 0 ? (
+                    <div className="order-detail-row"><span>No orders yet.</span></div>
+                  ) : selected.orders.map((o) => (
+                    <div
+                      className="order-detail-item-row" key={o.id} style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/orders/${o.id}`)}
+                    >
+                      <span>{o.order_code} &middot; {o.project_status}</span>
+                      <span>{o.order_value != null ? formatCurrency(o.order_value) : 'Restricted'}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div className="order-detail-section-label">Estimates ({selected.estimates.length})</div>
+                  {selected.estimates.length === 0 ? (
+                    <div className="order-detail-row"><span>No estimates yet.</span></div>
+                  ) : selected.estimates.map((e) => (
+                    <div
+                      className="order-detail-item-row" key={e.id} style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/estimates/${e.id}`)}
+                    >
+                      <span>{e.estimate_code} &middot; {e.status}</span>
+                      <span>{e.total_cost != null ? formatCurrency(e.total_cost) : 'Restricted'}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {selected.recent_activity.length > 0 && (
+                  <div>
+                    <div className="order-detail-section-label">Recent Activity</div>
+                    {selected.recent_activity.map((a, i) => (
+                      <div className="order-detail-comment" key={i}>
+                        <strong>{a.type}</strong> - {a.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div>
+                  <div className="order-detail-section-label">Documents ({selected.documents.length})</div>
+                  {selected.documents.length === 0 ? (
+                    <div className="order-detail-row"><span>No documents yet.</span></div>
+                  ) : selected.documents.map((d) => (
+                    <div className="order-detail-item-row" key={d.id}>
+                      <a href={clientDocumentsAPI.downloadUrl(selected.id, d.id)} target="_blank" rel="noreferrer">{d.original_filename}</a>
+                      <span>{d.description || ''}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {selected.remarks && (
+                  <div>
+                    <div className="order-detail-section-label">Notes</div>
+                    <div className="order-detail-row"><span>{selected.remarks}</span></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="order-detail-bottom">
+                <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setEditingClient(selected)}>Edit Client</button>
+                <button className="btn-primary" style={{ flex: 1 }} onClick={() => setShowNewOrder(true)}>+ New Order</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
       <Modal isOpen={showAdd} title="Add Client" onClose={() => { setShowAdd(false); setDuplicateMatches(null); setPendingCreateData(null); }}>
         {duplicateMatches ? (
           <div>
@@ -269,9 +670,35 @@ function ClientsPage() {
         {editingClient && (
           <Form
             fields={editFields} onSubmit={handleUpdate} loading={loading} submitText="Save Changes"
-            initialValues={editingClient}
+            initialValues={{
+              // editingClient is always set from `selected` (the workspace
+              // detail payload's selected_client), which nests contact
+              // fields under `contact` and address fields under `address`.
+              name: editingClient.name, client_type: editingClient.client_type,
+              phone: editingClient.contact?.phone,
+              contact_person: editingClient.contact?.contact_person,
+              email: editingClient.contact?.email,
+              status: editingClient.status,
+              alternate_phone: editingClient.contact?.alternate_phone,
+              address: editingClient.address?.billing_address,
+              site_address: editingClient.address?.site_address,
+              city: editingClient.address?.city,
+              state: editingClient.address?.state,
+              pincode: editingClient.address?.pincode,
+              gstin: editingClient.address?.gstin,
+              lead_source: editingClient.lead_source,
+              remarks: editingClient.remarks,
+            }}
           />
         )}
+      </Modal>
+
+      <Modal isOpen={showNewOrder} title={`New Order - ${selected?.name || ''}`} onClose={() => { setShowNewOrder(false); setNewOrderError(''); }}>
+        {newOrderError && <Alert type="error" message={newOrderError} onClose={() => setNewOrderError('')} />}
+        <Form
+          fields={newOrderFields} onSubmit={handleCreateOrderForClient} loading={newOrderLoading} submitText="Create Order"
+          initialValues={{ order_date: today() }}
+        />
       </Modal>
 
       <ConfirmDialog

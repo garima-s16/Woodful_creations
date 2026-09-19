@@ -4,7 +4,7 @@ MaterialAttributeValue, Material, StockTransfer, StockAdjustment,
 StockLedgerEntry.
 
 Supplier/SupplierMaterial/Purchase moved to
-app.modules.procurement.models (Family 130 P0.2 ownership correction -
+app.modules.procurement.models (an ownership correction -
 procurement owns suppliers and purchases; inventory owns physical
 stock). Relationships to them below are string-based ("Supplier",
 "Purchase"), which SQLAlchemy resolves via its mapper registry, not a
