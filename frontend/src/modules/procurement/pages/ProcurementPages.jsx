@@ -23,7 +23,7 @@ import { documentsAPI, locationsAPI, materialsAPI, purchaseImportAPI, purchasesA
 import { Alert, Card, ConfirmDialog, Form, KpiStrip, Modal, Pagination, Table } from '../../../components/common/UI';
 import { DocumentsPanel } from '../../../components/Assistant';
 import { classifyLoadError, formatCurrency, statusClass, today } from '../../../utils/utils';
-import { PurchaseIcon, PaymentIcon, TruckIcon, CheckCircleIcon, AlertTriangleIcon, PrinterIcon } from '../../../components/icons';
+import { PurchaseIcon, PaymentIcon, TruckIcon, CheckCircleIcon, PrinterIcon } from '../../../components/icons';
 import { ProcurementRequirementsPage } from './RequirementsCartPages';
 
 // --- SuppliersPage.jsx ---

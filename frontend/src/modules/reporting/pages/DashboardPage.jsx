@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { dashboardAPI, dailyTasksAPI, purchasesAPI, paymentsAPI, productionJobsAPI, ordersAPI, clientActivitiesAPI } from '../../../utils/api';
-import { KpiCard } from '../../../components/common/UI';
+import { KpiCard, KpiStrip } from '../../../components/common/UI';
 import { Card } from '../../../components/common/UI';
 import { Table } from '../../../components/common/UI';
 import { SimpleBarChart } from '../../../components/common/UI';
@@ -31,20 +31,15 @@ import {
 
 // --- Small presentational pieces (kept in this file - only ever used
 // on the Home dashboard, not shared elsewhere) ---
-
-function KpiStrip({ items }) {
-  return (
-    <div className="kpi-strip">
-      {items.map((item) => (
-        <div className={`kpi-pill kpi-pill-${item.tone || 'default'}`} key={item.label}>
-          <item.icon className="kpi-pill-icon" />
-          <span className="kpi-pill-label">{item.label}</span>
-          <span className="kpi-pill-value">{item.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+//
+// KpiStrip itself used to be redefined here as a module-private
+// duplicate of the identical component in components/common/UI.jsx
+// (same .kpi-strip/.kpi-pill-* markup, same {icon,label,value,tone}
+// item shape - verified byte-for-byte equivalent before removing this
+// copy). Now imported from UI.jsx above, the same shared primitive
+// every other workspace (Orders/Clients/Estimates/Suppliers/
+// Employees/Candidates/Recruitment/Procurement) already uses, so
+// there is exactly one KpiStrip implementation in the codebase.
 
 // Generic small vertical bar visualization shared by the Orders
 // Pipeline and Inventory Health cards - real data in, no chart

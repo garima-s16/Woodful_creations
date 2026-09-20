@@ -687,15 +687,30 @@ def add_task_comment(task_id: int, data: TaskCommentCreate, db: Session = Depend
 issues_router = APIRouter(prefix="/api/issues", tags=["issues"])
 
 
+def _redact_issue_cost(issue: Issue, is_privileged: bool) -> Issue:
+    """rate_at_issue is a material cost figure - same is_privileged
+    (master-only) redaction rule used everywhere else in this codebase
+    for cost/margin data (see clients/api.py, hr/api.py). Blanking the
+    ORM attribute before FastAPI serializes the response is enough
+    since IssueResponse reads it via from_attributes; it is never
+    persisted (no db.commit() follows)."""
+    if not is_privileged:
+        issue.rate_at_issue = None
+    return issue
+
+
 @issues_router.get("/", response_model=List[IssueResponse])
 def list_issues(order_id: Optional[int] = Query(None), material_id: Optional[int] = Query(None),
+                 limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
     query = db.query(Issue)
     if order_id:
         query = query.filter(Issue.order_id == order_id)
     if material_id:
         query = query.filter(Issue.material_id == material_id)
-    return query.order_by(Issue.date.desc()).all()
+    is_privileged = auth.get("role", "user") in ("master",)
+    issues = query.order_by(Issue.date.desc()).offset(offset).limit(limit).all()
+    return [_redact_issue_cost(i, is_privileged) for i in issues]
 
 
 @issues_router.post("/", response_model=IssueResponse, status_code=201)
@@ -708,7 +723,8 @@ def get_issue(issue_id: int, db: Session = Depends(get_db), auth=Depends(get_cur
     issue = db.query(Issue).filter(Issue.id == issue_id).first()
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
-    return issue
+    is_privileged = auth.get("role", "user") in ("master",)
+    return _redact_issue_cost(issue, is_privileged)
 
 
 # --- milestones.py ---

@@ -9,7 +9,7 @@
    artwork (light-colored wordmark on the dark background, wood-tone
    wordmark on the light one) instead of one fixed asset run through a
    filter hack. Every hardcoded dark hex value in the Navbar section
-   below was therefore swapped for the semantic --surface/--text-*/
+   below was therefore swapped for the semantic --surface/--text-* family/
    --border tokens so its icon chips, profile menu and search bar
    re-theme along with the bar itself.
 

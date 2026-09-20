@@ -721,10 +721,11 @@ const ConfirmDialog = ({
 // future workspace) depend on this common primitive instead of the
 // Sales page module. Purely presentational - every value in `items`
 // comes from that page's own workspace.summary (server-computed);
-// nothing here is invented/derived. Distinct from the Home dashboard's
-// own module-private KpiStrip in DashboardPage.jsx (same visual
-// pattern, kept local there since it was never shared) - left
-// untouched, out of scope for this extraction.
+// nothing here is invented/derived. The Home dashboard's own
+// module-private KpiStrip in DashboardPage.jsx (same visual pattern)
+// was later confirmed byte-for-byte equivalent and consolidated onto
+// this shared component too, so this is now the single KpiStrip
+// implementation used everywhere in the app.
 function KpiStrip({ items }) {
   return (
     <div className="kpi-strip">

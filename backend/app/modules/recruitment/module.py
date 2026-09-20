@@ -235,12 +235,14 @@ RESUME_ALLOWED_MIME_TYPES = {
 
 
 @candidates_router.get("/", response_model=List[CandidateResponse])
-def list_candidates(status: Optional[str] = Query(None), db: Session = Depends(get_db),
+def list_candidates(status: Optional[str] = Query(None),
+                     limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
+                     db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     query = db.query(Candidate)
     if status:
         query = query.filter(Candidate.status == status)
-    return query.order_by(Candidate.created_at.desc()).all()
+    return query.order_by(Candidate.created_at.desc()).offset(offset).limit(limit).all()
 
 
 @candidates_router.post("/", response_model=CandidateResponse, status_code=201)
@@ -588,12 +590,14 @@ interviews_router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 
 @interviews_router.get("/", response_model=List[InterviewResponse])
-def list_interviews(candidate_id: Optional[int] = Query(None), db: Session = Depends(get_db),
+def list_interviews(candidate_id: Optional[int] = Query(None),
+                     limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
+                     db: Session = Depends(get_db),
                      auth=Depends(require_role("master"))):
     query = db.query(Interview)
     if candidate_id:
         query = query.filter(Interview.candidate_id == candidate_id)
-    return query.order_by(Interview.scheduled_date.desc()).all()
+    return query.order_by(Interview.scheduled_date.desc()).offset(offset).limit(limit).all()
 
 
 @interviews_router.post("/", response_model=InterviewResponse, status_code=201)

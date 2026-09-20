@@ -135,7 +135,7 @@
      A richer, more premium palette supplied specifically for the
      Modal/Form system (components.css's Modal.css/Form.css sections),
      deliberately kept as its OWN token family rather than folded into
-     --surface/--border/--text-*/--color-gold above - those remain
+     --surface/--border/--text-* family/--color-gold above - those remain
      exactly as already finalized for every other surface in the app
      (cards, tables, dashboard chrome, sidebar, navbar), per the
      standing "do not modify the finalized Dashboard" rule - only

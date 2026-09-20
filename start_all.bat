@@ -3,6 +3,17 @@ REM Woodful Creations - Complete Development Environment Setup for Windows
 
 setlocal enabledelayedexpansion
 
+REM Same fix as setup.bat: pin the working directory to this script's own
+REM folder before any relative path (backend\venv, frontend\node_modules,
+REM call setup.bat) is checked or run. Without this, "Run as administrator"
+REM (which starts a batch file in C:\Windows\System32), a shortcut with a
+REM different "Start in" folder, or running this from a terminal already
+REM sitting elsewhere would each make every relative-path check below
+REM silently wrong - "backend\venv" not found where it's actually looking,
+REM `call setup.bat` failing with "not recognized" because it isn't on
+REM PATH and isn't in the wrong cwd either.
+cd /d "%~dp0"
+
 echo ======================================
 echo Woodful Creations - Quick Start
 echo ======================================
@@ -18,6 +29,7 @@ echo Running initial setup...
 call setup.bat
 if errorlevel 1 (
     echo Setup failed!
+    pause
     exit /b 1
 )
 

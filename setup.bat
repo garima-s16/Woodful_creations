@@ -3,6 +3,22 @@ REM Woodful Creations - Development Setup Script for Windows
 
 setlocal enabledelayedexpansion
 
+REM Every check/command below uses a path relative to this script's own
+REM folder (backend\venv, backend\requirements.txt, frontend\node_modules,
+REM ...) - it never assumed the caller's current directory matched where
+REM this file lives, which silently broke it whenever that assumption was
+REM wrong: launching via "Run as administrator" starts a batch file with
+REM its working directory forced to C:\Windows\System32, not the script's
+REM folder; a desktop shortcut with a different "Start in" value, or
+REM running this from an already-open terminal sitting in some other
+REM directory, have the same effect. Every relative path then resolves
+REM against the wrong folder and the script fails immediately with no
+REM useful message. cd /d "%~dp0" pins the working directory to this
+REM file's own location first, regardless of how/from-where it was
+REM launched - the same fix woodful_full_verification.bat already applies
+REM via its own SCRIPT_DIR.
+cd /d "%~dp0"
+
 echo ======================================
 echo Woodful Creations - Setup Script
 echo ======================================
@@ -32,6 +48,7 @@ if errorlevel 1 (
     echo Or continue with SQLite for testing
     set /p CONTINUE="Continue without PostgreSQL? (y/n): "
     if /i not "!CONTINUE!"=="y" (
+        pause
         exit /b 1
     )
 ) else (
@@ -47,6 +64,7 @@ if not exist "backend\venv" (
     if errorlevel 1 (
         echo ERROR: Failed to create the Python virtual environment.
         cd ..
+        pause
         exit /b 1
     )
     cd ..
@@ -65,18 +83,21 @@ echo Installing backend dependencies...
 call backend\venv\Scripts\activate.bat
 if errorlevel 1 (
     echo ERROR: Failed to activate the Python virtual environment.
+    pause
     exit /b 1
 )
 pip install --upgrade pip setuptools wheel
 if errorlevel 1 (
     echo ERROR: Failed to upgrade pip/setuptools/wheel.
     call backend\venv\Scripts\deactivate.bat
+    pause
     exit /b 1
 )
 pip install -r backend\requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install backend dependencies from backend\requirements.txt.
     call backend\venv\Scripts\deactivate.bat
+    pause
     exit /b 1
 )
 call backend\venv\Scripts\deactivate.bat
@@ -96,28 +117,47 @@ echo Uploads directory created
 echo.
 
 REM Check .env file
+REM
+REM The explanatory comments and the "review your .env" message used to
+REM live INSIDE the if/else block below - one as multi-line REM comments,
+REM the other as an echo line containing literal, unescaped parentheses
+REM "(database, email, AI keys)". Windows cmd.exe parses an entire
+REM parenthesized if/else block as one unit before running it, and it
+REM counts parentheses and quote characters even inside REM comments and
+REM echo text that sit inside that block - even in the branch that never
+REM executes. An unescaped "(" or ")" in there, or an odd number of "
+REM characters, throws off cmd's block-matching and aborts the whole
+REM statement with "... was unexpected at this time." before a single
+REM line of it runs. That is exactly what was happening here: even
+REM though backend\.env already existed (so only the harmless "else"
+REM line should have run), the unused "if" branch's malformed text broke
+REM the parse for the entire block. Fix: explanatory comments now live
+REM here, above the block, where they can't affect its parsing; the
+REM "review your .env" message below has its parentheses escaped with
+REM ^( and ^) so cmd treats them as literal characters, not block syntax.
+REM
+REM SECRET_KEY ships empty in .env.example (never a real secret in a
+REM committed file) - but app\platform\config.py requires a real 32+
+REM char value just to import the app at all, which the migration step
+REM immediately below does. Left empty, alembic upgrade head below fails
+REM on every fresh setup before a user ever gets a chance to edit the
+REM file. Auto-generate a local-dev-only secret now (Python is already
+REM required above), the same way .env.example's own comment tells a
+REM person to by hand - only runs inside the "doesn't exist yet" branch
+REM below, so it can never overwrite a value someone already set.
 echo Checking environment configuration...
 if not exist "backend\.env" (
     if exist "backend\.env.example" (
         copy backend\.env.example backend\.env
         echo Created backend\.env from template
-        REM SECRET_KEY ships empty in .env.example (never a real secret in
-        REM a committed file) - but app\platform\config.py requires a real
-        REM 32+ char value just to import the app at all, which the
-        REM migration step immediately below does. Left empty, "alembic
-        REM upgrade head" below fails on every fresh setup before a user
-        REM ever gets a chance to edit the file. Auto-generate a real
-        REM local-dev-only secret now (Python is already required above),
-        REM the same way .env.example's own comment tells a person to by
-        REM hand - only runs inside this "doesn't exist yet" branch, so it
-        REM can never overwrite a value someone already set.
         python -c "import re, secrets, pathlib; p = pathlib.Path('backend/.env'); t = p.read_text(); t = re.sub(r'(?m)^SECRET_KEY=.*$', 'SECRET_KEY=' + secrets.token_urlsafe(48), t); p.write_text(t)"
         if errorlevel 1 (
             echo ERROR: Failed to generate a SECRET_KEY into backend\.env.
+            pause
             exit /b 1
         )
         echo Generated a local-development SECRET_KEY in backend\.env
-        echo IMPORTANT: Please review backend\.env - the SECRET_KEY above is fine for local dev only; every other value (database, email, AI keys) still needs your own configuration
+        echo IMPORTANT: Please review backend\.env - the SECRET_KEY above is fine for local dev only; every other value ^(database, email, AI keys^) still needs your own configuration
     )
 ) else (
     echo backend\.env already exists
@@ -143,6 +183,7 @@ if errorlevel 1 (
     echo ERROR: Database migration failed. Check backend\.env's DATABASE_URL and SECRET_KEY, then run "cd backend ^&^& alembic upgrade head" manually to see the full error.
     cd ..
     call backend\venv\Scripts\deactivate.bat
+    pause
     exit /b 1
 ) else (
     echo Migrations applied
@@ -167,6 +208,7 @@ if not exist "frontend\node_modules" (
             if errorlevel 1 (
                 echo ERROR: Failed to install frontend dependencies ^(npm install^).
                 cd ..
+                pause
                 exit /b 1
             )
             cd ..

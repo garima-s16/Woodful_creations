@@ -539,6 +539,7 @@ attendance_router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 @attendance_router.get("/", response_model=List[AttendanceResponse])
 def list_attendance(employee_id: Optional[int] = Query(None), date: Optional[datetime] = Query(None),
                      date_from: Optional[datetime] = Query(None), date_to: Optional[datetime] = Query(None),
+                     limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                      db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """date_from/date_to (Attendance & Overtime Command Center, spec
     section 12) is purely additive - the pre-existing single-`date`
@@ -566,7 +567,7 @@ def list_attendance(employee_id: Optional[int] = Query(None), date: Optional[dat
         query = query.filter(Attendance.date >= date_from)
     if date_to:
         query = query.filter(Attendance.date <= date_to)
-    return query.order_by(Attendance.date.desc()).all()
+    return query.order_by(Attendance.date.desc()).offset(offset).limit(limit).all()
 
 
 @attendance_router.post("/", response_model=AttendanceResponse, status_code=201)
@@ -770,6 +771,7 @@ def _serialize_overtime_request(request: OvertimeRequest) -> OvertimeRequestResp
 
 @overtime_requests_router.get("/", response_model=List[OvertimeRequestResponse])
 def list_overtime_requests(employee_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+                            limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                             db: Session = Depends(get_db), auth=Depends(get_current_user)):
     if auth.get("role", "user") not in ("master",):
         own_employee_id = auth.get("employee_id")
@@ -783,7 +785,8 @@ def list_overtime_requests(employee_id: Optional[int] = Query(None), status: Opt
         query = query.filter(OvertimeRequest.employee_id == employee_id)
     if status:
         query = query.filter(OvertimeRequest.status == status)
-    return [_serialize_overtime_request(r) for r in query.order_by(OvertimeRequest.date.desc()).all()]
+    rows = query.order_by(OvertimeRequest.date.desc()).offset(offset).limit(limit).all()
+    return [_serialize_overtime_request(r) for r in rows]
 
 
 @overtime_requests_router.post("/", response_model=OvertimeRequestResponse, status_code=201)
@@ -930,6 +933,7 @@ def calculate_leave_days(start_date, end_date) -> Decimal:
 
 @leaves_router.get("/", response_model=List[LeaveResponse])
 def list_leaves(employee_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+                 limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                  db: Session = Depends(get_db), auth=Depends(get_current_user)):
     if auth.get("role", "user") not in ("master",):
         own_employee_id = auth.get("employee_id")
@@ -943,7 +947,7 @@ def list_leaves(employee_id: Optional[int] = Query(None), status: Optional[str] 
         query = query.filter(Leave.employee_id == employee_id)
     if status:
         query = query.filter(Leave.status == status)
-    return query.order_by(Leave.start_date.desc()).all()
+    return query.order_by(Leave.start_date.desc()).offset(offset).limit(limit).all()
 
 
 @leaves_router.post("/", response_model=LeaveResponse, status_code=201)
@@ -1237,6 +1241,7 @@ def _serialize(advance: SalaryAdvance) -> SalaryAdvanceResponse:
 
 @salary_advances_router.get("/", response_model=List[SalaryAdvanceResponse])
 def list_salary_advances(employee_id: Optional[int] = Query(None), status: Optional[str] = Query(None),
+                          limit: int = Query(500, ge=1, le=500), offset: int = Query(0, ge=0),
                           db: Session = Depends(get_db), auth=Depends(get_current_user)):
     """Employee sees only their own (spec section 6) - identical IDOR
     pattern to leaves.py/attendance.py: a non-master querying someone
@@ -1255,7 +1260,7 @@ def list_salary_advances(employee_id: Optional[int] = Query(None), status: Optio
         query = query.filter(SalaryAdvance.employee_id == employee_id)
     if status:
         query = query.filter(SalaryAdvance.status == status)
-    rows = query.order_by(SalaryAdvance.request_date.desc()).all()
+    rows = query.order_by(SalaryAdvance.request_date.desc()).offset(offset).limit(limit).all()
     return [_serialize(r) for r in rows]
 
 
